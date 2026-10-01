@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Office 3D</title>
+<link rel="stylesheet" href="estilo.css">
+<link rel="stylesheet" href="kanban.css">
+<link rel="stylesheet" href="prs.css">
+<!-- three.js: do CDN por padrão; se o instalador baixou para vendor/, o servidor troca este endereço por /vendor/three/ -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="cena"><div id="selo" hidden>demonstração</div><div id="erro" hidden></div>
+    <section id="prs" hidden>
+      <header>
+        <div><h3>Pull requests — esperando o seu merge</h3><div id="prsInfo"></div></div>
+        <div class="botoes"><button id="prsAtualizar" title="Buscar agora no GitHub">Atualizar</button><button id="prsFechar" title="Fechar (Esc)">×</button></div>
+      </header>
+      <ol id="prsLista"></ol>
+    </section>
+    <section id="kanban" hidden>
+      <header>
+        <div><h3><span id="kanbanTitulo">Kanban</span> <a id="kanbanLink" href="#" target="_blank" rel="noopener" hidden>abrir no GitHub ↗</a></h3><div id="kanbanInfo"></div></div>
+        <button id="kanbanFechar" title="Fechar (Esc)">×</button>
+      </header>
+      <div id="kanbanFiltros"></div>
+      <div id="kanbanColunas"></div>
+    </section>
+    <section id="ficha" hidden>
+      <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)">×</button></header>
+      <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
+      <div class="abas"><button data-aba="trabalho">O que está fazendo</button><button data-aba="conversas">O que está falando</button></div>
+      <ol id="fichaLista"></ol>
+    </section>
+  </div>
+  <aside id="painel">
+    <header>
+      <h1 id="tituloEscritorio">Claude Office 3D</h1>
+      <div class="botoes">
+        <button id="btnPrs" title="Pull requests esperando o seu merge">PRs <span id="prsConta" hidden></span></button>
+        <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
+        <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
+        <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
+        <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
+      </div>
+    </header>
+    <h2>Agentes</h2>
+    <ul id="agentes"></ul>
+    <h2>Últimos eventos</h2>
+    <ol id="feed"></ol>
+  </aside>
+</div>
+<script type="module" src="escritorio.js"></script>
+<script type="module" src="kanban.js"></script>
+<script type="module" src="prs.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# gerados na instalação / uso local
+*.bak*
+NOTAS.md
+__pycache__/
+config.json
+config.json.bak-*
+dados/
+dist/
+vendor/

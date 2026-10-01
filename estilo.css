@@ -1,0 +1,51 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #0f1419; color: #e6edf3; font: 14px/1.35 "Segoe UI", system-ui, sans-serif; }
+#app { display: flex; height: 100%; }
+#cena { position: relative; flex: 1; min-width: 0; }
+#cena canvas { display: block; width: 100%; height: 100%; }
+#painel { width: 320px; background: #161c24; border-left: 1px solid #2a3340; display: flex; flex-direction: column; padding: 10px 12px; gap: 6px; overflow: hidden; }
+header { display: flex; justify-content: space-between; align-items: center; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #8b98a8; margin: 8px 0 2px; }
+button { background: #232d3a; color: #e6edf3; border: 1px solid #3a4756; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+button:hover { background: #2d3a4b; }
+button.ativo { background: #b45309; border-color: #f59e0b; }
+.botoes { display: flex; gap: 6px; }
+#agentes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 40%; overflow-y: auto; }
+#agentes li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #1d2530; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+#agentes li:hover { border-color: #3a4756; }
+.ponto { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.info { flex: 1; min-width: 0; }
+.nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.funcao { font-size: 11.5px; color: #c3cdd9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { font-size: 12px; color: #9aa7b6; }
+.hora { font-size: 12px; color: #7d8a9a; font-variant-numeric: tabular-nums; }
+#feed { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 80px; display: flex; flex-direction: column; gap: 3px; }
+#feed li { font-size: 12.5px; padding: 3px 6px; border-left: 3px solid #444; background: #1a212b; border-radius: 0 4px 4px 0; word-break: break-word; }
+#feed .t { color: #7d8a9a; font-variant-numeric: tabular-nums; margin-right: 4px; }
+#selo { position: absolute; top: 10px; left: 10px; z-index: 2; background: #b45309; color: #fff; padding: 4px 12px; border-radius: 999px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 12px; box-shadow: 0 2px 8px #0008; }
+#erro { position: absolute; inset: 40% 10% auto 10%; background: #7f1d1d; padding: 12px; border-radius: 8px; text-align: center; }
+#ficha { position: absolute; top: 10px; right: 10px; bottom: 10px; width: min(420px, calc(100% - 20px)); z-index: 3; background: #161c24f2; border: 1px solid #2a3340; border-top: 4px solid #888; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
+#ficha header { align-items: flex-start; }
+#ficha h3 { margin: 0; font-size: 17px; }
+#fichaEstado { font-size: 12px; color: #9aa7b6; }
+#fichaFechar { font-size: 18px; line-height: 1; padding: 2px 9px; }
+#ficha .agora { font-size: 13px; background: #1d2530; border-radius: 6px; padding: 6px 8px; }
+#ficha .agora span:first-child { color: #8b98a8; }
+#ficha .abas { display: flex; gap: 6px; }
+#ficha .abas button { flex: 1; }
+#fichaLista { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+#fichaLista li { background: #1a212b; border-radius: 6px; padding: 6px 8px; border-left: 3px solid #3b82f6; font-size: 13px; }
+#fichaLista li.recebeu { border-left-color: #a855f7; }
+#fichaLista li.vazio { border-left-color: #444; color: #8b98a8; }
+#fichaLista .topo { display: flex; gap: 8px; align-items: baseline; }
+#fichaLista .t { color: #7d8a9a; font-variant-numeric: tabular-nums; font-size: 12px; }
+#fichaLista .resumo { margin-top: 2px; }
+#fichaLista .detalhe { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 Consolas, monospace; color: #c9d4e0; background: #0f1419; border-radius: 4px; padding: 5px 6px; max-height: 220px; overflow: auto; }
+[hidden] { display: none !important; }
+@media (max-width: 760px) {
+  #app { flex-direction: column; }
+  #painel { width: 100%; height: 42%; border-left: 0; border-top: 1px solid #2a3340; }
+  #agentes { flex-direction: row; flex-wrap: wrap; }
+  #agentes li { flex: 1 1 45%; }
+}

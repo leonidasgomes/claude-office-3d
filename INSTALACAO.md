@@ -1,0 +1,303 @@
+# Claude Office 3D — guia de instalação e uso
+
+## 1. O que é
+
+O Claude Office 3D é um escritório em 3D, aberto no navegador, que mostra em tempo real o que os agentes do
+[Claude Code](https://docs.claude.com/claude-code) estão fazendo:
+
+- cada agente do time tem uma **mesa** com a cor dele; o monitor acende e aparece um balão quando ele usa uma
+  ferramenta (lê um arquivo, roda um comando, edita código…);
+- quando um agente manda mensagem para outro (`SendMessage`), ele **anda até a mesa** do colega;
+- **reuniões** (mensagem para todos, para vários colegas, ou com palavras como "Reunião:", "alinhamento",
+  "daily") levam o time para a **sala de vidro**;
+- **subagentes** avulsos aparecem como bonequinhos temporários ao lado de quem os chamou;
+- quem fica **ocioso** vai para as áreas de pausa: sofá e TV, fliperama, ping-pong, refeitório e banheiro;
+- painéis opcionais de **Kanban** (GitHub Projects) e **PRs** abertos esperando o seu merge.
+
+## 2. Requisitos
+
+| Item | Obrigatório? | Para quê |
+|---|---|---|
+| Python 3.9 ou mais novo | sim | servidor local, hook e instalador (só biblioteca padrão, nada de `pip install`) |
+| Claude Code | sim | é ele que gera os eventos (via hook) |
+| Navegador moderno com WebGL | sim | Chrome, Edge, Firefox ou Safari atuais |
+| Internet na primeira carga | não | o three.js vem do CDN jsDelivr — ou baixe para `vendor/` no instalador e funcione offline |
+| GitHub CLI (`gh`) logado | não | só para os painéis de Kanban e PRs (`gh auth login`; para o Kanban, `gh auth refresh -s project`) |
+
+Windows, macOS e Linux. No Windows o comando do hook usa `python`; no macOS/Linux, `python3`.
+
+## 3. Instalação com o assistente (recomendado)
+
+Na pasta do Claude Office 3D:
+
+- **Windows:** duplo clique em `instalar.bat` (ou `python instalar.py`)
+- **macOS/Linux:** `./instalar.sh` (ou `python3 instalar.py`)
+
+O assistente tem 7 passos. Em cada pergunta o valor padrão aparece entre colchetes e **Enter aceita**. Nada é gravado
+até a confirmação final; Ctrl+C cancela.
+
+1. **Boas-vindas e checagens** — versão do Python, `claude --version`, `gh` e `gh auth status`.
+2. **Onde instalar** — padrão: a própria pasta. Se escolher outra, os arquivos são copiados para lá.
+3. **Pastas de projeto** — uma ou mais. O hook só registra sessões abertas dentro delas (e subpastas).
+4. **Agentes do time** — time genérico (Líder, Dev, Designer, Pesquisa), importar dos `.claude/agents/*.md`
+   encontrados nos projetos (o nome é o campo `name`) ou digitar um a um. Título, função e cor são sugeridos.
+5. **GitHub (opcional)** — repositório para os PRs (sugere o `git remote get-url origin` do projeto), quadro do
+   GitHub Projects para o Kanban (lista os projects do dono com `gh project list`) e o nome do status check que
+   significa "aprovado pela revisão".
+6. **Aparência e servidor** — título, tema, apelidos, porta e se quer baixar o three.js para usar offline.
+7. **Hook do Claude Code** — escopo **usuário** (`~/.claude/settings.json`, vale para todos os projetos; o filtro
+   de pastas do passo 3 continua valendo) ou **projeto** (`<projeto>/.claude/settings.local.json`). O assistente mostra
+   o bloco JSON, faz **backup com data** do arquivo, acrescenta sem apagar os hooks que você já tem e não duplica se
+   rodar de novo.
+
+No fim ele grava o `config.json`, cria os atalhos `abrir_escritorio` e `reiniciar_escritorio` (`.bat` e `.sh`) e
+pergunta se você quer abrir o escritório agora.
+
+### Exemplo de sessão
+
+```
+================================================================
+ Passo 1 de 7 — Boas-vindas e checagens
+================================================================
+  [ok] Python 3.12.4
+  [ok] Claude Code: 2.1.0 (Claude Code)
+  [ok] GitHub CLI: /usr/local/bin/gh  —  login: ok
+
+================================================================
+ Passo 2 de 7 — Onde instalar
+================================================================
+  Pasta atual do pacote: /home/voce/ferramentas/claude-office-3d
+  Pasta de instalação [/home/voce/ferramentas/claude-office-3d]:
+
+================================================================
+ Passo 3 de 7 — Pastas de projeto a monitorar
+================================================================
+  O hook só registra sessões do Claude Code abertas DENTRO destas pastas (e subpastas).
+  Pasta 1 [/home/voce/projetos/loja]:
+    + /home/voce/projetos/loja
+  Pasta 2 (Enter vazio = terminar):
+
+================================================================
+ Passo 4 de 7 — Agentes do time
+================================================================
+  1) Time genérico (Líder, Dev, Designer, Pesquisa)
+  2) Importar 3 agente(s) de .claude/agents/*.md: backend, frontend, revisor
+  3) Digitar os agentes
+  Escolha [1]: 2
+  Nome do líder (sessão principal) [Lider]:
+  Time:
+     1. Lider                  Líder              #e5484d  mesa lider    Coordena o time  (líder: sessão principal)
+     2. backend                backend            #3b82f6  mesa dev      API e banco de dados
+     3. frontend               frontend           #f59e0b  mesa design   Telas em React
+     4. revisor                revisor            #22c55e  mesa pesquisa Revisa os PRs
+
+================================================================
+ Passo 5 de 7 — GitHub (opcional): painel de PRs e Kanban
+================================================================
+  Configurar o GitHub? [S/n]:
+  Repositório para o painel de PRs (owner/nome, vazio = sem PRs) [ana/loja]:
+  Dono do GitHub Projects para o Kanban (vazio = sem Kanban) [ana]:
+  Projects de ana:
+  1) #2 — Loja: roadmap
+  2) nenhum (sem Kanban)
+  Qual quadro? [1]:
+  Campo do Projects que diz o time do cartão [time]:
+  Status check que significa "aprovado pela revisão" (ex.: o nome de um job do CI).
+  Nome do check (vazio = usar a aprovação de review do GitHub) []:
+
+================================================================
+ Passo 6 de 7 — Aparência e servidor
+================================================================
+  Título do escritório [Claude Office 3D]: Escritório da Loja
+  1) neutro (escritório genérico)
+  2) sao-paulo (maquete de SP, placas de rua, orelhão, ipês, coxinha…)
+  Tema [1]:
+  ...
+  Porta do servidor local [8765]:
+  Baixar o three.js 0.160.0 para vendor/ (funciona sem internet)? [s/N]: s
+
+================================================================
+ Passo 7 de 7 — Hook do Claude Code
+================================================================
+  1) usuário — /home/voce/.claude/settings.json (vale para todas as sessões; ...)
+  2) projeto — <projeto>/.claude/settings.local.json de cada pasta do passo 3
+  3) não instalar agora (instalação manual, veja INSTALACAO.md)
+  Onde instalar o hook? [1]:
+  Bloco que será ACRESCENTADO (os hooks que você já tem são mantidos; antes é feito um backup):
+  ...
+  Gravar tudo isso agora? [S/n]:
+  ...
+  Instalação concluída!
+  Abrir o escritório agora? [S/n]:
+```
+
+### Instalação silenciosa (para automatizar)
+
+```bash
+python instalar.py --sem-perguntas --config minha-config.json
+```
+
+O arquivo tem o formato do `config.json` e pode trazer um bloco extra `instalacao`:
+
+```json
+{
+  "projetos": ["/home/voce/projetos/loja"],
+  "tema": "neutro",
+  "instalacao": {"destino": "/home/voce/ferramentas/claude-office-3d", "hook": "usuario", "three_offline": false, "abrir": false}
+}
+```
+
+Opções úteis: `--hook usuario|projeto|nenhum`, `--destino PASTA`, `--settings-usuario CAMINHO` (usa outro
+`settings.json` no lugar de `~/.claude/settings.json` — bom para testar), `--sem-abrir`.
+
+## 4. Instalação manual
+
+1. Copie `config.exemplo.json` para `config.json` e ajuste (veja a seção 5).
+2. Acrescente ao `settings.json` do Claude Code (do usuário ou `<projeto>/.claude/settings.local.json`), trocando o
+   caminho pelo da sua pasta (no macOS/Linux use `python3`):
+
+```json
+{
+  "hooks": {
+    "PostToolUse":  [{"matcher": "*", "hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
+    "TeammateIdle": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
+    "Stop":         [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}]
+  }
+}
+```
+
+   Se já houver uma chave `"hooks"`, acrescente os itens dentro das listas existentes — não substitua.
+3. Reinicie as sessões do Claude Code e abra o escritório com `python servidor.py` (ou o atalho `abrir_escritorio`).
+
+## 5. Configuração (`config.json`)
+
+O `config.json` fica na pasta instalada (o servidor e o hook o leem dali; a variável de ambiente `OFFICE_CONFIG`
+aponta outro arquivo). Toda chave ausente recebe o valor padrão. O servidor relê o arquivo quando ele muda — basta
+recarregar a página (a porta só muda reiniciando o servidor).
+
+```jsonc
+{
+  "porta": 8765,                      // porta do servidor local (sempre em 127.0.0.1)
+  "titulo": "Claude Office 3D",       // nome no painel, na aba do navegador e no quadro da parede (tema neutro)
+  "projetos": ["C:/projetos/loja"],   // pastas monitoradas: o hook só registra sessões com cwd dentro delas
+                                      // (lista vazia = registra TODAS as sessões)
+  "agentes": [                        // o time; cada um ganha uma mesa (até 10). Os demais aparecem quando surgirem
+    {
+      "nome": "Lider",                // como aparece nos eventos (nome do colega no time / do subagente)
+      "titulo": "Líder",              // nome de exibição
+      "funcao": "Coordena o time",    // linha de baixo do crachá
+      "cor": "#e5484d",               // cor da mesa, do boneco e dos cartões no Kanban/PRs
+      "apelido_br": "Lia",            // apelido no modo "brasileiros"
+      "apelido_cinema": "Morpheus",   // apelido no modo "cinema" (personagens de filme)
+      "cargo": "",                    // opcional: prefixo do apelido ("Dev João")
+      "mesa": "lider",                // lider | dev | design | pesquisa | padrao (formato da mesa)
+      "lider": true,                  // sessão principal do Claude Code; convoca reuniões (padrão: o 1º da lista)
+      "auxiliar": false,              // true = não vai às reuniões
+      "outros_nomes": ["main", "lead", "team-lead"]  // outros nomes que significam este agente
+    }
+  ],
+  "github": {                         // opcional — precisa do gh instalado e logado
+    "repo": "ana/loja",               // owner/nome: painel de PRs
+    "projeto_owner": "ana",           // dono (usuário ou organização) do GitHub Projects: Kanban
+    "projeto_numero": 2,              // número do project (na URL .../projects/2)
+    "check_revisao": "",              // status check que significa "aprovado pela revisão";
+                                      // vazio = usa a aprovação de review (APPROVED) do GitHub
+    "campo_time": "time",             // campo do Projects que diz o time/agente do cartão
+    "campo_prioridade": "prioridade", // campo de prioridade (P0/P1/P2 ou high/medium/low ganham cor)
+    "times": {"Time Back": "backend", "team:front": "frontend"},
+                                      // valor do campo_time (Kanban) ou rótulo do PR -> nome do agente
+    "colunas": ["Todo", "In Progress", "Done"]  // ordem das colunas; vazio = na ordem em que aparecem
+  },
+  "tema": "neutro",                   // "neutro" ou "sao-paulo"
+  "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
+  "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
+                                      // SendMessage com uma destas palavras vira reunião
+}
+```
+
+(O `config.json` de verdade é JSON puro, sem comentários — veja `config.exemplo.json`.)
+
+## 6. Como funciona
+
+```
+Claude Code ──hook──> registrar_evento.py ──1 linha JSON──> dados/eventos.jsonl
+                                                                   │
+navegador <──GET /eventos a cada 2 s── servidor.py (127.0.0.1) <───┘
+          <──GET /config, /kanban, /prs (gh, em cache)
+```
+
+1. A cada ferramenta usada (`PostToolUse`), quando um colega fica ocioso (`TeammateIdle`) ou uma sessão/subagente
+   termina (`Stop`, `SubagentStop`), o Claude Code chama `registrar_evento.py` com um JSON no stdin.
+2. O hook descobre **quem** gerou o evento (nome do colega, id `nome@time`, metadados do subagente, tipo do
+   subagente; sem nada disso, é a sessão principal = líder), resume o que foi feito e acrescenta uma linha em
+   `dados/eventos.jsonl`. Ele nunca bloqueia o agente: qualquer erro sai em silêncio. Acima de 4 MB o arquivo é
+   guardado como `eventos.antigo.jsonl` e recomeça.
+3. O `servidor.py` serve a página e entrega os eventos novos; a página anima cada um.
+
+Tipos de evento: `trabalho` (monitor acende + balão), `fala` (anda até a mesa do destinatário), `reuniao` (sala de
+vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se ele for do time) e `ocioso`.
+
+## 7. Uso
+
+- **Painel de agentes** — estado de cada um (trabalhando, conversando, em reunião, em pausa, ocioso) e a hora do
+  último evento. Clique num agente (no painel ou no boneco) para focar a câmera e abrir a **ficha**: abas "O que
+  está fazendo" (comandos, arquivos) e "O que está falando" (mensagens completas).
+- **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub.
+- **PRs** — pull requests abertos, ordenados: prontos para o seu merge, aguardando revisão, bloqueados (conflito ou
+  reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
+- **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
+- **Apelidos** — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
+- **Demo** — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
+  a página entra sozinha em modo demonstração.
+- `reiniciar_escritorio` (`.bat`/`.sh`) encerra o servidor da porta configurada e sobe de novo; a página aberta
+  reconecta sozinha.
+
+## 8. Times de agentes do Claude Code — dicas
+
+- **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
+  `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
+  nome — ou estar em `outros_nomes`. Sufixos numéricos (`Dev_235`, um por tarefa) são removidos.
+- **Líder**: a sessão principal (quem cria o time) não tem nome de colega; ela aparece na mesa do agente com
+  `"lider": true`. `main`, `lead`, `leader` e `team-lead` também significam o líder.
+- **Reuniões**: mensagem para `"*"` (todos), para vários destinatários, com uma das `palavras_reuniao`
+  (ex.: começar com "Reunião: …") ou o líder falando com 2+ colegas em 20 segundos.
+- **Subagentes** (`Task`/`Agent`): sem nome do time, aparecem como "Assistente", "Explorador", "Planejador"… por
+  ~20 s ao lado de quem os chamou. Com o nome de um agente do time, a tarefa vai para a mesa dele.
+- **Outra sessão**: mensagens vindas de outra janela do Claude Code aparecem numa mesa "Outra sessão".
+- Rótulos de PR e o campo "time" do Kanban viram cores de agente pelo mapa `github.times`.
+- Para forçar o nome de quem roda uma sessão, defina a variável de ambiente `OFFICE_AGENTE=<nome>` antes de abrir o
+  Claude Code.
+
+## 9. Solução de problemas
+
+| Sintoma | O que fazer |
+|---|---|
+| "Porta 8765 ocupada" | O escritório provavelmente já está rodando: o script só abre o navegador. Se for outro programa, mude `porta` no `config.json` ou use `reiniciar_escritorio`. |
+| Kanban/PRs: "GitHub CLI (gh) não encontrado" | Instale o gh (https://cli.github.com) e rode `gh auth login`. O resto do escritório funciona sem ele. |
+| Kanban: erro de permissão | `gh auth refresh -s project` (o Projects pede o escopo `project`). Confira `projeto_owner` e `projeto_numero`. |
+| Kanban/PRs: "não configurado" | Preencha a chave `github` do `config.json` ou rode o `instalar.py` de novo. |
+| O hook não registra nada | 1) Reinicie a sessão do Claude Code (hooks são lidos ao abrir). 2) A sessão precisa estar com o diretório de trabalho (`cwd`) dentro de uma das pastas de `projetos` — compare o caminho exato. 3) Rode `/hooks` no Claude Code para ver se os 4 eventos aparecem. 4) Teste à mão: `echo {"hook_event_name":"Stop","cwd":"<sua pasta>"} \| python registrar_evento.py` e veja `dados/eventos.jsonl`. 5) O `python`/`python3` do comando precisa existir no PATH. |
+| Eventos caem na mesa errada / mesas a mais | Ajuste `nome` e `outros_nomes` dos agentes para os nomes que aparecem no feed. |
+| Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
+| Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
+
+## 10. Desinstalar
+
+```bash
+python instalar.py --desinstalar
+```
+
+Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.claude/settings.json` (ou o de
+`--settings-usuario`) e dos `.claude/settings.local.json` dos projetos do config, sempre com backup
+(`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
+se quiser remover tudo.
+
+## 11. Privacidade
+
+- Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora.
+- Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre
+  agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
+- O servidor não entrega `config.json`, `dados/` nem os scripts pela web.
+- A única comunicação externa é opcional: o `gh` consultando o GitHub (Kanban/PRs) com a sua conta, e o three.js
+  baixado do CDN jsDelivr (ou uma vez só, no instalador, se você escolher a cópia local).

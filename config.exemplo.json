@@ -1,0 +1,29 @@
+{
+  "porta": 8765,
+  "titulo": "Escritório do Meu Projeto",
+  "projetos": ["C:/projetos/meu-app", "C:/projetos/meu-app-worktrees"],
+  "agentes": [
+    {"nome": "Lider", "titulo": "Líder", "funcao": "Coordena o time e revisa", "cor": "#e5484d",
+     "apelido_br": "Lia", "apelido_cinema": "Morpheus", "mesa": "lider", "lider": true,
+     "outros_nomes": ["main", "lead", "team-lead"]},
+    {"nome": "Dev", "titulo": "Dev", "funcao": "Back-end e testes", "cor": "#3b82f6",
+     "apelido_br": "João", "apelido_cinema": "Neo", "mesa": "dev"},
+    {"nome": "Designer", "titulo": "Designer", "funcao": "Interface", "cor": "#f59e0b",
+     "apelido_br": "Maria", "apelido_cinema": "Trinity", "mesa": "design"},
+    {"nome": "Pesquisa", "titulo": "Pesquisa", "funcao": "Documentação e busca", "cor": "#22c55e",
+     "apelido_br": "Aquiles", "apelido_cinema": "Indiana", "mesa": "pesquisa", "auxiliar": false}
+  ],
+  "github": {
+    "repo": "minha-org/meu-app",
+    "projeto_owner": "minha-org",
+    "projeto_numero": 3,
+    "check_revisao": "revisao-ia",
+    "campo_time": "time",
+    "campo_prioridade": "prioridade",
+    "times": {"Time Dev": "Dev", "Time Design": "Designer", "team:dev": "Dev"},
+    "colunas": ["Todo", "In Progress", "Done"]
+  },
+  "tema": "neutro",
+  "apelidos": "desligado",
+  "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
+}

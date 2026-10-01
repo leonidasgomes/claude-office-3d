@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build (verificação + zip) e notas da versão
+        run: |
+          python ferramentas/build.py
+          python ferramentas/notas_versao.py "${GITHUB_REF_NAME}" > NOTAS.md
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.sha256
+          --title "Claude Office 3D ${GITHUB_REF_NAME}" --notes-file NOTAS.md
