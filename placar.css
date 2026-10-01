@@ -2,6 +2,7 @@
 #placar[hidden] { display: none; }
 #btnPlacar { position: relative; }
 #placarConta { background: #e5484d; color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 800; font-size: 11px; margin-left: 2px; }
+#placarConta.amarelo { background: #f5b301; color: #1a1300; }
 #placar { position: absolute; top: 10px; left: 10px; bottom: 10px; width: min(560px, calc(100% - 20px)); z-index: 5; background: #11171ef5; border: 1px solid #2a3340; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
 #placar header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 #placar h3 { margin: 0; font-size: 17px; }
@@ -13,6 +14,20 @@
 #placarTime .tile span { font-size: 12px; color: #8b98a8; }
 #placarTime .tile.alerta { background: #3a1a1c; border-top-color: #e5484d; }
 #placarTime .tile.alerta b { color: #ff7b7f; }
+#placarTime .tile.aviso { background: #3a2f10; border-top-color: #f5b301; }
+#placarTime .tile.aviso b { color: #ffd45e; }
+#placarFaixas { display: flex; flex-direction: column; gap: 8px; max-height: 38%; overflow-y: auto; }
+#placarFaixas[hidden] { display: none; }
+#placarFaixas .faixa { border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+#placarFaixas .faixa.vermelha { background: #2a1717; border-left: 4px solid #e5484d; }
+#placarFaixas .faixa.amarela { background: #2b2410; border-left: 4px solid #f5b301; }
+#placarFaixas h4 { margin: 0 0 4px; font-size: 13px; }
+#placarFaixas ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+#placarFaixas li { line-height: 1.35; }
+#placarFaixas a { font-weight: 800; color: #8ab4ff; }
+#placarFaixas .quem { color: #9aa7b6; }
+#placarFaixas .como { color: #8b98a8; font-size: 11px; }
+#placarFaixas code { background: #0d1117; border-radius: 4px; padding: 1px 5px; cursor: pointer; color: #c9d4e0; }
 #placarOrdem { display: flex; gap: 6px; align-items: center; font-size: 12px; color: #8b98a8; }
 #placarOrdem button { padding: 2px 10px; font-size: 12px; }
 #placarLista { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
@@ -23,6 +38,7 @@
 #placarLista .nivel { font-size: 13px; font-weight: 700; }
 #placarLista .xp { margin-left: auto; font-size: 12px; color: #9aa7b6; font-variant-numeric: tabular-nums; }
 #placarLista .aud { background: #e5484d; color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 800; }
+#placarLista .conf { background: #f5b301; color: #1a1300; border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 800; }
 .xp-barra { height: 7px; background: #ffffff1f; border-radius: 4px; overflow: hidden; margin: 5px 0 3px; }
 .xp-barra i { display: block; height: 100%; border-radius: 4px; }
 #placarLista .prox { font-size: 11px; color: #8b98a8; }
@@ -40,4 +56,7 @@
 #fichaLista li.xp-ponto .topo span:nth-child(2) { font-weight: 800; }
 #fichaLista .motivo { font-size: 12px; margin-top: 1px; }
 #fichaLista li.xp-auditoria { border-left-color: #e5484d; background: #2a1717; }
+#fichaLista li.xp-conferir { border-left-color: #f5b301; background: #2b2410; }
+#fichaLista li.xp-ponto.faixa-vermelho { border-left-color: #e5484d; background: #2a1717; }
+#fichaLista li.xp-ponto.faixa-amarelo { border-left-color: #f5b301; background: #2b2410; }
 #placarLista .nivel .vazia { opacity: .4; }

@@ -217,6 +217,8 @@ recarregar a página (a porta só muda reiniciando o servidor).
               "retrabalho": -2, "regressao": -3, "skill_reusada_por_outro": 5, "skill_promovida": 3},
     "niveis": [{"nivel": 1, "titulo": "Estagiário", "xp": 0}, {"nivel": 2, "titulo": "Júnior", "xp": 20}],
     "padroes_teste": ["(^|/)tests?/", "\\.(test|spec)\\.[a-z]+$"],   // regex dos caminhos que são arquivo de teste
+    "padroes_avaliacao": ["(^|/)evals?/", "(^|/)benchmark\\.json$"],  // regex dos arquivos de avaliação (mexer neles = auditoria)
+    "amostra_1_em": 10,               // 1 em cada N PRs vai para conferência humana mesmo sem suspeita (0 desliga)
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa"}, "padrao": "Dev"}   // PR sem cartão: por prefixo do branch
   },
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
@@ -256,8 +258,8 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub.
 - **PRs** — pull requests abertos, ordenados: prontos para o seu merge, aguardando revisão, bloqueados (conflito ou
   reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
-- **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho e auditorias abertas; o nível
-  também aparece no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
+- **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho, auditorias abertas (vermelho)
+  e PRs para conferir (amarelo); o nível também aparece no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
 - **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
 - **Apelidos** — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
 - **Demo** — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
@@ -307,22 +309,34 @@ ignorado); (b) um rótulo do PR que seja chave de `github.times`; (c) o prefixo 
 `xp.atribuicao.prefixos_branch` (ex.: `"research/": "Pesquisa"`; sem essa chave, os padrões saem das mesas
 `pesquisa` e `design` do time); (d) `xp.atribuicao.padrao` (sem ele: o agente da mesa `dev`, senão o líder).
 
-### Anti-trapaça e auditoria
+### Anti-trapaça em três faixas
 
-Um PR que **apaga arquivo de teste** (sem criar teste novo com pelo menos as mesmas linhas) ou **acrescenta
-`skip`/`xfail` incondicional** num teste tem os pontos **zerados** e entra em **auditoria**: aparece em vermelho no
-Placar (contador no botão), na ficha do agente e na saída do `xp.py`. Skip condicional por ambiente (`skipUnless`,
-`skipIf`) não conta. O que é "arquivo de teste" vem de `xp.padroes_teste` (expressões regulares sobre o caminho).
+O `xp.py` olha o diff de cada PR (só arquivos que casam com `xp.padroes_teste` e `xp.padroes_avaliacao`) e classifica:
 
-Para **liberar um PR flagrado** depois de conferir que a mudança nos testes era legítima (consolidação, teste
-obsoleto):
+| Faixa | O que acontece | Quando |
+|---|---|---|
+| 🟢 Verde | pontos normais | nada suspeito |
+| 🟡 Amarelo ("para conferir") | **pontos normais**; o PR entra na lista `conferir` | skip **condicional** acrescentado em teste (`skipUnless`/`skipIf`, `pytest.mark.skipif`, `skipTest`/`pytest.skip` dentro de um `if`); **consolidação** (apagou arquivo de teste, mas criou teste(s) com pelo menos as mesmas linhas); **teste enfraquecido** (nos arquivos de teste que continuam existindo, o PR acrescenta menos asserções do que remove: linhas com `assert`, `expect(`, `check(`, `EXPECT_*`/`ASSERT_*`); **amostra** aleatória e determinística de 1 em cada `xp.amostra_1_em` PRs (padrão 10; conferência humana mesmo com tudo verde) |
+| 🔴 Vermelho (auditoria) | **pontos zerados**; o PR entra em `auditoria` | skip/xfail **incondicional** (`@unittest.skip(`, `pytest.mark.skip`/`xfail`, `pytest.skip(` fora de `if`, `it.skip`, `#if 0`, `return  # skip`...); apagar teste **sem** substituto equivalente; **qualquer mudança em arquivo de avaliação** (`xp.padroes_avaliacao`: por padrão `evals/`, `*evals.json`, `grading`, `benchmark.json`) |
+
+Cada item guarda o motivo legível e os arquivos ("skip condicional em tests/test_x.py", "teste enfraquecido: −3
+asserções em test_y.py", "amostra aleatória 1/10"). Eles aparecem no **Placar** (tile vermelho "auditorias abertas",
+tile amarelo "para conferir" e as listas "🔴 Auditoria" e "🟡 Para conferir", com link para o PR em
+`https://github.com/<github.repo>/pull/N`), na aba XP da ficha (cada item com a cor da faixa), no selo do botão Placar
+(vermelho se houver auditoria, amarelo se só houver itens para conferir) e na saída do `xp.py`. No `placar.json`:
+`time.auditorias_abertas`, `time.conferir_abertos` e, por agente, `auditoria` e `conferir` (`[{pr, motivo, arquivos}]`).
+
+Depois de **conferir** o PR (a decisão é sempre sua: agentes não resolvem os próprios itens):
 
 ```bash
-python xp.py --liberar 123     # PR #123 deixa de ser auditado e pontua normalmente
-python xp.py --desfazer 123    # volta a auditar
+python xp.py --liberar 123     # vermelho: PR #123 deixa de ser auditado e pontua normalmente
+python xp.py --conferido 123   # amarelo: PR #123 sai da lista "para conferir"
+python xp.py --desfazer 123    # volta a auditar/conferir
 ```
 
-A lista fica em `dados/xp/auditorias_resolvidas.json`. A decisão é sempre sua: agentes não liberam a si mesmos.
+As listas ficam em `dados/xp/auditorias_resolvidas.json` (liberados) e `dados/xp/conferidos.json` (conferidos). A regra
+tem versão (`regra` no `dados/xp/estado.json`): quando ela muda, o `xp.py` reanalisa o diff de cada PR em cache uma
+vez, reaproveitando o resto (commits, revisão).
 
 ### Ciclo de vida das skills
 

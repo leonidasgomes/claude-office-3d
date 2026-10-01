@@ -55,8 +55,12 @@ XP_NIVEIS = [{"nivel": 1, "titulo": "Estagiário", "xp": 0}, {"nivel": 2, "titul
              {"nivel": 3, "titulo": "Pleno", "xp": 60}, {"nivel": 4, "titulo": "Sênior", "xp": 150},
              {"nivel": 5, "titulo": "Mestre", "xp": 300}]
 # expressões regulares (sem diferenciar maiúsculas) que reconhecem ARQUIVO DE TESTE pelo caminho
-XP_PADROES_TESTE = [r"(^|/)(tests?|testes|specs?|__tests__|e2e|evals?)/", r"(^|/)test_[^/]*$",
+XP_PADROES_TESTE = [r"(^|/)(tests?|testes|specs?|__tests__|e2e)/", r"(^|/)test_[^/]*$",
                     r"_tests?\.[a-z]+$", r"\.(test|spec)\.[a-z]+$", r"(^|/)[^/]*tests?\.(cpp|h|cs)$"]
+# arquivos de AVALIAÇÃO (evals, notas, benchmarks): qualquer mudança neles zera os pontos do PR e abre auditoria
+XP_PADROES_AVALIACAO = [r"(^|/)evals?/", r"(^|/)[^/]*evals?\.json$", r"(^|[/_.\-])grading([/_.\-]|$)",
+                        r"(^|/)benchmark\.json$"]
+XP_AMOSTRA_1_EM = 10   # 1 em cada N PRs vai para conferência humana mesmo sem suspeita (0 = desliga)
 # prefixo de branch -> mesas cujo agente recebe o PR (usado quando "xp.atribuicao.prefixos_branch" não existe)
 XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design": ["design/", "ui/"]}
 
@@ -76,6 +80,7 @@ PADRAO = {
         "colunas": [],              # ordem das colunas do Kanban; vazio = na ordem em que aparecem
     },
     "xp": {"ativo": False, "desde": "", "pesos": XP_PESOS, "niveis": XP_NIVEIS, "padroes_teste": XP_PADROES_TESTE,
+           "padroes_avaliacao": XP_PADROES_AVALIACAO, "amostra_1_em": XP_AMOSTRA_1_EM,
            "atribuicao": {"prefixos_branch": {}, "padrao": ""}},
     "tema": "neutro",
     "apelidos": "desligado",
@@ -169,6 +174,19 @@ def normalizar_xp(bruto, agentes):
             pass
     if padroes:
         xp["padroes_teste"] = padroes
+    aval = []
+    for p in bruto.get("padroes_avaliacao") or []:
+        try:
+            re.compile(str(p))
+            aval.append(str(p))
+        except re.error:
+            pass
+    if aval:
+        xp["padroes_avaliacao"] = aval
+    try:
+        xp["amostra_1_em"] = max(0, int(bruto["amostra_1_em"])) if "amostra_1_em" in bruto else XP_AMOSTRA_1_EM
+    except (TypeError, ValueError):
+        pass
     atrib = bruto.get("atribuicao") if isinstance(bruto.get("atribuicao"), dict) else {}
     if "prefixos_branch" in atrib and isinstance(atrib["prefixos_branch"], dict):
         brutos = atrib["prefixos_branch"].items()

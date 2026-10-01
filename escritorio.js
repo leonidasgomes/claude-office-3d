@@ -1453,7 +1453,7 @@ function desenharAbaXp(lista, a) {
   secao('Últimos pontos');
   if (!(d.ultimos || []).length) lista.append(el('li', 'vazio', 'Nenhum ponto ainda.'));
   for (const u of d.ultimos || []) {
-    const x = el('li', 'xp-ponto'), topo = el('div', 'topo');
+    const x = el('li', 'xp-ponto' + (u.faixa === 'vermelho' ? ' faixa-vermelho' : u.faixa === 'amarelo' ? ' faixa-amarelo' : '')), topo = el('div', 'topo');
     topo.append(el('b', null, u.pr != null ? 'PR #' + u.pr : 'Skills'), el('span', u.pontos < 0 ? 'neg' : 'pos', (u.pontos > 0 ? '+' : '') + u.pontos));
     if (u.data) topo.append(el('span', 't', String(u.data).slice(0, 10)));
     x.append(topo);
@@ -1462,7 +1462,11 @@ function desenharAbaXp(lista, a) {
   }
   if ((d.auditoria || []).length) {
     secao('⚠️ Auditorias abertas');
-    for (const u of d.auditoria) { const x = el('li', 'xp-auditoria'); x.append(el('b', null, 'PR #' + u.pr), el('span', null, ' — ' + u.motivo)); lista.append(x); }
+    for (const u of d.auditoria) { const x = el('li', 'xp-auditoria'); x.append(el('b', null, '🔴 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos zerados)')); lista.append(x); }
+  }
+  if ((d.conferir || []).length) {
+    secao('🟡 Para conferir');
+    for (const u of d.conferir) { const x = el('li', 'xp-conferir'); x.append(el('b', null, '🟡 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos normais)')); lista.append(x); }
   }
   secao('Skills');
   lista.append(el('li', 'xp-linha', (d.skills_autor || []).length ? 'Autoria: ' + d.skills_autor.join(', ') : 'Nenhuma skill de autoria ainda.'));

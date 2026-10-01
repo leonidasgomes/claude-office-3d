@@ -8,11 +8,21 @@ recalculada a cada execução (barata), o que mantém viva a janela de 14 dias d
 
 Tudo vem do config.json (bloco "xp", "agentes" e "github"); veja a seção "XP, níveis e skills" do INSTALACAO.md.
 
+Anti-trapaça em três faixas (verde / amarelo / vermelho), olhando o diff de cada PR:
+  VERDE    nada suspeito: pontos normais.
+  AMARELO  "para conferir" (pontos NORMAIS, vai para a lista `conferir`): skip condicional em teste, consolidação de
+           testes, teste enfraquecido (menos asserções acrescentadas que removidas) e uma amostra aleatória de PRs
+           (xp.amostra_1_em, padrão 1 em 10).
+  VERMELHO zera os pontos e abre auditoria: skip/xfail incondicional, apagar teste sem substituto equivalente e
+           qualquer mudança em arquivo de avaliação (xp.padroes_avaliacao).
+
 Uso:  python xp.py                 calcula e grava o placar
       python xp.py --completo      ignora o cache
-      python xp.py --liberar N     libera o PR N da auditoria (você revisou a mudança nos testes) e recalcula
-      python xp.py --desfazer N    volta a auditar o PR N
+      python xp.py --liberar N     libera o PR N da auditoria (vermelho; você revisou a mudança) e recalcula
+      python xp.py --conferido N   marca o PR N como conferido (o amarelo some da lista) e recalcula
+      python xp.py --desfazer N    volta a auditar/conferir o PR N
 """
+import hashlib
 import json
 import re
 import subprocess
@@ -29,7 +39,9 @@ import configuracao  # noqa: E402
 PASTA_XP = RAIZ / "dados" / "xp"
 ESTADO = PASTA_XP / "estado.json"
 PLACAR = PASTA_XP / "placar.json"
-RESOLVIDAS = PASTA_XP / "auditorias_resolvidas.json"  # PRs que o desenvolvedor liberou da auditoria
+RESOLVIDAS = PASTA_XP / "auditorias_resolvidas.json"  # PRs que o desenvolvedor liberou da auditoria (vermelho)
+CONFERIDOS = PASTA_XP / "conferidos.json"             # PRs amarelos que o desenvolvedor já conferiu
+REGRA_VERSAO = 2   # sobe quando a análise do diff muda: PRs em cache são reanalisados uma vez
 GH = configuracao.localizar_gh()
 
 JANELA_DIAS = 14
@@ -39,9 +51,14 @@ ULTIMOS = 10
 COLUNAS_FINAIS = {"done", "feito", "concluído", "concluido", "closed", "fechado", "finalizado", "entregue"}
 
 RE_TESTE_CITADO = re.compile(r"test|teste|pytest|jest|valida|verifica|sweep|\bci\b", re.I)
-RE_SKIP = re.compile(r"@unittest\.skip(?!Unless|If)|pytest\.mark\.(skip|xfail)|pytest\.skip\(|\bxfail\b|"
-                     r"\b(it|test|describe)\.(skip|todo)\b|\bx(it|describe|test)\(|\breturn\s*#\s*skip|"
-                     r"^\s*#\s*if\s+0\b|^\s*#\s*ifdef\s+DISABLED|@skip\b|@Disabled\b|@Ignore\b", re.I)
+# skip/xfail INCONDICIONAL (vermelho); o condicional por ambiente (skipUnless/skipIf/skipif) é amarelo
+RE_SKIP_FIXO = re.compile(r"@unittest\.skip(?!Unless|If)|pytest\.mark\.skip(?!if)|pytest\.mark\.xfail|\bxfail\b|"
+                          r"\b(it|test|describe)\.(skip|todo)\b|\bx(it|describe|test)\(|\breturn\s*#\s*skip|"
+                          r"^\s*#\s*if\s+0\b|^\s*#\s*ifdef\s+DISABLED|@skip\b|@Disabled\b|@Ignore\b", re.I)
+RE_SKIP_COND = re.compile(r"@unittest\.skip(Unless|If)\b|pytest\.mark\.skipif|\bskipUnless\b|\bskipIf\b", re.I)
+RE_SKIP_CHAMADA = re.compile(r"\bpytest\.skip\(|\bskipTest\(|\bGTEST_SKIP\b")   # condicional só se estiver dentro de um if
+RE_CONTROLE = re.compile(r"(if|elif|else|try|except|with|for|while)\b|\}\s*else\b|if\s*\(")
+RE_ASSERCAO = re.compile(r"\bassert\w*\b|\b(EXPECT|ASSERT)_\w+|\bexpect\(|\bcheck\(", re.I)
 RE_FIX = re.compile(r"^\s*(fix|hotfix|bugfix|corrige|correção|correcao)\b|\bfix(es|ed)?\b[^a-z]", re.I)
 RE_REVERT = re.compile(r"revert|regress|reverte", re.I)
 
@@ -51,6 +68,8 @@ GITHUB = CFG["github"]
 PESOS = XP["pesos"]
 NIVEIS = XP["niveis"]
 RE_ARQ_TESTE = re.compile("|".join(f"(?:{p})" for p in XP["padroes_teste"]), re.I)
+RE_ARQ_AVAL = re.compile("|".join(f"(?:{p})" for p in XP["padroes_avaliacao"]), re.I)
+AMOSTRA_1_EM = XP["amostra_1_em"]   # 1 em cada N PRs vai para conferência humana mesmo sem suspeita (0 desliga)
 PREFIXOS = XP["atribuicao"]["prefixos_branch"]
 AGENTE_PADRAO = XP["atribuicao"]["padrao"]
 AGENTES_BASE = [a["nome"] for a in CFG["agentes"] if not a["auxiliar"]]
@@ -169,57 +188,158 @@ def buscar_pr(repo, pr, cache_status):
     merges = [c[0] for c in commits if int(c[1]) > 1]
     merge_no_meio = any(s != shas[-1] for s in merges) if shas else False
     reprovado = reprovou_revisao(repo, n, shas, cache_status)
-    apaga, skips = analisar_diff(repo, n)
     return {"commits": len(shas), "merge_no_meio": merge_no_meio, "reprovado_revisao": reprovado,
-            "apaga_teste": apaga, "skip_teste": skips}
+            "regra": REGRA_VERSAO, "diff": analisar_diff(repo, n)}
 
 
-def analisar_diff(repo, n):
-    """Procura apagamento de arquivo de teste e skip/xfail incondicional acrescentado em teste. Devolve (apagados, skips).
-    Apagar teste é aceito (consolidação) quando o mesmo PR cria arquivo(s) de teste novo(s) com pelo menos as mesmas
-    linhas; skip condicional por ambiente (skipUnless/skipIf) não conta."""
-    try:
-        diff = gh(["pr", "diff", str(n), "-R", repo], timeout=120)
-        arquivos = {}  # nome -> {"novo":bool,"apagado":bool,"mais":[linhas +],"menos":int}
-        atual = None
-        for linha in diff.splitlines():
-            if linha.startswith("diff --git "):
-                m = re.match(r"diff --git a/(.*) b/(.*)$", linha)
-                atual = m.group(2) if m else None
-                if atual and RE_ARQ_TESTE.search(atual):
-                    arquivos[atual] = {"novo": False, "apagado": False, "mais": [], "menos": 0}
-                else:
-                    atual = None
-            elif atual is None:
-                continue
-            elif linha.startswith("new file mode"):
+def _parse_diff(diff):
+    """Texto de 'git diff' -> {arquivo: {"novo","apagado","corpo":[(sinal, texto)]}} (só as linhas dentro dos hunks)."""
+    arquivos, atual, em_hunk = {}, None, False
+    for linha in diff.splitlines():
+        if linha.startswith("diff --git "):
+            m = re.match(r"diff --git a/(.*) b/(.*)$", linha)
+            atual = m.group(2) if m else None
+            em_hunk = False
+            if atual:
+                arquivos[atual] = {"novo": False, "apagado": False, "corpo": []}
+        elif atual is None:
+            continue
+        elif linha.startswith("@@"):
+            em_hunk = True
+        elif not em_hunk:
+            if linha.startswith("new file mode"):
                 arquivos[atual]["novo"] = True
             elif linha.startswith("deleted file mode"):
                 arquivos[atual]["apagado"] = True
-            elif linha.startswith("+") and not linha.startswith("+++"):
-                arquivos[atual]["mais"].append(linha[1:])
-            elif linha.startswith("-") and not linha.startswith("---"):
-                arquivos[atual]["menos"] += 1
-    except RuntimeError:  # diff grande demais para o gh: cai para a lista de arquivos da API
-        bruto = gh(["api", f"repos/{repo}/pulls/{n}/files?per_page=100", "--paginate", "--jq",
-                    '.[]|{f:.filename,s:.status,p:(.patch//"")}'])
-        arquivos = {}
-        for l in bruto.splitlines():
-            if not l.strip():
-                continue
-            a = json.loads(l)
-            if RE_ARQ_TESTE.search(a["f"]):
-                linhas = a["p"].splitlines()
-                arquivos[a["f"]] = {"novo": a["s"] == "added", "apagado": a["s"] == "removed",
-                                    "mais": [x[1:] for x in linhas if x.startswith("+")],
-                                    "menos": sum(1 for x in linhas if x.startswith("-"))}
-    apagados = [f for f, d in arquivos.items() if d["apagado"]]
-    criado = sum(len(d["mais"]) for d in arquivos.values() if d["novo"])
-    removido = sum(d["menos"] for f, d in arquivos.items() if d["apagado"])
+        elif linha[:1] in ("+", "-", " "):
+            arquivos[atual]["corpo"].append((linha[0], linha[1:]))
+    return arquivos
+
+
+def _arquivos_da_api(repo, n):
+    """Diff grande demais para o gh: monta a mesma estrutura a partir da lista de arquivos da API."""
+    bruto = gh(["api", f"repos/{repo}/pulls/{n}/files?per_page=100", "--paginate", "--jq",
+                '.[]|{f:.filename,s:.status,p:(.patch//"")}'])
+    arquivos = {}
+    for l in bruto.splitlines():
+        if not l.strip():
+            continue
+        a = json.loads(l)
+        corpo = [(x[0], x[1:]) for x in a["p"].splitlines() if x[:1] in ("+", "-", " ")]
+        arquivos[a["f"]] = {"novo": a["s"] == "added", "apagado": a["s"] == "removed", "corpo": corpo}
+    return arquivos
+
+
+def _controle_antes(corpo, i):
+    """True se a linha corpo[i] está dentro de um if/else/try/with (o bloco anterior, de recuo menor, é de controle)."""
+    texto = corpo[i][1]
+    recuo = len(texto) - len(texto.lstrip())
+    visto = 0
+    for j in range(i - 1, -1, -1):
+        sinal, t = corpo[j]
+        if sinal == "-" or not t.strip():
+            continue
+        visto += 1
+        if visto > 8:
+            break
+        if len(t) - len(t.lstrip()) < recuo:
+            return bool(RE_CONTROLE.match(t.strip()))
+    return False
+
+
+def _fim(lista, max_=3):
+    return ", ".join(lista[:max_]) + (f" (+{len(lista) - max_})" if len(lista) > max_ else "")
+
+
+def analisar_diff(repo, n):
+    """Analisa o diff de um PR e devolve os achados (só fatos; a faixa é decidida em classificar()):
+    apagados (teste apagado sem substituto equivalente), consolidados (teste apagado com substituto de >= linhas),
+    skip_incond (skip/xfail incondicional acrescentado em teste), skip_cond (skip condicional), avaliacao (arquivos de
+    avaliação alterados), enfraquecido (arquivos de teste com menos asserções acrescentadas que removidas)."""
+    try:
+        arquivos = _parse_diff(gh(["pr", "diff", str(n), "-R", repo], timeout=120))
+    except RuntimeError:
+        arquivos = _arquivos_da_api(repo, n)
+    avaliacao = sorted(f for f in arquivos if RE_ARQ_AVAL.search(f))
+    testes = {f: d for f, d in arquivos.items() if RE_ARQ_TESTE.search(f) and f not in avaliacao}
+    apagados = [f for f, d in testes.items() if d["apagado"]]
+    criado = sum(1 for d in testes.values() if d["novo"] for s, _ in d["corpo"] if s == "+")
+    removido = sum(1 for d in testes.values() if d["apagado"] for s, _ in d["corpo"] if s == "-")
+    consolidados = []
     if apagados and criado >= removido:
-        apagados = []
-    skips = [f for f, d in arquivos.items() if not d["apagado"] and any(RE_SKIP.search(x) for x in d["mais"])]
-    return apagados, skips
+        apagados, consolidados = [], sorted(f for f, d in testes.items() if d["apagado"])
+    inc, cond, contagens = [], [], []
+    for f, d in testes.items():
+        if d["apagado"]:
+            continue
+        corpo, f_inc, f_cond = d["corpo"], False, False
+        for i, (sinal, t) in enumerate(corpo):
+            if sinal != "+":
+                continue
+            if RE_SKIP_COND.search(t):
+                f_cond = True
+            elif RE_SKIP_FIXO.search(t):
+                f_inc = True
+            else:
+                m = RE_SKIP_CHAMADA.search(t)
+                if m:
+                    if re.search(r"\bif\b", t[:m.start()]) or _controle_antes(corpo, i):
+                        f_cond = True
+                    else:
+                        f_inc = True
+        if f_inc:
+            inc.append(f)
+        elif f_cond:
+            cond.append(f)
+        if not d["novo"]:   # asserções só contam em arquivo de teste que continua existindo
+            contagens.append({"arquivo": f, "mais": sum(1 for s, t in corpo if s == "+" and _e_assercao(t)),
+                              "menos": sum(1 for s, t in corpo if s == "-" and _e_assercao(t))})
+    fraco = []
+    if sum(c["mais"] for c in contagens) < sum(c["menos"] for c in contagens):   # o saldo é do PR inteiro
+        fraco = [c for c in contagens if c["menos"] > c["mais"]]
+    return {"apagados": apagados, "consolidados": consolidados, "skip_incond": inc, "skip_cond": cond,
+            "avaliacao": avaliacao, "enfraquecido": fraco}
+
+
+def _e_assercao(t):
+    s = t.strip()
+    return bool(RE_ASSERCAO.search(s)) and not s.startswith(("#", "//", "*", "/*"))
+
+
+def amostrado(n):
+    """Sorteio determinístico de 1 em cada AMOSTRA_1_EM PRs para conferência humana (0 desliga)."""
+    return AMOSTRA_1_EM > 0 and int(hashlib.sha1(str(n).encode()).hexdigest(), 16) % AMOSTRA_1_EM == 0
+
+
+def classificar(n, achados, liberadas, conferidos):
+    """Devolve (vermelhos, amarelos): listas de {"motivo", "arquivos"}. Liberado = vermelho ignorado;
+    conferido = amarelo ignorado. Um PR vermelho (ativo) não aparece também como amarelo."""
+    a = achados or {}
+    verm, amar = [], []
+    if a.get("skip_incond"):
+        verm.append({"motivo": "skip/xfail incondicional em " + _fim(a["skip_incond"]), "arquivos": a["skip_incond"]})
+    if a.get("apagados"):
+        verm.append({"motivo": "apagou teste sem substituto equivalente: " + _fim(a["apagados"]), "arquivos": a["apagados"]})
+    if a.get("avaliacao"):
+        verm.append({"motivo": "mudou arquivo de avaliação: " + _fim(a["avaliacao"]), "arquivos": a["avaliacao"]})
+    if n in liberadas:
+        verm = []
+    if verm:
+        return verm, []
+    if a.get("skip_cond"):
+        amar.append({"motivo": "skip condicional em " + _fim(a["skip_cond"]), "arquivos": a["skip_cond"]})
+    if a.get("consolidados"):
+        amar.append({"motivo": "consolidação de testes: apagou " + _fim(a["consolidados"]) + " e criou testes com pelo menos as mesmas linhas",
+                     "arquivos": a["consolidados"]})
+    if a.get("enfraquecido"):
+        fr = sorted(a["enfraquecido"], key=lambda x: x["mais"] - x["menos"])
+        amar.append({"motivo": "teste enfraquecido: " + "; ".join(f"−{x['menos'] - x['mais']} asserções em {x['arquivo']}" for x in fr[:3])
+                     + (f" (+{len(fr) - 3} arquivos)" if len(fr) > 3 else ""), "arquivos": [x["arquivo"] for x in fr]})
+    if not amar and amostrado(n):
+        amar.append({"motivo": f"amostra aleatória 1/{AMOSTRA_1_EM}", "arquivos": []})
+    if n in conferidos:
+        amar = []
+    return verm, amar
 
 
 # ---- Atribuição -----------------------------------------------------------------------------------------------
@@ -301,7 +421,7 @@ def cartao_feito(c):
     return bool(st) and (st in COLUNAS_FINAIS or st == final)
 
 
-def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas):
+def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas, conferidos):
     agente, fonte, cartao = atrib
     pts, motivos = 0, []
     fim = ts(pr["mergedAt"])
@@ -310,17 +430,13 @@ def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas):
     retrabalho = False
     P = PESOS
     reprovado = fatos.get("reprovado_revisao", False)
-    manip = []
-    if fatos["apaga_teste"]:
-        manip.append("apaga arquivo de teste: " + ", ".join(fatos["apaga_teste"][:3]))
-    if fatos["skip_teste"]:
-        manip.append("acrescenta skip/xfail em teste: " + ", ".join(fatos["skip_teste"][:3]))
-    if manip and pr["number"] in resolvidas:
-        manip = []
-    if manip:
-        return {"pr": pr["number"], "titulo": pr["title"], "agente": agente, "fonte": fonte, "pontos": 0,
-                "motivos": ["manipulação de teste: pontos zerados"], "auditoria": "; ".join(manip), "data": pr["mergedAt"],
-                "aprovado_primeira": not reprovado, "retrabalho": False}
+    verm, amar = classificar(pr["number"], fatos.get("diff"), resolvidas, conferidos)
+    faixa = "vermelho" if verm else "amarelo" if amar else "verde"
+    base = {"pr": pr["number"], "titulo": pr["title"], "agente": agente, "fonte": fonte, "data": pr["mergedAt"],
+            "faixa": faixa, "conferir": amar, "auditoria_itens": verm}
+    if verm:
+        return dict(base, pontos=0, motivos=["manipulação de teste: pontos zerados"],
+                    auditoria="; ".join(x["motivo"] for x in verm), aprovado_primeira=not reprovado, retrabalho=False)
     if not reprovado:
         pts += P["aprovado_de_primeira"]
         motivos.append(f"aprovado de primeira {P['aprovado_de_primeira']:+d}")
@@ -343,9 +459,8 @@ def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas):
     if e_fix(pr) and not fix_dep and not rev_dep and janela_fechada:
         pts += P["bug_nao_voltou_14d"]
         motivos.append(f"bug não voltou em 14 dias {P['bug_nao_voltou_14d']:+d}")
-    return {"pr": pr["number"], "titulo": pr["title"], "agente": agente, "fonte": fonte, "pontos": pts, "motivos": motivos,
-            "auditoria": "", "data": pr["mergedAt"], "aprovado_primeira": not reprovado,
-            "retrabalho": retrabalho or rev_dep}
+    return dict(base, pontos=pts, motivos=motivos, auditoria="", aprovado_primeira=not reprovado,
+                retrabalho=retrabalho or rev_dep)
 
 
 # ---- Skills ---------------------------------------------------------------------------------------------------
@@ -394,26 +509,27 @@ def nivel_de(xp):
 
 
 def novo_agente():
-    return {"xp": 0, "prs": 0, "ultimos": [], "auditoria": [], "skills_autor": [], "skills_reusadas_por_outros": 0}
+    return {"xp": 0, "prs": 0, "ultimos": [], "auditoria": [], "conferir": [], "skills_autor": [],
+            "skills_reusadas_por_outros": 0}
 
 
 # ---- Principal ------------------------------------------------------------------------------------------------
-def liberar(argv):
-    """--liberar N / --desfazer N: mexe na lista de PRs liberados da auditoria."""
-    desfazer = "--desfazer" in argv
-    flag = "--desfazer" if desfazer else "--liberar"
+def marcar(argv):
+    """--liberar N (vermelho), --conferido N (amarelo), --desfazer N (os dois): mexe nas listas de resolvidos."""
+    flag = next(f for f in ("--liberar", "--conferido", "--desfazer") if f in argv)
     try:
         n = int(argv[argv.index(flag) + 1].lstrip("#"))
     except (IndexError, ValueError):
         print(f"uso: xp.py {flag} <número do PR>")
         return 2
-    lista = set(carregar(RESOLVIDAS, []))
-    if desfazer:
-        lista.discard(n)
-    else:
-        lista.add(n)
-    gravar_json(RESOLVIDAS, sorted(lista))
-    print(f"PR #{n} {'volta a ser auditado' if desfazer else 'liberado da auditoria'}.")
+    for arq, ativo in ((RESOLVIDAS, flag in ("--liberar", "--desfazer")), (CONFERIDOS, flag in ("--conferido", "--desfazer"))):
+        if not ativo:
+            continue
+        lista = set(carregar(arq, []))
+        (lista.discard if flag == "--desfazer" else lista.add)(n)
+        gravar_json(arq, sorted(lista))
+    print({"--liberar": f"PR #{n} liberado da auditoria.", "--conferido": f"PR #{n} marcado como conferido.",
+           "--desfazer": f"PR #{n} volta a ser auditado/conferido."}[flag])
     return 0
 
 
@@ -422,15 +538,17 @@ def main():
     if not XP["ativo"]:
         print('XP desligado: ponha "xp": {"ativo": true} no config.json (ou rode instalar.py de novo).')
         return 0
-    if "--liberar" in sys.argv or "--desfazer" in sys.argv:
-        liberar(sys.argv)
+    if any(f in sys.argv for f in ("--liberar", "--conferido", "--desfazer")):
+        if marcar(sys.argv):
+            return 2
     t0 = time.time()
     completo = "--completo" in sys.argv
     repo = GITHUB["repo"]
     estado = {} if completo else carregar(ESTADO, {})
-    assinatura = json.dumps([repo, GITHUB["check_revisao"], XP["padroes_teste"]], ensure_ascii=False)
-    if estado.get("assinatura") != assinatura:   # repositório, check ou padrões de teste mudaram: refaz tudo
+    assinatura = json.dumps([repo, GITHUB["check_revisao"], XP["padroes_teste"], XP["padroes_avaliacao"]], ensure_ascii=False)
+    if estado.get("assinatura") != assinatura:   # repositório, check ou padrões de teste/avaliação mudaram: refaz tudo
         estado = {"assinatura": assinatura}
+    estado["regra"] = REGRA_VERSAO
     fatos_cache = estado.get("prs", {})
     status_cache = estado.get("status", {})
     avisos = []
@@ -451,6 +569,7 @@ def main():
         except Exception as e:
             avisos.append(f"PRs indisponíveis ({str(e)[:100]}); só as skills pontuam")
     novos = [p for p in prs if str(p["number"]) not in fatos_cache]
+    refazer = [p for p in prs if str(p["number"]) in fatos_cache and fatos_cache[str(p["number"])].get("regra") != REGRA_VERSAO]
 
     def tarefa(p):
         try:
@@ -464,10 +583,28 @@ def main():
                 fatos_cache[str(n)] = fatos
             else:
                 avisos.append(f"PR #{n} não analisado ({erro}); tenta de novo na próxima")
+
+    def reanalisar(p):   # regra nova: refaz só a análise do diff e reaproveita o resto (commits, revisão)
+        try:
+            return p["number"], analisar_diff(repo, p["number"]), None
+        except Exception as e:
+            return p["number"], None, str(e)[:120]
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for n, diff, erro in ex.map(reanalisar, refazer):
+            f = fatos_cache[str(n)]
+            if diff:
+                for velho in ("apaga_teste", "skip_teste"):
+                    f.pop(velho, None)
+                f["diff"], f["regra"] = diff, REGRA_VERSAO
+            else:
+                avisos.append(f"PR #{n} não reanalisado ({erro}); tenta de novo na próxima")
+                if "diff" not in f:   # formato antigo: aproveita o que havia
+                    f["diff"] = {"apagados": f.get("apaga_teste", []), "skip_incond": f.get("skip_teste", [])}
     estado["prs"], estado["status"] = fatos_cache, status_cache
     gravar_json(ESTADO, estado)
 
-    resolvidas = set(carregar(RESOLVIDAS, []))
+    resolvidas, conferidos = set(carregar(RESOLVIDAS, [])), set(carregar(CONFERIDOS, []))
     agentes = {a: novo_agente() for a in AGENTES_BASE}
     resultados, ignorados = [], 0
     for pr in sorted(prs, key=lambda p: p["mergedAt"]):
@@ -478,15 +615,19 @@ def main():
         if atrib[0] is None:
             ignorados += 1
             continue
-        r = pontuar(pr, fatos, atrib, cartoes, prs, resolvidas)
+        r = pontuar(pr, fatos, atrib, cartoes, prs, resolvidas, conferidos)
         resultados.append(r)
         ag = agentes.setdefault(r["agente"], novo_agente())
         ag["xp"] += r["pontos"]
         ag["prs"] += 1
         ag["ultimos"].append({"pr": r["pr"], "pontos": r["pontos"], "motivos": r["motivos"], "data": r["data"],
-                              "titulo": r["titulo"][:90], "fonte": r["fonte"]})
+                              "titulo": r["titulo"][:90], "fonte": r["fonte"], "faixa": r["faixa"]})
         if r["auditoria"]:
-            ag["auditoria"].append({"pr": r["pr"], "motivo": r["auditoria"]})
+            ag["auditoria"].append({"pr": r["pr"], "motivo": r["auditoria"],
+                                    "arquivos": sorted({f for x in r["auditoria_itens"] for f in x["arquivos"]})})
+        if r["conferir"]:
+            ag["conferir"].append({"pr": r["pr"], "motivo": "; ".join(x["motivo"] for x in r["conferir"]),
+                                   "arquivos": sorted({f for x in r["conferir"] for f in x["arquivos"]})})
     for nome, s in pontos_skills().items():
         nome = configuracao._agente_canonico(CFG["agentes"], nome) or nome
         ag = agentes.setdefault(nome, novo_agente())
@@ -504,12 +645,16 @@ def main():
     n = len(resultados) or 1
     placar = {
         "atualizado": agora().astimezone().isoformat(timespec="seconds"),
-        "regras": dict(PESOS, janela_retrabalho_dias=JANELA_DIAS, desde=desde()),
+        "repo": repo,
+        "regras": dict(PESOS, janela_retrabalho_dias=JANELA_DIAS, desde=desde(), versao_regra=REGRA_VERSAO,
+                       amostra_1_em=AMOSTRA_1_EM),
         "niveis": NIVEIS,
         "time": {"xp_total": sum(a["xp"] for a in agentes.values()), "prs_pontuados": len(resultados),
                  "aprovacao_primeira": round(sum(1 for r in resultados if r["aprovado_primeira"]) / n, 3),
                  "retrabalho_14d": round(sum(1 for r in resultados if r["retrabalho"]) / n, 3),
                  "auditorias_abertas": sum(len(a["auditoria"]) for a in agentes.values()),
+                 "conferir_abertos": sum(len(a["conferir"]) for a in agentes.values()),
+                 "faixas": {f: sum(1 for r in resultados if r["faixa"] == f) for f in ("verde", "amarelo", "vermelho")},
                  "prs_ignorados": ignorados},
         "agentes": agentes,
     }
@@ -521,12 +666,15 @@ def main():
     print(f"XP do time: {t['xp_total']} em {t['prs_pontuados']} PRs pontuados ({ignorados} ignorados, cartões de humanos), "
           f"{time.time() - t0:.1f}s, {len(novos)} PRs novos buscados.")
     print(f"Aprovação de primeira {t['aprovacao_primeira']:.0%} | retrabalho/regressão em 14 d {t['retrabalho_14d']:.0%} | "
-          f"auditorias abertas {t['auditorias_abertas']}.")
+          f"auditorias abertas {t['auditorias_abertas']} | para conferir {t['conferir_abertos']}.")
+    print(f"Faixas: {t['faixas']['verde']} verdes, {t['faixas']['amarelo']} amarelos, {t['faixas']['vermelho']} vermelhos.")
     for nome, a in sorted(agentes.items(), key=lambda kv: -kv[1]["xp"]):
         print(f"  {nome}: {a['xp']} XP, nível {a['nivel']} {a['titulo_nivel']}, {a['prs']} PRs")
     for nome, a in agentes.items():
         for x in a["auditoria"]:
-            print(f"  AUDITORIA {nome} PR #{x['pr']}: {x['motivo']}  (liberar: python xp.py --liberar {x['pr']})")
+            print(f"  VERMELHO {nome} PR #{x['pr']}: {x['motivo']}  (liberar: python xp.py --liberar {x['pr']})")
+        for x in a["conferir"]:
+            print(f"  AMARELO  {nome} PR #{x['pr']}: {x['motivo']}  (conferido: python xp.py --conferido {x['pr']})")
     for av in avisos[:3]:
         print("  aviso:", av)
     return 0

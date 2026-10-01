@@ -46,10 +46,11 @@ function normalizar(obj) {
     d.xp_proximo = d.xp_proximo !== undefined ? d.xp_proximo : (prox ? prox.xp : null);
     d.titulo_proximo = prox ? prox.titulo : null;
     d.ultimos = Array.isArray(d.ultimos) ? d.ultimos : []; d.auditoria = Array.isArray(d.auditoria) ? d.auditoria : [];
+    d.conferir = Array.isArray(d.conferir) ? d.conferir : [];
     d.skills_autor = Array.isArray(d.skills_autor) ? d.skills_autor : [];
     agentes[nome] = d;
   }
-  return { atualizado: obj.atualizado || '', niveis, time: obj.time || {}, agentes };
+  return { atualizado: obj.atualizado || '', repo: String(obj.repo || ''), niveis, time: obj.time || {}, agentes };
 }
 
 // ---------------------------------------------------------------- Demonstração
@@ -67,6 +68,7 @@ function gerarAgenteDemo(nome, i) {
     return { pr: 230 - k * 3 - (h % 3), pontos: somar(m), motivos: m, data: new Date(Date.now() - (k * 20 + 2) * 3600e3).toISOString() }; });
   const d = { xp, prs, ultimos, auditoria: [], skills_autor: h % 2 ? ['exemplo-de-skill'] : [], skills_reusadas_por_outros: h % 4 };
   if (i === 0) d.auditoria = [{ pr: 231, motivo: 'apagou teste' }];
+  if (i === 1) d.conferir = [{ pr: 229, motivo: 'skip condicional em tests/test_exemplo.py' }];
   return d;
 }
 function montarDemo() {
@@ -80,7 +82,8 @@ function montarDemo() {
   }
   demo.atualizado = new Date().toISOString();
   demo.time = { xp_total: ags.reduce((s, d) => s + d.xp, 0), prs_pontuados: ags.reduce((s, d) => s + d.prs, 0), aprovacao_primeira: 0.83,
-    retrabalho_14d: 0.05, auditorias_abertas: ags.reduce((s, d) => s + d.auditoria.length, 0) };
+    retrabalho_14d: 0.05, auditorias_abertas: ags.reduce((s, d) => s + d.auditoria.length, 0),
+    conferir_abertos: ags.reduce((s, d) => s + (d.conferir || []).length, 0) };
   return demo;
 }
 function evoluirDemo() {   // a cada ~40 s alguém ganha pontos; metade das vezes sobe de nível (para ver a comemoração)
@@ -119,28 +122,65 @@ function aplicar(obj, opcoes = {}) {
     subiram.forEach(([nome, titulo], i) => setTimeout(() => o.comemorar(nome, titulo), i * 700));
     o.atualizarFicha();
   }
-  const aud = Number(dados.time.auditorias_abertas) || 0;
-  contaEl.hidden = !aud; contaEl.textContent = aud;
+  const aud = Number(dados.time.auditorias_abertas) || 0, conf = Number(dados.time.conferir_abertos) || 0;
+  contaEl.hidden = !(aud || conf); contaEl.textContent = aud || conf;   // vermelho se houver auditoria, amarelo se só conferir
+  contaEl.classList.toggle('amarelo', !aud && conf > 0);
+  contaEl.title = aud ? aud + ' auditoria(s) aberta(s)' : conf + ' PR(s) para conferir';
   if (!painel.hidden) desenhar();
   return dados;
 }
 
 // ---------------------------------------------------------------- Painel
 const pct = (v) => (typeof v === 'number' ? Math.round(v * 100) + '%' : '—');
-function tile(valor, rotulo, cor, alerta) {
-  const t = el('div', 'tile' + (alerta ? ' alerta' : '')); if (cor && !alerta) t.style.borderTopColor = cor;
+function tile(valor, rotulo, cor, alerta) {   // alerta: true (tile vermelho) ou 'amarelo'
+  const t = el('div', 'tile' + (alerta === 'amarelo' ? ' aviso' : alerta ? ' alerta' : '')); if (cor && !alerta) t.style.borderTopColor = cor;
   t.append(el('b', null, valor), el('span', null, rotulo)); return t;
 }
 function nomeExibido(nome) { const a = office() && office().agentes.get(nome); return a ? a.titulo : String(nome).replace(/_/g, ' '); }
 function corDe(nome) { const a = office() && office().agentes.get(nome); return a ? '#' + a.cor.toString(16).padStart(6, '0') : '#64748b'; }
+// Listas das duas faixas: 🔴 auditoria (pontos zerados) e 🟡 para conferir (pontos normais), com link do PR e o comando para resolver
+const faixasEl = el('div'); faixasEl.id = 'placarFaixas'; $('placarOrdem').before(faixasEl);
+function linkPr(n) {
+  const repo = atual && atual.repo;
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return el('b', null, 'PR #' + n);
+  const a = el('a', null, 'PR #' + n); a.href = 'https://github.com/' + repo + '/pull/' + n; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  return a;
+}
+function listaFaixa(titulo, classe, itens, comando) {
+  const sec = el('section', 'faixa ' + classe), ul = el('ul');
+  sec.append(el('h4', null, titulo + ' · ' + itens.length));
+  for (const x of itens) {
+    const li = el('li'), como = el('div', 'como', 'depois de conferir: '), cmd = el('code', null, comando + ' ' + x.pr);
+    cmd.title = 'clique para copiar';
+    cmd.addEventListener('click', () => { try { navigator.clipboard.writeText(cmd.textContent); cmd.title = 'copiado'; } catch (e) {} });
+    como.append(cmd);
+    li.append(linkPr(x.pr), el('span', 'quem', ' · ' + nomeExibido(x.agente) + ' — '), el('span', 'por-que', x.motivo), como);
+    ul.append(li);
+  }
+  sec.append(ul); return sec;
+}
+function desenharFaixas() {
+  faixasEl.textContent = '';
+  const aud = [], conf = [];
+  for (const [nome, d] of Object.entries(atual.agentes)) {
+    for (const x of d.auditoria) aud.push({ ...x, agente: nome });
+    for (const x of d.conferir) conf.push({ ...x, agente: nome });
+  }
+  aud.sort((a, b) => b.pr - a.pr); conf.sort((a, b) => b.pr - a.pr);
+  faixasEl.hidden = !(aud.length || conf.length);
+  if (aud.length) faixasEl.append(listaFaixa('🔴 Auditoria (pontos zerados)', 'vermelha', aud, 'python xp.py --liberar'));
+  if (conf.length) faixasEl.append(listaFaixa('🟡 Para conferir', 'amarela', conf, 'python xp.py --conferido'));
+}
 function desenhar() {
   const o = office(); if (!atual) return;
   const cn = (n) => (o ? o.CORES_NIVEL : ['#9ca3af'])[Math.max(0, Math.min(4, n - 1))] || '#9ca3af';
   const t = atual.time;
   timeEl.textContent = '';
-  const aud = Number(t.auditorias_abertas) || 0;
+  const aud = Number(t.auditorias_abertas) || 0, conf = Number(t.conferir_abertos) || 0;
   timeEl.append(tile(String(t.xp_total ?? 0), 'XP total do time', '#f59e0b'), tile(pct(t.aprovacao_primeira), 'aprovado de primeira', '#22c55e'),
-    tile(pct(t.retrabalho_14d), 'retrabalho em 14 dias', '#3b82f6'), tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0));
+    tile(pct(t.retrabalho_14d), 'retrabalho em 14 dias', '#3b82f6'), tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0),
+    tile(String(conf), 'para conferir', '#22c55e', conf > 0 ? 'amarelo' : false));
+  desenharFaixas();
   document.querySelectorAll('#placarOrdem button').forEach((b) => b.classList.toggle('ativo', b.dataset.ordem === ordem));
   const ags = Object.entries(atual.agentes);
   ags.sort((a, b) => (ordem === 'nivel' ? b[1].nivel - a[1].nivel || b[1].xp - a[1].xp : 0) || nomeExibido(a[0]).localeCompare(nomeExibido(b[0]), 'pt-BR'));
@@ -153,6 +193,7 @@ function desenhar() {
     nv.append(el('span', null, '★'.repeat(Math.min(5, d.nivel))), el('span', 'vazia', '☆'.repeat(Math.max(0, 5 - d.nivel))), document.createTextNode(' ' + d.titulo_nivel));
     topo.append(nm, nv);
     if (d.auditoria.length) topo.append(el('span', 'aud', '⚠ ' + d.auditoria.length + ' auditoria(s)'));
+    if (d.conferir.length) topo.append(el('span', 'conf', '● ' + d.conferir.length + ' para conferir'));
     topo.append(el('span', 'xp', d.xp + ' XP · ' + (d.prs || 0) + ' PR(s)'));
     const barra = el('div', 'xp-barra'), enc = el('i');
     enc.style.width = Math.round((o ? o.progressoXp(d) : 0) * 100) + '%'; enc.style.background = cn(d.nivel); barra.append(enc);
@@ -224,5 +265,6 @@ window.__placar = {
   agente: (nome) => (atual && atual.agentes[nome]) || null,
   get indisponivel() { return fonte === 'demo' && real === null; },
   get dados() { return atual; },
+  get repo() { return (atual && atual.repo) || ''; },
   buscar, evoluirDemo: () => { evoluirDemo(); decidir(); },
 };

@@ -32,6 +32,8 @@
                {"nivel": 3, "titulo": "Pleno", "xp": 60}, {"nivel": 4, "titulo": "Sênior", "xp": 150},
                {"nivel": 5, "titulo": "Mestre", "xp": 300}],
     "padroes_teste": ["(^|/)(tests?|testes|specs?|__tests__|e2e)/", "(^|/)test_[^/]*$", "\\.(test|spec)\\.[a-z]+$"],
+    "padroes_avaliacao": ["(^|/)evals?/", "(^|/)[^/]*evals?\\.json$", "(^|[/_.\\-])grading([/_.\\-]|$)", "(^|/)benchmark\\.json$"],
+    "amostra_1_em": 10,
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa", "design/": "Designer"}, "padrao": "Dev"}
   },
   "tema": "neutro",
