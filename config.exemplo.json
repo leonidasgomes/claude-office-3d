@@ -23,6 +23,17 @@
     "times": {"Time Dev": "Dev", "Time Design": "Designer", "team:dev": "Dev"},
     "colunas": ["Todo", "In Progress", "Done"]
   },
+  "xp": {
+    "ativo": true,
+    "desde": "2026-09-01",
+    "pesos": {"aprovado_de_primeira": 3, "sem_conflito_com_testes": 2, "cartao_fechado": 2, "bug_nao_voltou_14d": 2,
+              "retrabalho": -2, "regressao": -3, "skill_reusada_por_outro": 5, "skill_promovida": 3},
+    "niveis": [{"nivel": 1, "titulo": "Estagiário", "xp": 0}, {"nivel": 2, "titulo": "Júnior", "xp": 20},
+               {"nivel": 3, "titulo": "Pleno", "xp": 60}, {"nivel": 4, "titulo": "Sênior", "xp": 150},
+               {"nivel": 5, "titulo": "Mestre", "xp": 300}],
+    "padroes_teste": ["(^|/)(tests?|testes|specs?|__tests__|e2e)/", "(^|/)test_[^/]*$", "\\.(test|spec)\\.[a-z]+$"],
+    "atribuicao": {"prefixos_branch": {"research/": "Pesquisa", "design/": "Designer"}, "padrao": "Dev"}
+  },
   "tema": "neutro",
   "apelidos": "desligado",
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]

@@ -9,6 +9,7 @@ Uso direto:  python configuracao.py --porta   -> imprime a porta configurada (us
 import copy
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -39,6 +40,26 @@ AGENTES_PADRAO = [
      "outros_nomes": ["researcher", "research", "pesquisador", "pesquisadora"]},
 ]
 
+# XP e níveis (opcional, "xp.ativo"): pontos por resultado verificado dos PRs mergeados; ver INSTALACAO.md.
+XP_PESOS = {
+    "aprovado_de_primeira": 3,      # nenhum commit do PR reprovado pela revisão (check_revisao ou review)
+    "sem_conflito_com_testes": 2,   # sem merge da base no meio do PR e o corpo cita teste/validação
+    "cartao_fechado": 2,            # o cartão do Kanban atribuído está na coluna final
+    "bug_nao_voltou_14d": 2,        # PR de fix sem novo fix/revert citando-o em 14 dias
+    "retrabalho": -2,               # reprovado pela revisão ou fix posterior citando o PR em até 14 dias
+    "regressao": -3,                # PR posterior de revert/regress citando o PR
+    "skill_reusada_por_outro": 5,   # outro agente usou uma skill de que o agente é autor
+    "skill_promovida": 3,           # skill candidata do agente foi promovida
+}
+XP_NIVEIS = [{"nivel": 1, "titulo": "Estagiário", "xp": 0}, {"nivel": 2, "titulo": "Júnior", "xp": 20},
+             {"nivel": 3, "titulo": "Pleno", "xp": 60}, {"nivel": 4, "titulo": "Sênior", "xp": 150},
+             {"nivel": 5, "titulo": "Mestre", "xp": 300}]
+# expressões regulares (sem diferenciar maiúsculas) que reconhecem ARQUIVO DE TESTE pelo caminho
+XP_PADROES_TESTE = [r"(^|/)(tests?|testes|specs?|__tests__|e2e|evals?)/", r"(^|/)test_[^/]*$",
+                    r"_tests?\.[a-z]+$", r"\.(test|spec)\.[a-z]+$", r"(^|/)[^/]*tests?\.(cpp|h|cs)$"]
+# prefixo de branch -> mesas cujo agente recebe o PR (usado quando "xp.atribuicao.prefixos_branch" não existe)
+XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design": ["design/", "ui/"]}
+
 PADRAO = {
     "porta": 8765,
     "titulo": "Claude Office 3D",
@@ -54,6 +75,8 @@ PADRAO = {
         "times": {},                # valor do campo_time (ou rótulo do PR) -> nome do agente
         "colunas": [],              # ordem das colunas do Kanban; vazio = na ordem em que aparecem
     },
+    "xp": {"ativo": False, "desde": "", "pesos": XP_PESOS, "niveis": XP_NIVEIS, "padroes_teste": XP_PADROES_TESTE,
+           "atribuicao": {"prefixos_branch": {}, "padrao": ""}},
     "tema": "neutro",
     "apelidos": "desligado",
     # SendMessage cujo resumo/mensagem contém uma destas palavras vira reunião (todos vão para a sala)
@@ -103,6 +126,66 @@ def normalizar_agente(ag, i):
     }
 
 
+def _agente_canonico(agentes, nome):
+    """Nome canônico do agente configurado que corresponde a 'nome' (por nome ou outros_nomes), ou ''."""
+    k = chave(nome)
+    for a in agentes:
+        if chave(a["nome"]) == k or any(chave(o) == k for o in a["outros_nomes"]):
+            return a["nome"]
+    return ""
+
+
+def normalizar_xp(bruto, agentes):
+    """Bloco "xp" do config: tipos corrigidos, padrões sensatos, atribuição só para agentes que existem."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    xp = copy.deepcopy(PADRAO["xp"])
+    xp["ativo"] = bool(bruto.get("ativo", xp["ativo"]))
+    desde = str(bruto.get("desde") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", desde):
+        xp["desde"] = desde
+    pesos = bruto.get("pesos")
+    if isinstance(pesos, dict):
+        for k in XP_PESOS:
+            try:
+                xp["pesos"][k] = int(pesos[k]) if k in pesos else XP_PESOS[k]
+            except (TypeError, ValueError):
+                pass
+    niveis = []
+    for n in bruto.get("niveis") or []:
+        try:
+            niveis.append({"nivel": int(n["nivel"]), "titulo": str(n["titulo"]), "xp": int(n["xp"])})
+        except (TypeError, ValueError, KeyError):
+            niveis = []
+            break
+    niveis.sort(key=lambda n: n["xp"])
+    if niveis and niveis[0]["xp"] == 0 and len({n["nivel"] for n in niveis}) == len(niveis):
+        xp["niveis"] = niveis
+    padroes = []
+    for p in bruto.get("padroes_teste") or []:
+        try:
+            re.compile(str(p))
+            padroes.append(str(p))
+        except re.error:
+            pass
+    if padroes:
+        xp["padroes_teste"] = padroes
+    atrib = bruto.get("atribuicao") if isinstance(bruto.get("atribuicao"), dict) else {}
+    if "prefixos_branch" in atrib and isinstance(atrib["prefixos_branch"], dict):
+        brutos = atrib["prefixos_branch"].items()
+    else:   # padrão: pelas mesas dos agentes (pesquisa, design)
+        brutos = [(pref, a["nome"]) for a in agentes for pref in XP_PREFIXOS_POR_MESA.get(a["mesa"], [])]
+    prefixos = {}
+    for pref, ag in brutos:
+        nome = _agente_canonico(agentes, ag)
+        if nome and str(pref).strip():
+            prefixos.setdefault(str(pref).strip().lower(), nome)
+    padrao = _agente_canonico(agentes, atrib.get("padrao"))
+    if not padrao:   # sem padrão: o agente da mesa "dev"; senão o líder
+        padrao = next((a["nome"] for a in agentes if a["mesa"] == "dev"), "") or             next((a["nome"] for a in agentes if a["lider"]), "")
+    xp["atribuicao"] = {"prefixos_branch": prefixos, "padrao": padrao}
+    return xp
+
+
 def normalizar(cfg):
     """Mescla com os padrões e corrige tipos; nunca levanta exceção por valor ruim."""
     base = copy.deepcopy(PADRAO)
@@ -139,6 +222,7 @@ def normalizar(cfg):
         base["github"]["times"] = {}
     if not isinstance(base["github"]["colunas"], list):
         base["github"]["colunas"] = []
+    base["xp"] = normalizar_xp(cfg.get("xp"), base["agentes"])
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

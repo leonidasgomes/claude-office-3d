@@ -1,0 +1,43 @@
+/* Placar do time (Claude Office 3D): XP e nível dos agentes, sem ranking competitivo */
+#placar[hidden] { display: none; }
+#btnPlacar { position: relative; }
+#placarConta { background: #e5484d; color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 800; font-size: 11px; margin-left: 2px; }
+#placar { position: absolute; top: 10px; left: 10px; bottom: 10px; width: min(560px, calc(100% - 20px)); z-index: 5; background: #11171ef5; border: 1px solid #2a3340; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
+#placar header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+#placar h3 { margin: 0; font-size: 17px; }
+#placarInfo { font-size: 12px; color: #8b98a8; }
+#placarFechar { font-size: 18px; line-height: 1; padding: 2px 9px; }
+#placarTime { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+#placarTime .tile { background: #1d2530; border-radius: 8px; padding: 8px 10px; border-top: 3px solid #3b82f6; }
+#placarTime .tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+#placarTime .tile span { font-size: 12px; color: #8b98a8; }
+#placarTime .tile.alerta { background: #3a1a1c; border-top-color: #e5484d; }
+#placarTime .tile.alerta b { color: #ff7b7f; }
+#placarOrdem { display: flex; gap: 6px; align-items: center; font-size: 12px; color: #8b98a8; }
+#placarOrdem button { padding: 2px 10px; font-size: 12px; }
+#placarLista { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+#placarLista .ag { background: #1d2530; border-radius: 8px; border-left: 4px solid #475569; padding: 8px 10px; cursor: pointer; }
+#placarLista .ag:hover { background: #222c39; }
+#placarLista .topo { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+#placarLista .nome { font-weight: 700; }
+#placarLista .nivel { font-size: 13px; font-weight: 700; }
+#placarLista .xp { margin-left: auto; font-size: 12px; color: #9aa7b6; font-variant-numeric: tabular-nums; }
+#placarLista .aud { background: #e5484d; color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 800; }
+.xp-barra { height: 7px; background: #ffffff1f; border-radius: 4px; overflow: hidden; margin: 5px 0 3px; }
+.xp-barra i { display: block; height: 100%; border-radius: 4px; }
+#placarLista .prox { font-size: 11px; color: #8b98a8; }
+#placarLista .pontos { margin: 5px 0 0; padding: 0; list-style: none; font-size: 12px; color: #c9d4e0; }
+#placarLista .pontos li { display: flex; gap: 6px; }
+#placarLista .pontos .p { font-weight: 800; min-width: 28px; }
+#placarLista .vazio { color: #8b98a8; text-align: center; padding: 20px; }
+.pos { color: #4ade80; } .neg { color: #ff7b7f; }
+/* aba XP da ficha */
+#fichaLista li.xp-resumo { border-left-width: 4px; }
+#fichaLista .xp-titulo { font-weight: 800; font-size: 15px; }
+#fichaLista .xp-linha { font-size: 13px; } #fichaLista .xp-linha.dim, #fichaLista li.xp-linha { color: #9aa7b6; }
+#fichaLista li.xp-secao { background: none; border-left: 0; padding: 6px 0 0; color: #8b98a8; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+#fichaLista li.xp-ponto { border-left-color: #22c55e; }
+#fichaLista li.xp-ponto .topo span:nth-child(2) { font-weight: 800; }
+#fichaLista .motivo { font-size: 12px; margin-top: 1px; }
+#fichaLista li.xp-auditoria { border-left-color: #e5484d; background: #2a1717; }
+#placarLista .nivel .vazia { opacity: .4; }

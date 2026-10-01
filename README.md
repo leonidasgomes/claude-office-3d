@@ -25,6 +25,10 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 - Painel lateral com os agentes, o estado de cada um e os últimos eventos; clique num agente para ver a **ficha**
   (o que está fazendo e o que está falando).
 - **Kanban** do GitHub Projects e painel de **PRs** esperando o seu merge (opcionais, via GitHub CLI `gh`).
+- **XP e níveis** (opcional): pontos por PR mergeado com resultado verificado, nível no crachá da mesa, painel
+  **Placar** cooperativo e auditoria anti-trapaça nos testes (`python xp.py`).
+- **Skills**: ciclo candidata -> promovida com `python skills.py`, A/B com o skill-creator e registro de quem usa
+  cada skill. Veja a seção "XP, níveis e skills" do [INSTALACAO.md](INSTALACAO.md).
 - Temas: `neutro` (escritório genérico) ou `sao-paulo` (maquete de SP, placas de rua, orelhão, ipês, coxinha…).
 - Apelidos divertidos só na tela (brasileiros, de cinema ou desligados).
 - Modo **Demo** para ver o escritório funcionando sem nenhum agente rodando.

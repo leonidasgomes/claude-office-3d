@@ -25,7 +25,7 @@ import stat
 import subprocess
 import sys
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 if sys.version_info < (3, 9):
@@ -49,7 +49,7 @@ EVENTOS_HOOK = ("PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
-          "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
+          "placar.js", "placar.css", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]
@@ -441,6 +441,7 @@ def copiar_pacote(destino):
     for nome in PACOTE:
         origem = PASTA / nome
         if origem.is_file():
+            (destino / nome).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(origem, destino / nome)
             copiados += 1
     if (PASTA / "vendor").is_dir() and not (destino / "vendor").exists():
@@ -600,6 +601,7 @@ def assistente(args):
                                                   "sao-paulo (maquete de SP, placas de rua, orelhão, ipês, coxinha…)"], 1)]
     apelidos = configuracao.MODOS_APELIDO[escolher("  Apelidos na tela (só diversão; os nomes reais seguem nos eventos)",
                                                    ["brasileiros (João, Maria…)", "cinema (Neo, Trinity…)", "desligado"], 3)]
+    xp_ativo = sim_nao("  Ativar XP e níveis? (pontos por PR mergeado e skills; mostra o nível de cada agente na mesa)", True)
     porta = int(perguntar("  Porta do servidor local", "8765",
                           lambda v: None if v.isdigit() and 1024 <= int(v) <= 65535 else "porta entre 1024 e 65535"))
     if porta_ocupada(porta):
@@ -618,7 +620,8 @@ def assistente(args):
         print("    " + json.dumps(bloco_hooks(destino), ensure_ascii=False, indent=2).replace("\n", "\n    "))
 
     config = {"porta": porta, "titulo": titulo, "projetos": projetos, "agentes": agentes, "github": github,
-              "tema": tema, "apelidos": apelidos}
+              "tema": tema, "apelidos": apelidos,
+              "xp": {"ativo": xp_ativo, "desde": (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")}}
     print()
     print("=" * 64)
     print(" Resumo")
@@ -630,6 +633,7 @@ def assistente(args):
           f"{(github['projeto_owner'] + ' #' + str(github['projeto_numero'])) if github['projeto_numero'] else '—'}"
           f"  check={github['check_revisao'] or '(review)'}")
     print(f"  Tema:       {tema}   apelidos: {apelidos}   porta: {porta}   three.js: {'local' if three_offline else 'CDN'}")
+    print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o INSTALACAO.md)' if xp_ativo else 'desligado'}")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
     if not sim_nao("  Gravar tudo isso agora?", True):

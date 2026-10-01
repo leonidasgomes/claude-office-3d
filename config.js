@@ -14,6 +14,7 @@ const PADRAO = {
     { nome: 'Pesquisa', titulo: 'Pesquisa', funcao: 'Busca e documentação', cor: '#22c55e', apelido_br: 'Aquiles', apelido_cinema: 'Indiana', cargo: '', mesa: 'pesquisa', outros_nomes: [] },
   ],
   github: { repo: '', kanban: false, prs: false, projeto_owner: '', projeto_numero: 0, check_revisao: '', times: {}, colunas: [] },
+  xp: { ativo: true, niveis: [] },   // sem servidor: o placar mostra uma demonstração
   gh_disponivel: false,
   three_local: false,
 };
@@ -25,7 +26,8 @@ try {
 } catch (e) { /* sem servidor: usa o padrão */ }
 
 export const temServidor = !!lido;
-export const CONFIG = { ...PADRAO, ...(lido || {}), github: { ...PADRAO.github, ...((lido && lido.github) || {}) } };
+export const CONFIG = { ...PADRAO, ...(lido || {}), github: { ...PADRAO.github, ...((lido && lido.github) || {}) },
+  xp: { ...PADRAO.xp, ...((lido && lido.xp) || {}) } };
 if (!Array.isArray(CONFIG.agentes) || !CONFIG.agentes.length) CONFIG.agentes = PADRAO.agentes;
 
 // chave comparável de um nome de agente (igual à do configuracao.py)

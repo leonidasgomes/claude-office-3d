@@ -5,6 +5,7 @@ Serve esta pasta e expõe:
   GET /eventos?desde=<n>[&ultimos=<k>] -> {"total": N, "eventos": [...]} a partir de dados/eventos.jsonl
   GET /kanban                         -> cartões do GitHub Projects (via gh, em cache)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
+  GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
 Só escuta em 127.0.0.1, na porta do config.json (padrão 8765).
 
 Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador)
@@ -30,6 +31,7 @@ HOST = "127.0.0.1"
 PASTA = Path(__file__).resolve().parent
 EVENTOS = PASTA / "dados" / "eventos.jsonl"
 VENDOR = PASTA / "vendor" / "three"
+XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
 KANBAN_VALIDADE = 120   # s; o gh leva alguns segundos, então o quadro é lido no máximo a cada 2 min
 PRS_VALIDADE = 60       # s
@@ -67,6 +69,7 @@ def config_publica():
         "github": {"repo": g["repo"], "kanban": kanban_ok, "prs": bool(g["repo"]),
                    "projeto_owner": g["projeto_owner"], "projeto_numero": g["projeto_numero"],
                    "check_revisao": g["check_revisao"], "times": g["times"], "colunas": g["colunas"]},
+        "xp": {"ativo": c["xp"]["ativo"], "niveis": c["xp"]["niveis"]},
         "gh_disponivel": bool(gh()),
         "three_local": three_local(),
     }
@@ -274,6 +277,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self.responder(kanban())
         if url.path == "/prs":
             return self.responder(prs("forcar" in qs))
+        if url.path == "/xp":
+            if not cfg()["xp"]["ativo"]:
+                return self.responder({"ativo": False, "agentes": {}})
+            try:
+                corpo = XP_PLACAR.read_bytes()
+                json.loads(corpo)
+            except (OSError, ValueError) as e:
+                corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
+            return self.responder(corpo)
         if url.path in ("/", "/index.html"):
             return self.responder(index_html().encode("utf-8"), "text/html; charset=utf-8")
         # não expõe dados brutos, configuração com caminhos locais nem scripts

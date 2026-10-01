@@ -112,6 +112,7 @@ pergunta se você quer abrir o escritório agora.
   1) neutro (escritório genérico)
   2) sao-paulo (maquete de SP, placas de rua, orelhão, ipês, coxinha…)
   Tema [1]:
+  Ativar XP e níveis? (pontos por PR mergeado e skills; mostra o nível de cada agente na mesa) [S/n]:
   ...
   Porta do servidor local [8765]:
   Baixar o three.js 0.160.0 para vendor/ (funciona sem internet)? [s/N]: s
@@ -209,6 +210,15 @@ recarregar a página (a porta só muda reiniciando o servidor).
                                       // valor do campo_time (Kanban) ou rótulo do PR -> nome do agente
     "colunas": ["Todo", "In Progress", "Done"]  // ordem das colunas; vazio = na ordem em que aparecem
   },
+  "xp": {                             // opcional — veja a seção 8
+    "ativo": true,                    // false/ausente = sem placar, sem níveis (padrão: desligado)
+    "desde": "2026-09-01",            // só PRs mergeados desde esta data (vazio = últimos 30 dias)
+    "pesos": {"aprovado_de_primeira": 3, "sem_conflito_com_testes": 2, "cartao_fechado": 2, "bug_nao_voltou_14d": 2,
+              "retrabalho": -2, "regressao": -3, "skill_reusada_por_outro": 5, "skill_promovida": 3},
+    "niveis": [{"nivel": 1, "titulo": "Estagiário", "xp": 0}, {"nivel": 2, "titulo": "Júnior", "xp": 20}],
+    "padroes_teste": ["(^|/)tests?/", "\\.(test|spec)\\.[a-z]+$"],   // regex dos caminhos que são arquivo de teste
+    "atribuicao": {"prefixos_branch": {"research/": "Pesquisa"}, "padrao": "Dev"}   // PR sem cartão: por prefixo do branch
+  },
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
@@ -246,6 +256,8 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub.
 - **PRs** — pull requests abertos, ordenados: prontos para o seu merge, aguardando revisão, bloqueados (conflito ou
   reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
+- **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho e auditorias abertas; o nível
+  também aparece no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
 - **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
 - **Apelidos** — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
 - **Demo** — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
@@ -253,7 +265,91 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - `reiniciar_escritorio` (`.bat`/`.sh`) encerra o servidor da porta configurada e sobe de novo; a página aberta
   reconecta sozinha.
 
-## 8. Times de agentes do Claude Code — dicas
+## 8. XP, níveis e skills
+
+Opcional (`"xp": {"ativo": true}`; o assistente pergunta no passo 6). O escritório mostra o **nível** de cada
+agente no crachá da mesa (estrelas, título e barra até o próximo nível), um painel **Placar** (botão no cabeçalho)
+e a aba **XP** na ficha do agente. Quando alguém sobe de nível, o boneco comemora com confete. O placar é
+**cooperativo**: ordena só por nome ou nível, sem medalhas nem pódio. Sem dados reais, o botão Demo mostra pontos de
+mentira.
+
+O XP é calculado por `xp.py`, sem gastar nenhum token de agente. Ele lê, via `gh`, os PRs mergeados do `github.repo`
+desde `xp.desde` (padrão: últimos 30 dias), o Kanban (se configurado) e o diff de cada PR, e grava
+`dados/xp/placar.json`, que o servidor entrega em `GET /xp`. PR já analisado fica em cache (`dados/xp/estado.json`);
+a pontuação é refeita a cada execução. Rode `python xp.py` à mão ou agende (cron, Agendador de Tarefas) a cada
+poucos minutos; a página relê o placar a cada 60 s. Se o repositório ou o gh não estiverem disponíveis, o placar
+sai com um aviso e só as skills pontuam.
+
+### Regras de pontuação
+
+Pesos em `xp.pesos` (os padrões estão abaixo). A pontuação é só por **resultado verificado**, nunca por volume
+de código ou de mensagens.
+
+| Regra | Pontos | Quando |
+|---|---|---|
+| `aprovado_de_primeira` | +3 | nenhum commit do PR reprovado pela revisão (o `github.check_revisao`, como status ou check-run; sem check, nenhuma review pediu mudanças) |
+| `sem_conflito_com_testes` | +2 | nenhum merge da base no meio do PR **e** o corpo do PR cita teste/validação |
+| `cartao_fechado` | +2 | o cartão do Kanban atribuído ao PR está na coluna final (Done/Feito/…, ou a última de `github.colunas`) |
+| `bug_nao_voltou_14d` | +2 | PR de correção (`fix`/`hotfix`) que, passados 14 dias, nenhum PR novo corrigiu ou reverteu citando-o |
+| `retrabalho` | -2 | reprovado pela revisão, ou um PR de `fix` posterior cita este em até 14 dias |
+| `regressao` | -3 | um PR posterior com `revert`/`regress` cita este em até 14 dias |
+| `skill_reusada_por_outro` | +5 | outro agente usou uma skill de que você é autor (por uso registrado ou pelo evento da ferramenta Skill) |
+| `skill_promovida` | +3 | uma skill candidata sua foi promovida |
+
+O XP nunca fica negativo. Os níveis (`xp.niveis`) padrão: 1 Estagiário (0), 2 Júnior (20), 3 Pleno (60), 4 Sênior
+(150), 5 Mestre (300). Você pode trocar títulos e limites; o primeiro nível precisa começar em 0.
+
+### Quem recebe o PR
+
+Na ordem: (a) o cartão que o PR fecha (`Closes #n`) ou que ele cita (`#n` no título, no branch `feat/225-x` ou no
+corpo), pelo campo `github.campo_time` mapeado em `github.times` (valor mapeado para `""` = cartão de humano, o PR é
+ignorado); (b) um rótulo do PR que seja chave de `github.times`; (c) o prefixo do branch em
+`xp.atribuicao.prefixos_branch` (ex.: `"research/": "Pesquisa"`; sem essa chave, os padrões saem das mesas
+`pesquisa` e `design` do time); (d) `xp.atribuicao.padrao` (sem ele: o agente da mesa `dev`, senão o líder).
+
+### Anti-trapaça e auditoria
+
+Um PR que **apaga arquivo de teste** (sem criar teste novo com pelo menos as mesmas linhas) ou **acrescenta
+`skip`/`xfail` incondicional** num teste tem os pontos **zerados** e entra em **auditoria**: aparece em vermelho no
+Placar (contador no botão), na ficha do agente e na saída do `xp.py`. Skip condicional por ambiente (`skipUnless`,
+`skipIf`) não conta. O que é "arquivo de teste" vem de `xp.padroes_teste` (expressões regulares sobre o caminho).
+
+Para **liberar um PR flagrado** depois de conferir que a mudança nos testes era legítima (consolidação, teste
+obsoleto):
+
+```bash
+python xp.py --liberar 123     # PR #123 deixa de ser auditado e pontua normalmente
+python xp.py --desfazer 123    # volta a auditar
+```
+
+A lista fica em `dados/xp/auditorias_resolvidas.json`. A decisão é sempre sua: agentes não liberam a si mesmos.
+
+### Ciclo de vida das skills
+
+Skill é um procedimento que se repete e vale guardar. O fluxo, com `python skills.py`:
+
+1. `novo <nome> --autor <agente>` cria o candidato em `dados/skills/<nome>.md` a partir de `skills-candidatos/MODELO.md`
+   (nome em minúsculas e hífen; `description` em 3ª pessoa dizendo **o que faz e quando usar**; `evidencia` com o
+   PR/cartão de onde saiu o padrão). Estado: `candidato`.
+2. `usar <nome> --agente <quem> --cartao N --resultado ok|falhou` registra cada uso. Falhou -> `quarentena`;
+   2 usos `ok` em cartões diferentes (e nenhuma falha pendente) -> `pronto-ab`.
+3. **A/B com o skill-creator** (veja abaixo) decide se a skill melhora o resultado.
+4. `promover <nome>` valida e gera `dados/skills-promover/<nome>/SKILL.md` (frontmatter `name`/`description`, corpo
+   com menos de 500 linhas); o estado vira `aprovado`. Copie a pasta para `.claude/skills/<nome>/` do seu projeto
+   (ou `~/.claude/skills/<nome>/`) e faça commit/PR; **você** revisa e dá o merge.
+5. `contar-uso` lê os eventos do escritório (o hook registra a ferramenta Skill como "usa a skill `<nome>`"), grava
+   `dados/skills/uso.json` e sugere revisar/aposentar skills promovidas **sem uso há 30 dias**.
+
+`listar` mostra todos os candidatos. Estados: `candidato`, `quarentena`, `pronto-ab`, `aprovado`, `rejeitado`,
+`aposentado` (os dois últimos você marca editando o campo `estado` do arquivo).
+
+**Como usar o skill-creator para o A/B.** Com a skill `skill-creator` do Claude Code disponível, peça ao agente
+líder (ou faça você mesmo) algo como: *"use o skill-creator para avaliar o candidato `<nome>`: rode 3 a 5 tarefas
+reais com e sem a skill, compare o resultado (testes passando, retrabalho, tempo) e otimize a `description` para o
+gatilho certo"*. Se a versão com a skill ganhar de forma consistente, rode `skills.py promover`; se não, marque
+`rejeitado`. Recomenda-se um A/B por semana, só para candidatos em `pronto-ab`.
+
+## 9. Times de agentes do Claude Code — dicas
 
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
   `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
@@ -269,7 +365,7 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - Para forçar o nome de quem roda uma sessão, defina a variável de ambiente `OFFICE_AGENTE=<nome>` antes de abrir o
   Claude Code.
 
-## 9. Solução de problemas
+## 10. Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
@@ -282,7 +378,7 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 | Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
 | Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
 
-## 10. Desinstalar
+## 11. Desinstalar
 
 ```bash
 python instalar.py --desinstalar
@@ -293,7 +389,7 @@ Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.c
 (`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
 se quiser remover tudo.
 
-## 11. Privacidade
+## 12. Privacidade
 
 - Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora.
 - Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre

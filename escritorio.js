@@ -85,7 +85,7 @@ function aplicarApelidos() {
   for (const a of ordemAgentes) {
     const r = rotulos(a.nome, perfil(a.nome));
     a.titulo = r.titulo; a.funcao = r.funcao;
-    desenharNome(a.nomeSp, a.titulo, a.cor, a.funcao);
+    desenharNome(a.nomeSp, a.titulo, a.cor, a.funcao, a.xp);
     if (a.li) { a.li.querySelector('.nome').textContent = a.titulo; a.li.querySelector('.funcao').textContent = a.funcao; }
   }
   if (typeof desenharFicha === 'function') desenharFicha();
@@ -265,18 +265,34 @@ function retArredondado(g, x, y, w, h, r) {
   g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
 function corCss(n) { return '#' + n.toString(16).padStart(6, '0'); }
-function desenharNome(s, texto, cor, funcao = '') {
+const CORES_NIVEL = ['#9ca3af', '#60a5fa', '#34d399', '#f59e0b', '#e879f9'];   // 1 Estagiário .. 5 Mestre
+const estrelas = (n, max = 5) => '★'.repeat(Math.max(0, Math.min(max, n))) + '☆'.repeat(Math.max(0, max - Math.min(max, n)));
+function progressoXp(x) {   // 0..1 até o próximo nível (1 no nível máximo)
+  if (!x || x.xp_proximo == null) return 1;
+  const base = x.xp_base || 0, span = x.xp_proximo - base;
+  return span > 0 ? Math.max(0, Math.min(1, (x.xp - base) / span)) : 1;
+}
+function desenharNome(s, texto, cor, funcao = '', xp = null) {
   const g = s.ctx; g.clearRect(0, 0, s.canvas.width, s.canvas.height);
   const H = s.canvas.height, W = s.canvas.width;
   g.font = 'bold 30px "Segoe UI", sans-serif'; const wNome = g.measureText(texto).width;
   g.font = '22px "Segoe UI", sans-serif'; const wFun = funcao ? g.measureText(funcao).width : 0;
-  const w = Math.min(W - 8, Math.max(wNome + 36, wFun + 24));
-  const x = (W - w) / 2, alto = funcao ? 78 : 46, y0 = H - alto - 6;
+  const linhaXp = xp ? estrelas(xp.nivel) + ' ' + xp.titulo + ' · ' + xp.xp + ' XP' : '';
+  g.font = 'bold 22px "Segoe UI", sans-serif'; const wXp = linhaXp ? g.measureText(linhaXp).width : 0;
+  const w = Math.min(W - 8, Math.max(wNome + 36, wFun + 24, wXp + 24));
+  const alto = (funcao ? 78 : 46) + (xp ? 38 : 0), x = (W - w) / 2, y0 = H - alto - 6;
   g.fillStyle = 'rgba(15,20,25,0.84)'; retArredondado(g, x, y0, w, alto, 20); g.fill();
   g.fillStyle = corCss(cor); g.beginPath(); g.arc(x + 20, y0 + 23, 8, 0, 7); g.fill();
   g.textBaseline = 'middle'; g.textAlign = 'left';
   g.font = 'bold 30px "Segoe UI", sans-serif'; g.fillStyle = '#fff'; g.fillText(texto, x + 34, y0 + 24, w - 44);
   if (funcao) { g.font = '22px "Segoe UI", sans-serif'; g.fillStyle = '#b8c4d2'; g.fillText(funcao, x + 12, y0 + 58, w - 22); }
+  if (xp) {
+    const yl = y0 + (funcao ? 92 : 62), cn = CORES_NIVEL[Math.max(0, Math.min(4, xp.nivel - 1))];
+    g.font = 'bold 22px "Segoe UI", sans-serif'; g.fillStyle = cn; g.fillText(linhaXp, x + 12, yl, w - 22);
+    g.fillStyle = 'rgba(255,255,255,0.16)'; retArredondado(g, x + 12, yl + 17, w - 24, 6, 3); g.fill();
+    const pw = Math.max(6, (w - 24) * progressoXp(xp));
+    g.fillStyle = cn; retArredondado(g, x + 12, yl + 17, pw, 6, 3); g.fill();
+  }
   s.tex.needsUpdate = true;
 }
 function quebrarTexto(g, texto, largura, maxLinhas) {
@@ -821,15 +837,15 @@ function garantirAgente(nome) {
   const fig = criarFigura(cor);
   cena.add(fig.raiz);
   const pf = rotulos(nome, perfil(nome));
-  const nomeSp = criarSprite(384, 96, 5.0, 1.25); desenharNome(nomeSp, pf.titulo, cor, pf.funcao);
+  const nomeSp = criarSprite(384, 136, 5.0, 1.77); desenharNome(nomeSp, pf.titulo, cor, pf.funcao);
   const balaoSp = criarSprite(640, 220, 7.0, 2.4); balaoSp.sprite.visible = false;
-  fig.raiz.add(nomeSp.sprite); nomeSp.sprite.position.y = 3.3;
+  fig.raiz.add(nomeSp.sprite); nomeSp.sprite.position.y = 3.55;
   fig.raiz.add(balaoSp.sprite); balaoSp.sprite.position.y = 5.6;
   const a = {
     nome, cor, mesa, fig, nomeSp, balaoSp, fila: [], atual: null,
     pos: mesa.assento.clone(), yaw: Math.PI, sentado: true,
     estado: 'ocioso', base: 'ocioso', ultimoTrabalho: 0, ultimoEvento: null, balao: null, balaoDesenhado: null,
-    hist: [], agoraFaz: null, titulo: pf.titulo, funcao: pf.funcao,
+    hist: [], agoraFaz: null, xp: null, festa: null, titulo: pf.titulo, funcao: pf.funcao,
     pausa: null, ociosoDesde: null, proxPausa: agora() + PAUSA_OCIOSO_MIN + Math.random() * 35,
   };
   fig.raiz.traverse((o) => { o.userData.agente = a; });
@@ -1147,6 +1163,61 @@ function balao(a, texto, ferr, dur = TEMPO_BALAO_TRABALHO) {
   a.balao = { texto: String(texto || '').slice(0, 90), icone: iconeDe(ferr), ate: agora() + dur };
 }
 
+// ---------------------------------------------------------------- XP, nível e comemoração
+// Dados vêm do placar.js (GET /xp ou demonstração). Aqui só desenhamos: rótulo da mesa, pulinhos, balão e confete.
+const TEMPO_FESTA = 4;
+const N_CONFETE = 140, confeteInfo = { vivos: 0 };
+const confPos = new Float32Array(N_CONFETE * 3), confCor = new Float32Array(N_CONFETE * 3);
+const confVel = new Float32Array(N_CONFETE * 3), confVida = new Float32Array(N_CONFETE);
+const confGeo = new THREE.BufferGeometry();
+confGeo.setAttribute('position', new THREE.BufferAttribute(confPos, 3));
+confGeo.setAttribute('color', new THREE.BufferAttribute(confCor, 3));
+const confete = new THREE.Points(confGeo, new THREE.PointsMaterial({ size: 0.22, vertexColors: true, depthWrite: false }));
+confete.frustumCulled = false; confete.visible = false; cena.add(confete);
+const CORES_CONFETE = ['#ef4444', '#f59e0b', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'].map((c) => new THREE.Color(c));
+function soltarConfete(x, z, n = 45) {
+  let k = 0;
+  for (let i = 0; i < N_CONFETE && k < n; i++) {
+    if (confVida[i] > 0) continue;
+    const c = CORES_CONFETE[(Math.random() * CORES_CONFETE.length) | 0], j = i * 3;
+    confPos[j] = x + (Math.random() - 0.5) * 2.2; confPos[j + 1] = 4.2 + Math.random() * 1.6; confPos[j + 2] = z + (Math.random() - 0.5) * 2.2;
+    confVel[j] = (Math.random() - 0.5) * 1.6; confVel[j + 1] = 1 + Math.random() * 2.2; confVel[j + 2] = (Math.random() - 0.5) * 1.6;
+    confCor[j] = c.r; confCor[j + 1] = c.g; confCor[j + 2] = c.b;
+    confVida[i] = TEMPO_FESTA * (0.7 + Math.random() * 0.3); k++;
+  }
+  confeteInfo.vivos = 1; confete.visible = true;
+  confGeo.attributes.color.needsUpdate = true;
+}
+function tickConfete(dt) {
+  if (!confeteInfo.vivos) return;
+  let vivos = 0;
+  for (let i = 0; i < N_CONFETE; i++) {
+    const j = i * 3;
+    if (confVida[i] <= 0) { confPos[j + 1] = -50; continue; }
+    confVida[i] -= dt; vivos++;
+    confVel[j + 1] -= 3.2 * dt;
+    if (confVel[j + 1] < -2.2) confVel[j + 1] = -2.2;   // cai devagar, como papel
+    confPos[j] += confVel[j] * dt; confPos[j + 1] += confVel[j + 1] * dt; confPos[j + 2] += confVel[j + 2] * dt;
+    if (confPos[j + 1] < 0.05) { confPos[j + 1] = 0.05; confVel[j] = confVel[j + 2] = 0; }
+  }
+  confGeo.attributes.position.needsUpdate = true;
+  if (!vivos) { confeteInfo.vivos = 0; confete.visible = false; }
+}
+function xpDefinir(nome, info) {   // info: {nivel, titulo, xp, xp_base, xp_proximo} ou null
+  const a = agentes.get(normalizarNome(nome)); if (!a) return false;
+  a.xp = info || null;
+  desenharNome(a.nomeSp, a.titulo, a.cor, a.funcao, a.xp);
+  return true;
+}
+function comemorar(nome, titulo) {
+  const a = agentes.get(normalizarNome(nome)); if (!a) return false;
+  const t = agora(), tit = titulo || (a.xp && a.xp.titulo) || 'um novo nível';
+  a.festa = { ate: t + TEMPO_FESTA };
+  a.balao = { texto: 'subiu para ' + tit + '!', icone: '🎉', ate: t + TEMPO_FESTA };
+  soltarConfete(a.pos.x, a.pos.z);
+  return true;
+}
+
 // Subagentes
 const subagentes = [];
 function criarSubagente(pai, resumo, ferr, nomeSub, funcaoSub) {
@@ -1246,6 +1317,12 @@ function atualizarAgente(a, dt, t) {
     else f.cabeca.rotation.x += Math.sin(t * 5) * 0.08;
     if (g.riso) f.dentro.position.y += Math.abs(Math.sin(t * 13)) * 0.08;
   }
+  if (a.festa) {   // comemoração: pulinhos com os braços para cima
+    if (t < a.festa.ate) {
+      f.dentro.position.y += Math.abs(Math.sin(t * 8)) * 0.45;
+      f.bracoE.rotation.x = f.bracoD.rotation.x = -2.9 + Math.sin(t * 16) * 0.3;
+    } else a.festa = null;
+  }
   // pausas: atende pedido de volta e decide quando um agente ocioso vai descansar
   if (a.pausa && a.pausa.pedirVolta && (a.atual || !a.fila.some((i) => i.pausa))) aplicarInterrupcao(a);
   const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado;
@@ -1341,6 +1418,7 @@ function desenharFicha() {
   $('fichaAgora').textContent = f ? iconeDe(f.ferramenta) + ' ' + (f.ferramenta || '') + ' — ' + (f.resumo || '') : 'sem trabalho em andamento';
   document.querySelectorAll('#ficha .abas button').forEach((b) => b.classList.toggle('ativo', b.dataset.aba === abaFicha));
   const lista = $('fichaLista'); lista.textContent = '';
+  if (abaFicha === 'xp') { desenharAbaXp(lista, a); return; }
   const conversa = (x) => x.ev.tipo === 'fala' || x.ev.tipo === 'reuniao';
   const itens = a.hist.filter((x) => (abaFicha === 'conversas' ? conversa(x) : !conversa(x))).slice().reverse();
   if (!itens.length) lista.append(el('li', 'vazio', abaFicha === 'conversas' ? 'Nenhuma conversa ainda.' : 'Nenhum trabalho registrado ainda.'));
@@ -1360,6 +1438,35 @@ function desenharFicha() {
     if (extra && extra !== ev.resumo) li.append(el('pre', 'detalhe', extra));
     lista.append(li);
   }
+}
+function desenharAbaXp(lista, a) {
+  const P = window.__placar, d = P && P.agente ? P.agente(a.nome) : null;
+  if (!d) { lista.append(el('li', 'vazio', P && P.indisponivel ? 'Placar indisponível.' : 'Sem pontos registrados para este agente ainda.')); return; }
+  const cn = CORES_NIVEL[Math.max(0, Math.min(4, d.nivel - 1))];
+  const li = el('li', 'xp-resumo'); li.style.borderLeftColor = cn;
+  const t = el('div', 'xp-titulo'); t.style.color = cn; t.textContent = estrelas(d.nivel) + '  ' + d.titulo_nivel + ' · nível ' + d.nivel;
+  const barra = el('div', 'xp-barra'), enc = el('i'); enc.style.width = Math.round(progressoXp(a.xp || d) * 100) + '%'; enc.style.background = cn; barra.append(enc);
+  const falta = d.xp_proximo == null ? 'nível máximo' : 'faltam ' + Math.max(0, d.xp_proximo - d.xp) + ' XP para ' + (d.titulo_proximo || 'o próximo nível');
+  li.append(t, el('div', 'xp-linha', d.xp + ' XP · ' + (d.prs || 0) + ' PR(s) pontuado(s)'), barra, el('div', 'xp-linha dim', falta));
+  lista.append(li);
+  const secao = (txt) => lista.append(el('li', 'xp-secao', txt));
+  secao('Últimos pontos');
+  if (!(d.ultimos || []).length) lista.append(el('li', 'vazio', 'Nenhum ponto ainda.'));
+  for (const u of d.ultimos || []) {
+    const x = el('li', 'xp-ponto'), topo = el('div', 'topo');
+    topo.append(el('b', null, u.pr != null ? 'PR #' + u.pr : 'Skills'), el('span', u.pontos < 0 ? 'neg' : 'pos', (u.pontos > 0 ? '+' : '') + u.pontos));
+    if (u.data) topo.append(el('span', 't', String(u.data).slice(0, 10)));
+    x.append(topo);
+    for (const m of u.motivos || []) x.append(el('div', /[-−]\s*\d+\s*$/.test(m) ? 'motivo neg' : 'motivo pos', m));
+    lista.append(x);
+  }
+  if ((d.auditoria || []).length) {
+    secao('⚠️ Auditorias abertas');
+    for (const u of d.auditoria) { const x = el('li', 'xp-auditoria'); x.append(el('b', null, 'PR #' + u.pr), el('span', null, ' — ' + u.motivo)); lista.append(x); }
+  }
+  secao('Skills');
+  lista.append(el('li', 'xp-linha', (d.skills_autor || []).length ? 'Autoria: ' + d.skills_autor.join(', ') : 'Nenhuma skill de autoria ainda.'));
+  lista.append(el('li', 'xp-linha', 'Reusadas por outros agentes: ' + (d.skills_reusadas_por_outros || 0)));
 }
 $('fichaFechar').addEventListener('click', fecharFicha);
 document.querySelectorAll('#ficha .abas button').forEach((b) => b.addEventListener('click', () => { abaFicha = b.dataset.aba; desenharFicha(); }));
@@ -1544,7 +1651,7 @@ function quadro() {
   requestAnimationFrame(quadro);
   const t = agora(), dt = Math.min(0.1, t - anterior); anterior = t;
   tickDemo(t);
-  tickSocial(t);
+  tickSocial(t); tickConfete(dt);
   for (const a of ordemAgentes) atualizarAgente(a, dt, t);
   for (const s of subagentes.slice()) {
     const idade = t - s.nasc;
@@ -1566,7 +1673,7 @@ function quadro() {
 }
 requestAnimationFrame(quadro);
 poll();
-window.__office = { agentes, processar, camera, controles, iniciarFoco, VISAO_GERAL, SLOTS,
+window.__office = { agentes, processar, ficha: (nome, aba) => { const a = agentes.get(normalizarNome(nome)); if (!a) return false; if (aba) abaFicha = aba; focarAgente(a); abrirFicha(a); return true; }, xpDefinir, comemorar, emDemo, CORES_NIVEL, estrelas, progressoXp, atualizarFicha: () => desenharFicha(), camera, controles, iniciarFoco, VISAO_GERAL, SLOTS,
   pausar: (nome, lugar) => { const a = agentes.get(normalizarNome(nome)); return !!a && !a.atual && !a.fila.length && a.sentado && iniciarPausa(a, lugar); },
   pingpong: (n1, n2) => { const a = agentes.get(normalizarNome(n1)), b = agentes.get(normalizarNome(n2)); return !!a && !!b && iniciarPartida(a, b); },
   voltar: (nome) => interromperPausa(agentes.get(normalizarNome(nome))),

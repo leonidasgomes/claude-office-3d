@@ -98,7 +98,7 @@ def quem(d):
 def detalhe_de(entrada):
     """O que exatamente o agente fez (comando, arquivo, busca), para a ficha do agente."""
     partes = []
-    for k in ("command", "file_path", "path", "pattern", "glob", "url", "query", "prompt", "subagent_type", "name"):
+    for k in ("skill", "args", "command", "file_path", "path", "pattern", "glob", "url", "query", "prompt", "subagent_type", "name"):
         v = (entrada or {}).get(k)
         if v:
             partes.append(f"{k}: {v}")
@@ -107,6 +107,8 @@ def detalhe_de(entrada):
 
 def resumo_de(ferramenta, entrada):
     entrada = entrada or {}
+    if entrada.get("skill"):   # ferramenta Skill: o XP conta quem usa a skill de quem
+        return ("usa a skill " + str(entrada["skill"]))[:90]
     for k in ("description", "summary", "file_path", "pattern", "prompt", "command", "url", "query"):
         if entrada.get(k):
             texto = str(entrada[k])

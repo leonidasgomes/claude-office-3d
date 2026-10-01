@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="kanban.css">
 <link rel="stylesheet" href="prs.css">
+<link rel="stylesheet" href="placar.css">
 <!-- three.js: do CDN por padrão; se o instalador baixou para vendor/, o servidor troca este endereço por /vendor/three/ -->
 <script type="importmap">
 { "imports": {
@@ -33,10 +34,19 @@
       <div id="kanbanFiltros"></div>
       <div id="kanbanColunas"></div>
     </section>
+    <section id="placar" hidden>
+      <header>
+        <div><h3>Placar do time</h3><div id="placarInfo"></div></div>
+        <button id="placarFechar" title="Fechar (Esc)">×</button>
+      </header>
+      <div id="placarTime"></div>
+      <div id="placarOrdem"><span>Ordenar por:</span><button data-ordem="nome">Nome</button><button data-ordem="nivel">Nível</button></div>
+      <ol id="placarLista"></ol>
+    </section>
     <section id="ficha" hidden>
       <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)">×</button></header>
       <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
-      <div class="abas"><button data-aba="trabalho">O que está fazendo</button><button data-aba="conversas">O que está falando</button></div>
+      <div class="abas"><button data-aba="trabalho">O que está fazendo</button><button data-aba="conversas">O que está falando</button><button data-aba="xp" id="abaXp">XP</button></div>
       <ol id="fichaLista"></ol>
     </section>
   </div>
@@ -46,6 +56,7 @@
       <div class="botoes">
         <button id="btnPrs" title="Pull requests esperando o seu merge">PRs <span id="prsConta" hidden></span></button>
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
+        <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
         <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
         <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
         <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
@@ -60,5 +71,6 @@
 <script type="module" src="escritorio.js"></script>
 <script type="module" src="kanban.js"></script>
 <script type="module" src="prs.js"></script>
+<script type="module" src="placar.js"></script>
 </body>
 </html>
