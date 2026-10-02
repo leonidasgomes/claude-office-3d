@@ -49,3 +49,17 @@ button.ativo { background: #b45309; border-color: #f59e0b; }
   #agentes { flex-direction: row; flex-wrap: wrap; }
   #agentes li { flex: 1 1 45%; }
 }
+
+/* Modo leve no celular/tablet (classe "movel" posta por movel.js): painéis em tela cheia e botões grandes para o toque */
+html.movel, html.movel body { overscroll-behavior: none; }
+html.movel #app { flex-direction: column; }
+html.movel #painel { width: 100%; height: 42%; border-left: 0; border-top: 1px solid #2a3340; }
+html.movel #agentes { flex-direction: row; flex-wrap: wrap; max-height: none; }
+html.movel #agentes li { flex: 1 1 45%; min-height: 48px; }
+html.movel .botoes { flex-wrap: wrap; }
+html.movel button, html.movel #placarOrdem button { min-height: 44px; padding: 8px 14px; font-size: 16px; }
+html.movel #prs, html.movel #kanban, html.movel #placar, html.movel #ficha, html.movel #celular { position: fixed; inset: 0; width: auto; max-height: none; border-radius: 0; border-width: 0; z-index: 20; padding: 12px; }
+html.movel #prsFechar, html.movel #kanbanFechar, html.movel #placarFechar, html.movel #fichaFechar, html.movel #celularFechar { min-width: 48px; min-height: 48px; font-size: 26px; }
+html.movel #ficha .abas button { min-height: 48px; }
+html.movel #prsLista .botao { padding: 10px 14px; font-size: 16px; }
+html.movel #feed li, html.movel #fichaLista li { font-size: 14px; }

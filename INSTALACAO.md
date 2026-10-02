@@ -44,7 +44,8 @@ até a confirmação final; Ctrl+C cancela.
 5. **GitHub (opcional)** — repositório para os PRs (sugere o `git remote get-url origin` do projeto), quadro do
    GitHub Projects para o Kanban (lista os projects do dono com `gh project list`) e o nome do status check que
    significa "aprovado pela revisão".
-6. **Aparência e servidor** — título, tema, apelidos, porta e se quer baixar o three.js para usar offline.
+6. **Aparência e servidor** — título, tema, apelidos, XP, porta, **"Permitir acesso pelo celular na rede local? [s/N]"**
+   (padrão **não**; se sim, "Usar HTTPS (recomendado)? [S/n]", veja a seção 9) e se quer baixar o three.js para usar offline.
 7. **Hook do Claude Code** — escopo **usuário** (`~/.claude/settings.json`, vale para todos os projetos; o filtro
    de pastas do passo 3 continua valendo) ou **projeto** (`<projeto>/.claude/settings.local.json`). O assistente mostra
    o bloco JSON, faz **backup com data** do arquivo, acrescenta sem apagar os hooks que você já tem e não duplica se
@@ -115,6 +116,7 @@ pergunta se você quer abrir o escritório agora.
   Ativar XP e níveis? (pontos por PR mergeado e skills; mostra o nível de cada agente na mesa) [S/n]:
   ...
   Porta do servidor local [8765]:
+  Permitir acesso pelo celular na rede local? (protegido por QR code; só redes privadas) [s/N]:
   Baixar o three.js 0.160.0 para vendor/ (funciona sem internet)? [s/N]: s
 
 ================================================================
@@ -179,7 +181,10 @@ recarregar a página (a porta só muda reiniciando o servidor).
 
 ```jsonc
 {
-  "porta": 8765,                      // porta do servidor local (sempre em 127.0.0.1)
+  "porta": 8765,                      // porta do servidor local (em 127.0.0.1; com o celular ligado, veja a seção 9)
+  "rede_local": false,                // true = acesso pelo celular na rede local (seção 9); padrão: desligado
+  "rede_https": true,                 // com rede_local: HTTPS com CA local (porta+1) e certificado público em porta+2
+  "rede_tailscale": false,            // com rede_local: aceita também 100.64.0.0/10 (Tailscale)
   "titulo": "Claude Office 3D",       // nome no painel, na aba do navegador e no quadro da parede (tema neutro)
   "projetos": ["C:/projetos/loja"],   // pastas monitoradas: o hook só registra sessões com cwd dentro delas
                                       // (lista vazia = registra TODAS as sessões)
@@ -195,6 +200,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
       "mesa": "lider",                // lider | dev | design | pesquisa | padrao (formato da mesa)
       "lider": true,                  // sessão principal do Claude Code; convoca reuniões (padrão: o 1º da lista)
       "auxiliar": false,              // true = não vai às reuniões
+      "sala": "diretoria",            // opcional: sala fechada própria com a mesa grande (veja abaixo); omita nos demais
       "outros_nomes": ["main", "lead", "team-lead"]  // outros nomes que significam este agente
     }
   ],
@@ -230,6 +236,8 @@ recarregar a página (a porta só muda reiniciando o servidor).
 
 (O `config.json` de verdade é JSON puro, sem comentários — veja `config.exemplo.json`.)
 
+**Agente de exemplo "Diretor".** O `config.exemplo.json` traz, como quinto agente, um **Diretor** (função "Prioriza e resolve casos difíceis", `"sala": "diretoria"`): quem tem `"sala": "diretoria"` ganha uma sala fechada à direita da sala de reunião, com a mesa grande dele lá dentro. O prompt de exemplo desse agente (revisão semanal e caso difícil, com 3 chapéus) está em `modelos/diretor.md`. Sem nenhum agente assim o escritório fica como sempre foi.
+
 ## 6. Como funciona
 
 ```
@@ -259,7 +267,10 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - **PRs** — pull requests abertos, ordenados: prontos para o seu merge, aguardando revisão, bloqueados (conflito ou
   reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
 - **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho, auditorias abertas (vermelho)
-  e PRs para conferir (amarelo); o nível também aparece no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
+  e PRs para conferir (amarelo), com os botões **✓ Conferido** / **Liberar pontos** / **Desfazer**; o nível também aparece
+  no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
+- **📱 Celular** — (só no PC, quando ligado) QR para instalar o certificado e parear o celular; lista e revoga aparelhos.
+  Veja a seção 9.
 - **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
 - **Apelidos** — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
 - **Demo** — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
@@ -326,7 +337,11 @@ tile amarelo "para conferir" e as listas "🔴 Auditoria" e "🟡 Para conferir"
 (vermelho se houver auditoria, amarelo se só houver itens para conferir) e na saída do `xp.py`. No `placar.json`:
 `time.auditorias_abertas`, `time.conferir_abertos` e, por agente, `auditoria` e `conferir` (`[{pr, motivo, arquivos}]`).
 
-Depois de **conferir** o PR (a decisão é sempre sua: agentes não resolvem os próprios itens):
+Depois de **conferir** o PR (a decisão é sempre sua: agentes não resolvem os próprios itens), use os **botões do Placar**
+(em cada item amarelo "✓ Conferido", em cada vermelho "Liberar pontos" com confirmação, e "Desfazer" nos já resolvidos; o
+resultado aparece na hora, com um aviso de 10 s para desfazer) ou os comandos abaixo, que fazem a mesma coisa. Os botões
+chamam `POST /api/xp/...` e recalculam o placar só a partir do cache (`xp.py ... --so-placar`), sem consultar o GitHub;
+só funcionam no PC (e, no celular pareado com "ver e conferir", só o "✓ Conferido" e o "Desfazer" do que foi conferido):
 
 ```bash
 python xp.py --liberar 123     # vermelho: PR #123 deixa de ser auditado e pontua normalmente
@@ -363,7 +378,115 @@ reais com e sem a skill, compare o resultado (testes passando, retrabalho, tempo
 gatilho certo"*. Se a versão com a skill ganhar de forma consistente, rode `skills.py promover`; se não, marque
 `rejeitado`. Recomenda-se um A/B por semana, só para candidatos em `pronto-ab`.
 
-## 9. Times de agentes do Claude Code — dicas
+## 9. Acesso pelo celular (rede local)
+
+Opcional e **desligado por padrão**: sem nada disso o servidor só escuta em `127.0.0.1` e o celular não alcança o
+escritório. Ligado, dá para ver o escritório (e, se você permitir, marcar PRs como conferidos) pelo celular no mesmo Wi-Fi,
+com sessão própria por aparelho, HTTPS com uma autoridade certificadora (CA) local gerada no seu PC (grátis, sem conta) e
+uma lista de regras bem fechada (resumo no fim da seção).
+
+### Ligar
+
+- Windows: `abrir_escritorio.bat celular` (ou `reiniciar_escritorio.bat celular` para reiniciar já ligado). Linux/macOS:
+  `./abrir_escritorio.sh celular`. Também vale `python servidor.py --rede-local` ou `"rede_local": true` no `config.json`.
+- O assistente de instalação pergunta no passo 6 "Permitir acesso pelo celular na rede local? [s/N]" (padrão **não**) e, se
+  você disser que sim, "Usar HTTPS (recomendado)? [S/n]".
+- Chaves do `config.json`: `rede_local` (padrão `false`), `rede_https` (padrão `true`) e `rede_tailscale` (padrão `false`,
+  veja "Fora de casa").
+- Portas (com HTTPS, `porta` = a do config, padrão 8765):
+
+| Porta | Protocolo | Escuta em | Para quê |
+|---|---|---|---|
+| `porta` (8765) | HTTP | só `127.0.0.1` | o seu PC, como sempre |
+| `porta + 1` (8766) | HTTPS (TLS 1.2+) | `0.0.0.0` | o celular |
+| `porta + 2` (8767) | HTTP | `0.0.0.0` | **só** o certificado público da CA (`/ca.crt`, `/ca.mobileconfig` e uma página de instruções); o resto é 404 |
+
+  Sem como gerar o certificado (nem a biblioteca `cryptography` nem o `openssl`), o servidor avisa e cai para **HTTP em
+  `0.0.0.0:porta`**, ainda com sessão por aparelho, mas sem criptografia (veja os riscos). `--sem-https` força esse modo.
+- Instalar a biblioteca ajuda: `pip install cryptography` (no Windows o `openssl` que vem com o Git também serve).
+
+### Firewall do Windows (faça você mesmo: o escritório nunca mexe nele)
+
+1. Na primeira vez que o Python escutar na rede o Windows mostra "O Firewall do Windows Defender bloqueou alguns recursos
+   deste aplicativo". Marque **somente "Redes privadas"** e desmarque "Redes públicas". Clique em "Permitir acesso".
+2. Confira se o seu Wi-Fi está como rede **Privada**: Configurações > Rede e Internet > Wi-Fi > (sua rede) >
+   Perfil de rede = **Privada** (em PowerShell: `Get-NetConnectionProfile`). Em rede Pública o Windows bloqueia a entrada,
+   e isso é o desejado em café/hotel/aeroporto.
+3. Se a caixa não apareceu ou você marcou errado: Painel de Controle > Sistema e Segurança > Firewall do Windows Defender
+   > "Permitir um aplicativo..." > Python > marque só "Privada".
+
+### Instalar o certificado (uma vez por celular) e parear
+
+No PC, abra o escritório em `http://127.0.0.1:8765/` e clique em **📱 Celular** (o botão só existe no PC, em `localhost`):
+
+1. **Instalar o certificado**: leia o primeiro QR (aponta para `http://<ip do PC>:8767/`).
+   - iPhone (Safari): baixe o perfil; Ajustes > Geral > VPN e Gerenciamento de Dispositivos > instalar; depois Ajustes >
+     Geral > Sobre > Ajustes de Certificados Confiáveis > ativar o "Claude Office 3D".
+   - Android: Configurações > Segurança > Criptografia e credenciais > Instalar um certificado > Certificado de CA (o
+     Chrome confia em CA instalada pelo usuário).
+   - Alternativa sem instalar: abra o endereço seguro, aceite o aviso do navegador uma vez e **confira a impressão digital
+     SHA-256** do certificado com a mostrada no painel (CA e servidor).
+   - A CA só vale para **IPs privados** (`10/8`, `172.16/12`, `192.168/16`, e `100.64/10` se `rede_tailscale`) e para
+     `localhost`/`*.local` (NameConstraints, marcado como crítico): instalá-la no celular **não** permite falsificar
+     nenhum site da internet. Validade: CA 3 anos; certificado do servidor 390 dias (limite do iOS: 397), refeito
+     sozinho quando os IPs da máquina mudam ou faltam menos de 30 dias. Tudo fica em `dados/tls/` (fora do git);
+     `ca.key` nunca é servida.
+2. **Parear**: escolha a permissão ("Só ver" ou "Ver e conferir"), clique em "Gerar QR code" e leia o QR com o celular. O
+   código é de **uso único**, vale **10 minutos** e só o hash dele fica guardado. O celular mostra uma página pedindo o
+   **nome do aparelho** ("Celular do Leo"); ao tocar em "Parear" ele ganha uma sessão própria (cookie `HttpOnly`,
+   `Secure`, `SameSite=Strict`, 30 dias). Em `dados/dispositivos.json` ficam só o **hash (sha256)** da sessão, o nome, a
+   permissão, quando foi pareado e o último acesso/IP.
+
+### Permissões
+
+| | PC (localhost) | Celular "ver e conferir" | Celular "ver" |
+|---|---|---|---|
+| Ver escritório, placar, Kanban, PRs | sim | sim | sim |
+| `✓ Conferido` (amarelo) | sim | sim | não (403) |
+| `Desfazer` | tudo | só o que foi **conferido** | não |
+| `Liberar pontos` (vermelho) | sim | **não**: só pelo PC | não |
+| Gerar código, revogar, recriar certificados | sim | não | não |
+
+As ações de XP (`POST /api/xp/conferido`, `/liberar`, `/desfazer`, corpo `{"pr": N}`) exigem `Content-Type: application/json`,
+`X-Office-Acao: 1`, `Origin` igual ao host acessado e, no celular, também o token anti-CSRF da sessão (`X-Office-Csrf`,
+entregue em `GET /api/sessao`). O celular tem no máximo **10 ações por minuto** (429 depois disso).
+
+### Revogar, histórico e recriar
+
+- **Revogar**: no painel 📱 Celular há a lista de aparelhos (nome, permissão, quando foi pareado, último acesso e IP) com
+  **Revogar** por aparelho e **Revogar todos**. A sessão some do `dados/dispositivos.json` e o aparelho recebe 401 na
+  próxima requisição. Apagar a linha do arquivo também revoga.
+- **Histórico**: toda ação (do PC ou do celular), pareamento e revogação vai para `dados/acoes.jsonl` (quando, o quê, PR,
+  origem, IP). `GET /api/acoes` devolve as últimas 50; o **Placar** mostra a seção "Histórico de ações" e cada
+  "conferido" tem um link para **desfazer**. Tudo é reversível.
+- **Recriar certificados**: botão no painel (só no PC); apaga `dados/tls/` e gera de novo. Os celulares precisam instalar a
+  CA de novo.
+- Força bruta: 5 códigos errados em 10 minutos bloqueiam aquele IP por 15 minutos (429). O console do servidor registra
+  as tentativas negadas (IP e rota, nunca códigos ou cookies).
+
+### Riscos e limites
+
+- Só IPs de rede privada entram (`192.168/16`, `10/8`, `172.16/12`, `fd00::/8`, mais `100.64/10` do Tailscale);
+  qualquer outro IP recebe 403 e quem não tem sessão recebe 401 em tudo, com uma página que não revela nada.
+- **Com HTTPS** (padrão) o tráfego na rede local é criptografado. **Sem HTTPS** (modo de queda para HTTP) a conexão não é
+  criptografada: quem estiver no mesmo Wi-Fi poderia ver o tráfego e **copiar o cookie** do celular pareado. O impacto é
+  limitado: com o cookie dá para ver o escritório e, se o aparelho for "ver e conferir", marcar/desfazer "conferido" (no
+  máximo 10 vezes por minuto, e ainda assim com o token anti-CSRF da sessão); tudo fica registrado e é reversível; liberar
+  pontos, gerar código e revogar são só do PC.
+- O servidor só aceita GET/HEAD, exceto o pareamento, as ações de XP e as rotas `/rede/` (só do PC); respostas levam
+  `X-Content-Type-Options`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cache-Control: no-store`, uma
+  `Content-Security-Policy` própria e, no HTTPS, `Strict-Transport-Security`.
+- Quem tem acesso físico ao PC, ou à conta dele, tem acesso a tudo (`ca.key`, `dispositivos.json` etc.): proteja o PC.
+
+### Fora de casa: Tailscale
+
+Nada aqui deve ser exposto à internet (nada de redirecionar porta no roteador). Fora de casa use o
+[Tailscale](https://tailscale.com) (grátis para uso pessoal): instale no PC e no celular, ponha `"rede_tailscale": true` no
+`config.json` e reinicie com `celular`. O servidor passa a aceitar também a faixa `100.64.0.0/10` e a CA é refeita com essa
+faixa permitida (reinstale-a no celular). Abra `https://<IP do Tailscale do PC>:8766/` (o painel 📱 Celular lista os dois
+endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e `*.local`): use o IP.
+
+## 10. Times de agentes do Claude Code — dicas
 
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
   `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
@@ -379,7 +502,7 @@ gatilho certo"*. Se a versão com a skill ganhar de forma consistente, rode `ski
 - Para forçar o nome de quem roda uma sessão, defina a variável de ambiente `OFFICE_AGENTE=<nome>` antes de abrir o
   Claude Code.
 
-## 10. Solução de problemas
+## 11. Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
@@ -392,7 +515,7 @@ gatilho certo"*. Se a versão com a skill ganhar de forma consistente, rode `ski
 | Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
 | Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
 
-## 11. Desinstalar
+## 12. Desinstalar
 
 ```bash
 python instalar.py --desinstalar
@@ -403,9 +526,10 @@ Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.c
 (`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
 se quiser remover tudo.
 
-## 12. Privacidade
+## 13. Privacidade
 
-- Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora.
+- Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora (a não ser que você ligue o acesso pelo
+  celular, seção 9: aí ele também escuta na rede local, só para IPs privados com sessão pareada).
 - Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre
   agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
 - O servidor não entrega `config.json`, `dados/` nem os scripts pela web.

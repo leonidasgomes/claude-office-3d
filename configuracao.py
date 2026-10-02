@@ -84,6 +84,9 @@ PADRAO = {
            "atribuicao": {"prefixos_branch": {}, "padrao": ""}},
     "tema": "neutro",
     "apelidos": "desligado",
+    "rede_local": False,        # True: escuta na rede local para o celular (QR code + sessão pareada); False: só 127.0.0.1
+    "rede_https": True,         # com rede_local: HTTPS com CA própria (porta+1) e certificado público em porta+2
+    "rede_tailscale": False,    # com rede_local: aceita também a faixa 100.64.0.0/10 do Tailscale (entra na CA)
     # SendMessage cujo resumo/mensagem contém uma destas palavras vira reunião (todos vão para a sala)
     "palavras_reuniao": ["reunião", "reuniao", "alinhamento", "daily", "stand-up", "standup", "meeting",
                          "planejamento da sprint", "todos na sala", "retrospectiva"],
@@ -128,6 +131,7 @@ def normalizar_agente(ag, i):
         "outros_nomes": [str(o) for o in outros if str(o).strip()],
         "lider": bool(ag.get("lider")),        # sessão principal; convoca reuniões
         "auxiliar": bool(ag.get("auxiliar")),  # não vai às reuniões
+        "sala": "diretoria" if str(ag.get("sala") or "").strip().lower() == "diretoria" else "",   # "diretoria": sala fechada própria
     }
 
 
@@ -221,6 +225,9 @@ def normalizar(cfg):
     if isinstance(projetos, str):
         projetos = [projetos]
     base["projetos"] = [str(p) for p in projetos if str(p).strip()]
+    base["rede_local"] = cfg.get("rede_local") is True
+    base["rede_https"] = cfg.get("rede_https") is not False
+    base["rede_tailscale"] = cfg.get("rede_tailscale") is True
     agentes = cfg.get("agentes") or AGENTES_PADRAO
     base["agentes"] = [normalizar_agente(a, i) for i, a in enumerate(agentes)]
     if base["agentes"] and not any(a["lider"] for a in base["agentes"]):

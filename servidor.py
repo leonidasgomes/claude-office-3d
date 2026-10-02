@@ -6,12 +6,15 @@ Serve esta pasta e expõe:
   GET /kanban                         -> cartões do GitHub Projects (via gh, em cache)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
-Só escuta em 127.0.0.1, na porta do config.json (padrão 8765).
+Só escuta em 127.0.0.1, na porta do config.json (padrão 8765) — a não ser que o acesso pelo celular esteja ligado
+("rede_local": true no config.json ou --rede-local): aí escuta em 0.0.0.0 e só aceita IPs de rede privada que tenham
+o cookie do QR code (rede.py). O celular é só leitura.
 
-Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador)
+Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador)  --rede-local (liga o acesso pelo celular)
 """
 import json
 import mimetypes
+import os
 import re
 import subprocess
 import sys
@@ -20,18 +23,21 @@ import time
 import webbrowser
 from collections import deque
 from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import configuracao  # noqa: E402
+import rede  # noqa: E402
 
 HOST = "127.0.0.1"
 PASTA = Path(__file__).resolve().parent
 EVENTOS = PASTA / "dados" / "eventos.jsonl"
 VENDOR = PASTA / "vendor" / "three"
 XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
+XP_PASTA = PASTA / "dados" / "xp"
+XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
 KANBAN_VALIDADE = 120   # s; o gh leva alguns segundos, então o quadro é lido no máximo a cada 2 min
 PRS_VALIDADE = 60       # s
@@ -240,24 +246,68 @@ def index_html():
     return re.sub(r"<title>.*?</title>", f"<title>{titulo}</title>", texto, count=1)
 
 
-class Handler(SimpleHTTPRequestHandler):
-    def log_message(self, formato, *args):
-        pass  # silencioso
+ACOES_XP = {"/api/xp/conferido": "--conferido", "/api/xp/liberar": "--liberar", "/api/xp/desfazer": "--desfazer"}
+_xp_trava = threading.Lock()   # uma ação por vez
 
-    def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
-        super().end_headers()
 
-    def responder(self, corpo, tipo="application/json; charset=utf-8"):
-        if not isinstance(corpo, bytes):
-            corpo = json.dumps(corpo, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", tipo)
-        self.send_header("Content-Length", str(len(corpo)))
-        self.end_headers()
-        self.wfile.write(corpo)
+def _ler_json(arq, padrao):
+    try:
+        return json.loads(Path(arq).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return padrao
 
-    def do_GET(self):
+
+def acao_xp(rota, dados, ident):
+    """(código, resposta) da ação de XP dos botões do Placar; recalcula só a partir do cache (xp.py --so-placar)."""
+    flag = ACOES_XP[rota]
+    pr = dados.get("pr")
+    if isinstance(pr, bool) or not isinstance(pr, int) or pr <= 0:
+        return 400, {"ok": False, "erro": "pr deve ser um inteiro positivo"}
+    if not cfg()["xp"]["ativo"]:
+        return 400, {"ok": False, "erro": "XP desligado no config.json"}
+    placar = _ler_json(XP_PLACAR, None)
+    if not isinstance(placar, dict) or not isinstance(placar.get("agentes"), dict):
+        return 500, {"ok": False, "erro": "placar de XP indisponível (rode 'python xp.py')"}
+    ags = [a for a in placar["agentes"].values() if isinstance(a, dict)]
+    abertos = {"--conferido": {x.get("pr") for a in ags for x in a.get("conferir", [])},
+               "--liberar": {x.get("pr") for a in ags for x in a.get("auditoria", [])},
+               "--desfazer": set(_ler_json(XP_PASTA / "conferidos.json", [])) | set(_ler_json(XP_PASTA / "auditorias_resolvidas.json", []))}
+    if pr not in abertos[flag]:
+        return 404, {"ok": False, "erro": f"PR #{pr} não está na lista desta ação"}
+    if flag == "--desfazer" and ident.get("permissao") != "pc":   # celular só desfaz o que foi "conferido" (amarelo)
+        liberadas = set(_ler_json(XP_PASTA / "auditorias_resolvidas.json", []))
+        if pr in liberadas or pr not in set(_ler_json(XP_PASTA / "conferidos.json", [])):
+            return 403, {"ok": False, "erro": "o celular só desfaz PRs marcados como conferidos; liberar/desfazer liberação é só no PC"}
+    if not XP_PY.is_file():
+        return 500, {"ok": False, "erro": "xp.py não encontrado"}
+    if not _xp_trava.acquire(blocking=False):
+        return 409, {"ok": False, "erro": "outra ação de XP está em andamento"}
+    try:
+        r = subprocess.run([sys.executable, str(XP_PY), flag, str(pr), "--so-placar"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=180, cwd=str(PASTA), env=dict(os.environ, PYTHONUTF8="1"))
+    except (OSError, subprocess.SubprocessError) as e:
+        return 500, {"ok": False, "erro": str(e)[:200]}
+    finally:
+        _xp_trava.release()
+    if r.returncode != 0:
+        return 500, {"ok": False, "erro": ((r.stderr or r.stdout).strip().splitlines() or ["xp.py falhou"])[-1][:300]}
+    novo = _ler_json(XP_PLACAR, None)
+    if not isinstance(novo, dict):
+        return 500, {"ok": False, "erro": "placar não foi regravado"}
+    print(f"[xp] {flag} PR #{pr}", flush=True)
+    return 200, {"ok": True, "placar": novo}
+
+
+class Handler(rede.HandlerSeguro):
+    def api_post(self, rota, dados, ident):
+        return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
+
+    def caminho_bloqueado(self):
+        # não expõe dados brutos, configuração com caminhos locais nem scripts
+        p = urlparse(self.path).path.lower()
+        return p.startswith(("/dados", "/.")) or p.endswith((".py", ".bat", ".sh", ".json", ".md", ".txt"))
+
+    def rotas_get(self):
         url = urlparse(self.path)
         qs = parse_qs(url.query)
         if url.path == "/config":
@@ -287,13 +337,49 @@ class Handler(SimpleHTTPRequestHandler):
                 corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
             return self.responder(corpo)
         if url.path in ("/", "/index.html"):
-            return self.responder(index_html().encode("utf-8"), "text/html; charset=utf-8")
-        # não expõe dados brutos, configuração com caminhos locais nem scripts
-        p = url.path.lower()
-        if p.startswith(("/dados", "/.")) or p.endswith((".py", ".bat", ".sh", ".json", ".md")):
-            self.send_error(404)
-            return
-        super().do_GET()
+            texto = index_html()
+            self.csp_html = texto  # o hash do importmap inline entra na Content-Security-Policy
+            return self.responder(texto.encode("utf-8"), "text/html; charset=utf-8")
+        self.servir_estatico()
+
+
+def opcoes_rede(args):
+    """(em_rede, https, tailscale): --rede-local liga; config.json: "rede_local", "rede_https" (padrão true), "rede_tailscale"."""
+    c = cfg()
+    return ("--rede-local" in args or bool(c.get("rede_local"))), c.get("rede_https") is not False, c.get("rede_tailscale") is True
+
+
+def TITULO():
+    return cfg()["titulo"]
+
+
+def abrir_servidores(args, porta, em_rede, https, tailscale):
+    """Sobe os servidores. Modo rede com HTTPS: HTTP só em 127.0.0.1:porta (o PC), HTTPS em 0.0.0.0:porta+1 (celular) e
+    uma porta auxiliar 0.0.0.0:porta+2 só com o certificado público da CA. Sem HTTPS (ou sem como gerar o certificado):
+    HTTP em 0.0.0.0:porta, com aviso. Devolve (principal, [extras]) ou (None, []) se a porta estiver ocupada."""
+    obj = Handler.rede = rede.Rede(PASTA, em_rede)
+    usa_https = bool(em_rede and https and "--sem-https" not in args and obj.iniciar_tls(porta, tailscale))
+    if em_rede and https and "--sem-https" not in args and not usa_https:
+        print("AVISO: HTTPS indisponível (" + obj.tls_info.get("erro", "?") + "). Caindo para HTTP na rede local.")
+    host = "0.0.0.0" if (em_rede and not usa_https) else HOST
+    try:
+        principal = ThreadingHTTPServer((host, porta), partial(Handler, directory=str(PASTA)))
+    except OSError:
+        return None, []
+    extras = []
+    if usa_https:
+        try:
+            https_srv = rede.ServidorHTTPS(("0.0.0.0", porta + 1), partial(Handler, directory=str(PASTA)), obj.tls_ctx)
+            HandlerCA = rede.HandlerCA
+            HandlerCA.rede = obj
+            extras = [https_srv, ThreadingHTTPServer(("0.0.0.0", porta + 2), HandlerCA)]
+        except OSError as e:
+            for s in extras:
+                s.server_close()
+            principal.server_close()
+            print(f"Não consegui abrir as portas {porta + 1} (HTTPS) e {porta + 2} (certificado): {e}")
+            return None, []
+    return principal, extras
 
 
 def main():
@@ -303,18 +389,26 @@ def main():
         try:
             porta = int(args[args.index("--porta") + 1])
         except (IndexError, ValueError):
-            print("uso: servidor.py [--porta N] [--sem-navegador]")
+            print("uso: servidor.py [--rede-local] [--sem-https] [--porta N] [--sem-navegador]")
             return
     navegador = "--sem-navegador" not in args
+    em_rede, https, tailscale = opcoes_rede(args)
+    servidor, extras = abrir_servidores(args, porta, em_rede, https, tailscale)
     endereco = f"http://{HOST}:{porta}/"
-    try:
-        servidor = ThreadingHTTPServer((HOST, porta), partial(Handler, directory=str(PASTA)))
-    except OSError:
-        print(f"Porta {porta} ocupada: provavelmente o escritório já está rodando. Abrindo o navegador em {endereco}")
+    if servidor is None:
+        print(f"Porta {porta} ocupada: provavelmente o escritório já está rodando. Abrindo o navegador.")
         if navegador:
             webbrowser.open(endereco)
         return
-    print(f"{cfg()['titulo']} rodando em {endereco}  (Ctrl+C para encerrar)")
+    print(f"{TITULO()} rodando em {endereco}  (Ctrl+C para encerrar)")
+    if em_rede and extras:
+        print(f"ACESSO PELO CELULAR LIGADO (HTTPS): HTTPS em 0.0.0.0:{porta + 1}, certificado da CA em http://<ip>:{porta + 2}/ . "
+              "Só IPs privados com sessão pareada entram; use o botão 'Celular' da página no PC.")
+    elif em_rede:
+        print("ACESSO PELO CELULAR LIGADO (sem HTTPS): escutando em 0.0.0.0 (rede local). Só IPs privados com sessão pareada "
+              "entram; use o botão 'Celular' da página no PC.")
+    for s in extras:
+        threading.Thread(target=s.serve_forever, daemon=True).start()
     if not configuracao.caminho_config().exists():
         print("Aviso: config.json não encontrado — usando a configuração padrão. Rode 'python instalar.py'.")
     if navegador:
@@ -325,6 +419,9 @@ def main():
         print("\nEncerrando.")
     finally:
         servidor.server_close()
+        for s in extras:
+            s.shutdown()
+            s.server_close()
 
 
 if __name__ == "__main__":

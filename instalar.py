@@ -49,7 +49,7 @@ EVENTOS_HOOK = ("PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
-          "placar.js", "placar.css", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
+          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]
@@ -378,23 +378,33 @@ def arquivos_settings(escopo, projetos, args):
 # ---------------------------------------------------------------- arquivos da instalação
 ATALHO_BAT = """@echo off
 rem Abre o Claude Office 3D: sobe o servidor local (porta do config.json) e abre o navegador.
+rem   abrir_escritorio.bat           -> so neste PC (127.0.0.1)
+rem   abrir_escritorio.bat celular   -> liga o acesso pelo celular na rede local (QR code no botao Celular)
 chcp 65001 >nul
 cd /d "%~dp0"
+set EXTRA=
+if /i "%~1"=="celular" set EXTRA=--rede-local
 echo Iniciando o Claude Office 3D...
 where python >nul 2>nul
-if %errorlevel%==0 (python "servidor.py") else (py -3 "servidor.py")
+if %errorlevel%==0 (python "servidor.py" %EXTRA%) else (py -3 "servidor.py" %EXTRA%)
 pause
 """
 ATALHO_SH = """#!/usr/bin/env sh
 # Abre o Claude Office 3D: sobe o servidor local (porta do config.json) e abre o navegador.
+#   ./abrir_escritorio.sh           -> só neste PC (127.0.0.1)
+#   ./abrir_escritorio.sh celular   -> liga o acesso pelo celular na rede local (QR code no botão Celular)
 cd "$(dirname "$0")" || exit 1
 echo "Iniciando o Claude Office 3D..."
+if [ "$1" = "celular" ]; then shift; set -- --rede-local "$@"; fi
 exec python3 servidor.py "$@"
 """
 REINICIAR_BAT = """@echo off
 rem Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo, minimizado.
+rem   reiniciar_escritorio.bat celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
 chcp 65001 >nul
 cd /d "%~dp0"
+set EXTRA=
+if /i "%~1"=="celular" set EXTRA=--rede-local
 set PY=python
 where python >nul 2>nul || set PY=py -3
 for /f "usebackq delims=" %%p in (`%PY% configuracao.py --porta`) do set PORTA=%%p
@@ -403,18 +413,22 @@ echo Encerrando o servidor antigo do escritorio (porta %PORTA%)...
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort %PORTA% -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue; Write-Host ('  processo ' + $_ + ' encerrado') }"
 powershell -NoProfile -Command "Start-Sleep -Seconds 1"
 echo Subindo o escritorio de novo...
-start "Claude Office 3D" /min /D "%~dp0" cmd /c %PY% servidor.py --sem-navegador
+start "Claude Office 3D" /min /D "%~dp0" cmd /c %PY% servidor.py --sem-navegador %EXTRA%
 echo Pronto: http://127.0.0.1:%PORTA%/  (a pagina aberta reconecta sozinha)
+if defined EXTRA echo Acesso pelo celular LIGADO: use o botao Celular na pagina para ver o QR code.
 """
 REINICIAR_SH = """#!/usr/bin/env sh
 # Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo em segundo plano.
+#   ./reiniciar_escritorio.sh celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
 cd "$(dirname "$0")" || exit 1
+EXTRA=""
+[ "$1" = "celular" ] && EXTRA="--rede-local"
 PORTA=$(python3 configuracao.py --porta 2>/dev/null || echo 8765)
 echo "Encerrando o servidor antigo do escritório (porta $PORTA)..."
 PIDS=$(lsof -ti tcp:"$PORTA" -sTCP:LISTEN 2>/dev/null)
 if [ -n "$PIDS" ]; then kill $PIDS 2>/dev/null; echo "  processo(s) $PIDS encerrado(s)"; sleep 1; fi
 echo "Subindo o escritório de novo..."
-nohup python3 servidor.py --sem-navegador >/dev/null 2>&1 &
+nohup python3 servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
 echo "Pronto: http://127.0.0.1:$PORTA/"
 """
 ATALHOS = {"abrir_escritorio.bat": ATALHO_BAT, "abrir_escritorio.sh": ATALHO_SH,
@@ -606,6 +620,8 @@ def assistente(args):
                           lambda v: None if v.isdigit() and 1024 <= int(v) <= 65535 else "porta entre 1024 e 65535"))
     if porta_ocupada(porta):
         print(f"  Aviso: a porta {porta} está em uso agora (talvez o escritório já esteja aberto). Tudo bem se for ele.")
+    rede_local = sim_nao("  Permitir acesso pelo celular na rede local? (protegido por QR code; só redes privadas)", False)
+    rede_https = sim_nao("  Usar HTTPS (recomendado)? (CA local gerada no seu PC; precisa instalar o certificado no celular uma vez)", True) if rede_local else True
     three_offline = sim_nao(f"  Baixar o three.js {configuracao.VERSAO_THREE} para vendor/ (funciona sem internet)?", False)
 
     titulo_passo(7, "Hook do Claude Code")
@@ -620,7 +636,7 @@ def assistente(args):
         print("    " + json.dumps(bloco_hooks(destino), ensure_ascii=False, indent=2).replace("\n", "\n    "))
 
     config = {"porta": porta, "titulo": titulo, "projetos": projetos, "agentes": agentes, "github": github,
-              "tema": tema, "apelidos": apelidos,
+              "tema": tema, "apelidos": apelidos, "rede_local": rede_local, "rede_https": rede_https,
               "xp": {"ativo": xp_ativo, "desde": (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")}}
     print()
     print("=" * 64)
@@ -633,6 +649,7 @@ def assistente(args):
           f"{(github['projeto_owner'] + ' #' + str(github['projeto_numero'])) if github['projeto_numero'] else '—'}"
           f"  check={github['check_revisao'] or '(review)'}")
     print(f"  Tema:       {tema}   apelidos: {apelidos}   porta: {porta}   three.js: {'local' if three_offline else 'CDN'}")
+    print(f"  Celular:    {('LIGADO (rede local, ' + ('HTTPS' if rede_https else 'HTTP') + '; veja a seção Acesso pelo celular do INSTALACAO.md)') if rede_local else 'desligado (só neste PC)'}")
     print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o INSTALACAO.md)' if xp_ativo else 'desligado'}")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
@@ -644,6 +661,9 @@ def assistente(args):
     print("  Instalação concluída!")
     print(f"  Para abrir depois: {'abrir_escritorio.bat (duplo clique)' if WINDOWS else './abrir_escritorio.sh'}"
           f" em {destino}  →  http://127.0.0.1:{cfg['porta']}/")
+    if cfg.get("rede_local"):
+        print("  Acesso pelo celular: se o Firewall do Windows perguntar ao abrir, marque SÓ \"Redes privadas\"; depois use o botão"
+              " 📱 Celular da página (no PC) para ver o QR code.")
     if hook != "nenhum":
         print("  Sessões do Claude Code já abertas precisam ser reiniciadas para carregar o hook.")
     if not args.sem_abrir and sim_nao("  Abrir o escritório agora?", True):

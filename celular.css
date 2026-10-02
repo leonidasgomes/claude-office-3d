@@ -1,0 +1,24 @@
+/* Painel "Celular": QR code para parear o celular na rede local (só aparece no PC, em localhost) */
+#celular { position: absolute; top: 10px; left: 10px; width: min(440px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow-y: auto; z-index: 6; background: #11171ef7; border: 1px solid #2a3340; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
+#celular header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+#celular h3 { margin: 0; font-size: 17px; }
+#celularFechar { font-size: 18px; line-height: 1; padding: 2px 9px; }
+#celularCorpo { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+#celularCorpo p { margin: 0; }
+#celularQr { display: flex; justify-content: center; }
+#celularQr canvas { border-radius: 8px; max-width: 100%; height: auto !important; image-rendering: pixelated; }
+#celularEndereco { font: 13px/1.4 Consolas, monospace; background: #0f1419; border-radius: 6px; padding: 6px 8px; word-break: break-all; text-align: center; }
+#celularCorpo select { background: #232d3a; color: #e6edf3; border: 1px solid #3a4756; border-radius: 6px; padding: 4px 8px; font: inherit; }
+#celularCorpo .aviso { background: #3b2a0c; border-left: 4px solid #f59e0b; border-radius: 0 6px 6px 0; padding: 6px 8px; color: #fde7c0; }
+#celularCorpo code { background: #0f1419; border-radius: 4px; padding: 1px 5px; font-family: Consolas, monospace; }
+#celularCorpo .acoes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#celularCorpo .msg { color: #8b98a8; }
+#celularCorpo .gerar { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+#celularCorpo .gerar > p { margin: 0; }
+#celularCorpo .aparelhos h4 { margin: 4px 0; font-size: 14px; }
+#celularCorpo .aparelho { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #1d2530; border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
+#celularCorpo .perm { color: #9aa7b6; }
+#celularCorpo .passo { background: #161c24; border: 1px solid #2a3340; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+#celularCorpo .passo h4 { margin: 0; font-size: 14px; }
+#celularCorpo .impressao code { font-size: 11px; word-break: break-all; }
+html.movel #celularCorpo select, html.movel #celularCorpo button { min-height: 44px; font-size: 16px; }

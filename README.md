@@ -29,6 +29,11 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
   **Placar** cooperativo e auditoria anti-trapaça nos testes (`python xp.py`).
 - **Skills**: ciclo candidata -> promovida com `python skills.py`, A/B com o skill-creator e registro de quem usa
   cada skill. Veja a seção "XP, níveis e skills" do [INSTALACAO.md](INSTALACAO.md).
+- **Sala da diretoria** (opcional): marque um agente com `"sala": "diretoria"` no config e ele ganha uma sala fechada com
+  a mesa dele; em `modelos/` há um prompt genérico de Diretor e um exemplo de briefing semanal (`briefing_diretor.py`).
+- **Acesso pelo celular** (opcional, desligado por padrão): `abrir_escritorio.bat celular` liga o servidor na rede local
+  com HTTPS (CA própria que só vale para IPs privados), pareamento por QR code de uso único, uma sessão por aparelho,
+  permissões "só ver" ou "ver e conferir", histórico de ações e revogação. Veja a seção 9 do [INSTALACAO.md](INSTALACAO.md).
 - Temas: `neutro` (escritório genérico) ou `sao-paulo` (maquete de SP, placas de rua, orelhão, ipês, coxinha…).
 - Apelidos divertidos só na tela (brasileiros, de cinema ou desligados).
 - Modo **Demo** para ver o escritório funcionando sem nenhum agente rodando.

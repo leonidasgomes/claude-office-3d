@@ -21,6 +21,8 @@ Uso:  python xp.py                 calcula e grava o placar
       python xp.py --liberar N     libera o PR N da auditoria (vermelho; você revisou a mudança) e recalcula
       python xp.py --conferido N   marca o PR N como conferido (o amarelo some da lista) e recalcula
       python xp.py --desfazer N    volta a auditar/conferir o PR N
+      ... --so-placar              (com qualquer opção acima) só recalcula o placar a partir do cache, sem consultar o
+                                   GitHub: é o que os botões do Placar do escritório usam
 """
 import hashlib
 import json
@@ -432,8 +434,10 @@ def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas, conferidos):
     reprovado = fatos.get("reprovado_revisao", False)
     verm, amar = classificar(pr["number"], fatos.get("diff"), resolvidas, conferidos)
     faixa = "vermelho" if verm else "amarelo" if amar else "verde"
+    v0, a0 = classificar(pr["number"], fatos.get("diff"), set(), set())   # sem as marcações: o que o PR teria
+    resolvido = "liberado" if (v0 and pr["number"] in resolvidas) else "conferido" if (not v0 and a0 and pr["number"] in conferidos) else ""
     base = {"pr": pr["number"], "titulo": pr["title"], "agente": agente, "fonte": fonte, "data": pr["mergedAt"],
-            "faixa": faixa, "conferir": amar, "auditoria_itens": verm}
+            "faixa": faixa, "conferir": amar, "auditoria_itens": verm, "resolvido": resolvido}
     if verm:
         return dict(base, pontos=0, motivos=["manipulação de teste: pontos zerados"],
                     auditoria="; ".join(x["motivo"] for x in verm), aprovado_primeira=not reprovado, retrabalho=False)
@@ -543,6 +547,7 @@ def main():
             return 2
     t0 = time.time()
     completo = "--completo" in sys.argv
+    so_placar = "--so-placar" in sys.argv   # botões do escritório: nada de rede além, no máximo, da lista de PRs (1 vez)
     repo = GITHUB["repo"]
     estado = {} if completo else carregar(ESTADO, {})
     assinatura = json.dumps([repo, GITHUB["check_revisao"], XP["padroes_teste"], XP["padroes_avaliacao"]], ensure_ascii=False)
@@ -553,7 +558,9 @@ def main():
     status_cache = estado.get("status", {})
     avisos = []
     cartoes = {}
-    if GITHUB["projeto_owner"] and GITHUB["projeto_numero"]:
+    if so_placar:
+        cartoes = estado.get("kanban", {})
+    elif GITHUB["projeto_owner"] and GITHUB["projeto_numero"]:
         try:
             cartoes = ler_kanban()
             estado["kanban"] = cartoes
@@ -561,15 +568,17 @@ def main():
             cartoes = estado.get("kanban", {})
             avisos.append(f"Kanban indisponível ({str(e)[:80]}); usando o último conhecido")
     prs = []
-    if not repo:
+    if so_placar and estado.get("lista") is not None:
+        prs = estado["lista"]
+    elif not repo:
         avisos.append("github.repo não configurado: só as skills pontuam")
     else:
         try:
             prs = listar_prs(repo)
         except Exception as e:
             avisos.append(f"PRs indisponíveis ({str(e)[:100]}); só as skills pontuam")
-    novos = [p for p in prs if str(p["number"]) not in fatos_cache]
-    refazer = [p for p in prs if str(p["number"]) in fatos_cache and fatos_cache[str(p["number"])].get("regra") != REGRA_VERSAO]
+    novos = [] if so_placar else [p for p in prs if str(p["number"]) not in fatos_cache]
+    refazer = [] if so_placar else [p for p in prs if str(p["number"]) in fatos_cache and fatos_cache[str(p["number"])].get("regra") != REGRA_VERSAO]
 
     def tarefa(p):
         try:
@@ -602,6 +611,8 @@ def main():
                 if "diff" not in f:   # formato antigo: aproveita o que havia
                     f["diff"] = {"apagados": f.get("apaga_teste", []), "skip_incond": f.get("skip_teste", [])}
     estado["prs"], estado["status"] = fatos_cache, status_cache
+    if prs:
+        estado["lista"] = prs   # PRs mergeados (metadados): permite recalcular o placar sem o GitHub (--so-placar)
     gravar_json(ESTADO, estado)
 
     resolvidas, conferidos = set(carregar(RESOLVIDAS, [])), set(carregar(CONFERIDOS, []))
@@ -657,6 +668,8 @@ def main():
                  "faixas": {f: sum(1 for r in resultados if r["faixa"] == f) for f in ("verde", "amarelo", "vermelho")},
                  "prs_ignorados": ignorados},
         "agentes": agentes,
+        "resolvidos": [{"pr": r["pr"], "titulo": r["titulo"][:90], "agente": r["agente"], "tipo": r["resolvido"]}
+                       for r in sorted(resultados, key=lambda r: r["pr"], reverse=True) if r["resolvido"]],
     }
     if avisos:
         placar["avisos"] = avisos

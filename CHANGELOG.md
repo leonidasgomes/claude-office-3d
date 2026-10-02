@@ -20,6 +20,30 @@ XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no conf
 - Hook: a ferramenta Skill vira "usa a skill <nome>" (com a skill e os argumentos no detalhe).
 - Config: bloco `xp` (`ativo`, `desde`, `pesos`, `niveis`, `padroes_teste`, `atribuicao`); o assistente pergunta
   "Ativar XP e níveis?" no passo 6. Seção nova "XP, níveis e skills" no INSTALACAO.md.
+- Sala da diretoria: um agente com `"sala": "diretoria"` no config ganha uma sala fechada (paredes de madeira e vidro,
+  mesa grande, poltrona, estante, quadros e plaquinha) à direita da sala de reunião, com a mesa dele lá dentro; quem
+  conversa com ele anda até lá pela porta, e as reuniões continuam na sala normal. Sem agente assim, o escritório
+  fica como era.
+- `modelos/diretor.md` (prompt genérico de um Diretor com 3 chapéus: revisão semanal e caso difícil) e
+  `modelos/briefing_diretor.py` (exemplo: briefing de uma página a partir do config e do `gh`, sem gastar tokens).
+
+- **Acesso pelo celular na rede local** (opcional, desligado por padrão; `--rede-local`, `abrir_escritorio.bat celular`
+  ou `"rede_local": true`): HTTP só em `127.0.0.1:porta` para o PC, HTTPS em `porta+1` para a rede e uma porta auxiliar
+  `porta+2` só com o certificado público da CA. CA própria gerada em `dados/tls/` (biblioteca `cryptography` ou `openssl`;
+  NameConstraints só para IPs privados e `localhost`/`.local`, basic constraints `CA:TRUE, pathlen:0`, certificado do
+  servidor de 390 dias renovado sozinho); botão **Recriar certificados**. Se não houver como gerar, cai para HTTP com aviso.
+- Pareamento por **código de uso único** (10 min, só o hash guardado) com permissão "ver" ou "conferir"; cada aparelho tem
+  sessão própria (cookie `HttpOnly`, `Secure`, `SameSite=Strict`, 30 dias; só o hash em `dados/dispositivos.json`), token
+  anti-CSRF, limite de 10 ações por minuto, bloqueio de IP após 5 códigos errados, só IPs privados, só GET/HEAD (exceto as
+  ações), cabeçalhos de segurança (CSP por hash, HSTS no HTTPS) e histórico em `dados/acoes.jsonl`.
+- Botão **📱 Celular** (só em localhost): QR para instalar o certificado e QR de pareamento, impressões digitais SHA-256,
+  lista de aparelhos com Revogar. QR code em JavaScript puro e embutido (`qr.js`), sem internet.
+- Modo leve no celular (pixel ratio 1, sem antialias, menos confete, painéis em tela cheia com botões grandes).
+- **Botões no Placar** (✓ Conferido, Liberar pontos, Desfazer, histórico de ações) no lugar dos comandos de terminal; o
+  `xp.py` ganhou `--so-placar` (recalcula só do cache) e o placar traz a lista `resolvidos`.
+- Config: `rede_local`, `rede_https`, `rede_tailscale` e `"sala": "diretoria"` por agente; o assistente pergunta
+  "Permitir acesso pelo celular na rede local? [s/N]" e "Usar HTTPS (recomendado)? [S/n]" no passo 6; novos arquivos
+  `rede.py`, `tls.py`, `qr.js`, `movel.js`, `celular.js` e `celular.css`. Seção 9 nova no INSTALACAO.md.
 
 ## 1.0.0
 Primeira versão pública do Claude Office 3D.

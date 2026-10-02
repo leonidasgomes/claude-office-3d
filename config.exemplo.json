@@ -11,7 +11,9 @@
     {"nome": "Designer", "titulo": "Designer", "funcao": "Interface", "cor": "#f59e0b",
      "apelido_br": "Maria", "apelido_cinema": "Trinity", "mesa": "design"},
     {"nome": "Pesquisa", "titulo": "Pesquisa", "funcao": "Documentação e busca", "cor": "#22c55e",
-     "apelido_br": "Aquiles", "apelido_cinema": "Indiana", "mesa": "pesquisa", "auxiliar": false}
+     "apelido_br": "Aquiles", "apelido_cinema": "Indiana", "mesa": "pesquisa", "auxiliar": false},
+    {"nome": "Diretor", "titulo": "Diretor", "funcao": "Prioriza e resolve casos difíceis", "cor": "#a855f7",
+     "apelido_br": "Heitor", "apelido_cinema": "Gandalf", "mesa": "padrao", "sala": "diretoria", "auxiliar": true}
   ],
   "github": {
     "repo": "minha-org/meu-app",
@@ -36,6 +38,9 @@
     "amostra_1_em": 10,
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa", "design/": "Designer"}, "padrao": "Dev"}
   },
+  "rede_local": false,
+  "rede_https": true,
+  "rede_tailscale": false,
   "tema": "neutro",
   "apelidos": "desligado",
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]

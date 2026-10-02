@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="kanban.css">
 <link rel="stylesheet" href="prs.css">
 <link rel="stylesheet" href="placar.css">
+<link rel="stylesheet" href="celular.css">
 <!-- three.js: do CDN por padrão; se o instalador baixou para vendor/, o servidor troca este endereço por /vendor/three/ -->
 <script type="importmap">
 { "imports": {
@@ -43,6 +44,10 @@
       <div id="placarOrdem"><span>Ordenar por:</span><button data-ordem="nome">Nome</button><button data-ordem="nivel">Nível</button></div>
       <ol id="placarLista"></ol>
     </section>
+    <section id="celular" hidden>
+      <header><div><h3>📱 Celular na rede local</h3></div><button id="celularFechar" title="Fechar (Esc)">×</button></header>
+      <div id="celularCorpo"></div>
+    </section>
     <section id="ficha" hidden>
       <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)">×</button></header>
       <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
@@ -57,6 +62,7 @@
         <button id="btnPrs" title="Pull requests esperando o seu merge">PRs <span id="prsConta" hidden></span></button>
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
         <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
+        <button id="btnCelular" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
         <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
         <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
         <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
@@ -72,5 +78,6 @@
 <script type="module" src="kanban.js"></script>
 <script type="module" src="prs.js"></script>
 <script type="module" src="placar.js"></script>
+<script type="module" src="celular.js"></script>
 </body>
 </html>

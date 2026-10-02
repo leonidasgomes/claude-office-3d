@@ -3,6 +3,7 @@
 // Time, cores, apelidos e tema vêm do config.json (lido do servidor em /config por config.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MOVEL } from './movel.js';   // celular/tablet: modo leve (pixel ratio 1, sem antialias, menos confete)
 import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG } from './config.js';
 
 const TEMA_SP = CONFIG.tema === 'sao-paulo';   // "sao-paulo": decoração temática; "neutro": sem ela
@@ -29,6 +30,11 @@ const Z_CORREDOR = 5;               // corredor atrás das cadeiras
 const SALA = { x0: 2, x1: 14, z0: 7.5, z1: 17, cx: 8, cz: 12.5 };
 const ONDE_ESTOU = { porta: new THREE.Vector3(SALA.cx, 0, SALA.z0 + 0.6) };
 const X_MESAS = [11, 5.8, 1.2, -3.4, -8, -12.6, -17.2, -21.8, -26.4, -31];
+// Agente com "sala": "diretoria" no config: ganha uma sala fechada à direita da sala de reunião, com a mesa dele lá dentro
+// (a porta fica na parede oeste). Sem nenhum agente assim, o escritório fica como sempre foi (sem a sala, piso menor).
+const DIRETORIA = { x0: 18, x1: 28, z0: 7.5, z1: 17, cx: 23, mesaZ: 9.3, portaZ: 12.6, xCorredor: 16.6 };
+const SALA_DE = {};                 // chave -> 'diretoria' (ver "sala" no config)
+const TEM_DIRETORIA = AGENTES_CFG.some((a) => a.sala === 'diretoria');
 const CORES_EXTRA = [0xa855f7, 0x14b8a6, 0xec4899, 0x06b6d4, 0x84cc16, 0xf97316];
 const corHex = (c, padrao) => { const n = parseInt(String(c || '').replace('#', ''), 16); return Number.isFinite(n) ? n : padrao; };
 // Por agente configurado (chave = nome em minúsculas): cor, nome de exibição + função, tipo de mesa e apelidos.
@@ -43,6 +49,7 @@ AGENTES_CFG.forEach((ag, i) => {
   CORES_FIXAS[k] = corHex(ag.cor, CORES_EXTRA[i % CORES_EXTRA.length]);
   PERFIS[k] = [ag.titulo || ag.nome, ag.funcao || ''];
   MESA_DE[k] = ag.mesa || (i === 0 ? 'lider' : 'padrao');
+  if (ag.sala === 'diretoria') SALA_DE[k] = 'diretoria';
   if (ag.cargo) CARGOS[k] = ag.cargo;
   if (ag.apelido_br) FIXOS_BR[k] = ag.apelido_br;
   if (ag.apelido_cinema) FIXOS_CINEMA[k] = ag.apelido_cinema;
@@ -110,19 +117,21 @@ const ulAgentes = $('agentes'), olFeed = $('feed');
 const contCena = $('cena');
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ antialias: !MOVEL, powerPreference: 'high-performance' });
 } catch (e) {
   const el = $('erro'); el.hidden = false; el.textContent = 'WebGL indisponível neste navegador.';
   throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setPixelRatio(MOVEL ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.shadowMap.enabled = false;
 contCena.appendChild(renderer.domElement);
 
 const cena = new THREE.Scene();
 cena.background = new THREE.Color(0x1b2430);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 300);
-const VISAO_GERAL = { pos: new THREE.Vector3(-10, 48, 68), alvo: new THREE.Vector3(-10, 0, 8) };
+const VISAO_GERAL = TEM_DIRETORIA   // com a diretoria o escritório fica mais largo: a câmera enquadra tudo
+  ? { pos: new THREE.Vector3(-3, 52, 74), alvo: new THREE.Vector3(-3, 0, 8) }
+  : { pos: new THREE.Vector3(-10, 48, 68), alvo: new THREE.Vector3(-10, 0, 8) };
 // em telas estreitas (retrato) a visão geral se afasta para a cena caber na largura
 function posVisaoGeral() {
   const k = Math.min(1.5, Math.max(1, 0.9 / (camera.aspect || 1.5)));
@@ -182,7 +191,7 @@ function texturaPiso() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.round((LIM.x1 - LIM.x0) / 2), Math.round((LIM.z1 - LIM.z0) / 2)); t.magFilter = THREE.NearestFilter;
   return t;
 }
-const LIM = { x0: -34, x1: 17, z0: -6, z1: 26 };  // piso ampliado: à esquerda as áreas de pausa, à frente a praça (maquete de SP no tema "sao-paulo")
+const LIM = { x0: -34, x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // piso ampliado: à esquerda as áreas de pausa, à frente a praça (maquete de SP no tema "sao-paulo")
 (function construirAmbiente() {
   const piso = new THREE.Mesh(new THREE.PlaneGeometry(LIM.x1 - LIM.x0, LIM.z1 - LIM.z0), new THREE.MeshLambertMaterial({ map: texturaPiso() }));
   piso.rotation.x = -Math.PI / 2;
@@ -199,7 +208,7 @@ const LIM = { x0: -34, x1: 17, z0: -6, z1: 26 };  // piso ampliado: à esquerda 
   caixa(esp, alt, LIM.z1 - LIM.z0, par, LIM.x1, alt / 2, (LIM.z0 + LIM.z1) / 2, null);
   caixa(LIM.x1 - LIM.x0, 0.25, esp, mat(0x5f6b7b), (LIM.x0 + LIM.x1) / 2, 0.12, LIM.z1, null);
   // janelas decorativas no fundo
-  for (let x = -31; x <= 14; x += 6) caixa(3.4, 0.9, 0.05, mat(0x7fb7e6, 'basic'), x, 1.0, LIM.z0 + 0.18, null);
+  for (let x = -31; x <= LIM.x1 - 3; x += 6) caixa(3.4, 0.9, 0.05, mat(0x7fb7e6, 'basic'), x, 1.0, LIM.z0 + 0.18, null);
 })();
 
 // Sala de reunião com paredes de vidro
@@ -712,6 +721,71 @@ function construirDecoracaoNeutra() {
 }
 if (TEMA_SP) construirDecoracaoSP(); else construirDecoracaoNeutra();
 
+// ---------------------------------------------------------------- Sala da diretoria (opcional: "sala": "diretoria")
+// Sala fechada pequena: paredes de madeira (parte de baixo) e vidro (em cima, para ver lá dentro), porta na parede oeste,
+// mesa grande de madeira (criada junto das outras mesas), poltrona, estante, quadros e plaquinha.
+function construirDiretoria() {
+  const D = DIRETORIA, h = 2.8, hBaixo = 1.1, esp = 0.18, zc = (D.z0 + D.z1) / 2, larg = D.x1 - D.x0, prof = D.z1 - D.z0;
+  const madeira = mat(0x6b4a32), escura = mat(0x3b2314), dourado = mat(0xd4a017), couro = mat(0x5b2a1c);
+  // piso de madeira clara e tapete vinho
+  const piso = new THREE.Mesh(new THREE.PlaneGeometry(larg, prof), mat(0xa9824f));
+  piso.rotation.x = -Math.PI / 2; piso.position.set(D.cx, 0.015, zc); cena.add(piso);
+  const tap = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 5.2), mat(0x6e1f2b));
+  tap.rotation.x = -Math.PI / 2; tap.position.set(D.cx, 0.025, 12.2); cena.add(tap);
+  const parede = (w, d, x, z, vidro) => {
+    caixa(w, hBaixo, d, madeira, x, hBaixo / 2, z, null);
+    if (vidro) { const v = caixa(w, h - hBaixo, d * 0.4, matVidro, x, hBaixo + (h - hBaixo) / 2, z, null); v.renderOrder = 2; }
+    else caixa(w, h - hBaixo, d, madeira, x, hBaixo + (h - hBaixo) / 2, z, null);
+    caixa(w + 0.04, 0.1, d + 0.04, escura, x, h + 0.05, z, null);   // rodateto
+  };
+  parede(larg, esp, D.cx, D.z0, false);                 // fundo (sólida, com a estante)
+  parede(esp, prof, D.x1, zc, false);                   // lado leste (sólida, com o quadro)
+  parede(larg, esp, D.cx, D.z1, true);                  // frente, voltada para a câmera (vidro)
+  // lado oeste com porta (vão de 2,4 em torno de portaZ), em vidro
+  const vao = 1.2, zPortaA = D.portaZ - vao, zPortaB = D.portaZ + vao;
+  parede(esp, zPortaA - D.z0, D.x0, (D.z0 + zPortaA) / 2, true);
+  parede(esp, D.z1 - zPortaB, D.x0, (zPortaB + D.z1) / 2, true);
+  caixa(esp + 0.04, 0.35, zPortaB - zPortaA, escura, D.x0, h - 0.17, D.portaZ, null);   // verga da porta
+  // estante cheia de livros no fundo
+  const ez = D.z0 + 0.4, ex = D.cx + 2.9;
+  caixa(2.6, 2.4, 0.5, escura, ex, 1.2, ez, null);
+  const cores = [0x7f1d1d, 0x1e3a8a, 0x14532d, 0xa16207, 0x581c87, 0x0f766e];
+  for (let n = 0; n < 4; n++) {
+    caixa(2.4, 0.05, 0.46, madeira, ex, 0.45 + n * 0.55, ez + 0.02, null);
+    for (let i = 0; i < 9; i++) caixa(0.2, 0.38, 0.3, mat(cores[(i + n * 2) % cores.length]), ex - 1.0 + i * 0.25, 0.68 + n * 0.55, ez + 0.1, null);
+  }
+  // quadros com moldura dourada: horizonte na parede do fundo e mapa na parede leste
+  const quadro = (cx, cy, z, rotY, w, hh, desenhar) => {
+    const m = caixa(w + 0.18, hh + 0.18, 0.05, dourado, cx, cy, z, null); m.rotation.y = rotY;
+    const dz = Math.cos(rotY) * 0.04, dx = -Math.sin(rotY) * 0.04;
+    placaCanvas(w, hh, 320, Math.round(320 * hh / w), cx + dx, cy, z + dz, desenhar, rotY);
+  };
+  quadro(D.cx - 2.9, 1.95, D.z0 + 0.12, 0, 2.4, 1.3, (g, W, H) => {
+    g.fillStyle = '#1b2a41'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#f5c518'; g.beginPath(); g.arc(W * 0.72, H * 0.3, 26, 0, 7); g.fill();
+    g.fillStyle = '#0b1320';
+    [[18, 110, 34], [58, 70, 40], [104, 95, 30], [140, 55, 44], [190, 88, 36], [236, 62, 40], [280, 100, 30]].forEach(([x, y, w]) => g.fillRect(x, y * H / 160, w, H));
+  });
+  quadro(D.x1 - 0.12, 1.95, D.z1 - 4.2, -Math.PI / 2, 2.2, 1.3, (g, W, H) => {
+    g.fillStyle = '#e9dfc2'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#7a6a4a'; g.lineWidth = 3;
+    for (let i = 20; i < W; i += 40) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, H); g.stroke(); }
+    for (let i = 20; i < H; i += 40) { g.beginPath(); g.moveTo(0, i); g.lineTo(W, i); g.stroke(); }
+    g.fillStyle = '#8bb7e0'; g.fillRect(40, H * 0.58, W - 80, 22); g.fillStyle = '#d32f2f'; g.beginPath(); g.arc(W * 0.55, H * 0.4, 12, 0, 7); g.fill();
+  });
+  // poltrona de visita (couro) virada para a mesa, mesinha de canto, plantas e globo
+  const pol = new THREE.Group(); pol.position.set(26.0, 0, 14.6); pol.rotation.y = Math.atan2(D.cx - 26.0, 10.2 - 14.6) + Math.PI; cena.add(pol);
+  caixa(1.1, 0.45, 1.0, couro, 0, 0.3, 0, pol); caixa(1.1, 0.8, 0.22, couro, 0, 0.75, 0.42, pol);
+  caixa(0.22, 0.6, 1.0, escura, -0.6, 0.55, 0, pol); caixa(0.22, 0.6, 1.0, escura, 0.6, 0.55, 0, pol);
+  cilindro(0.35, 0.35, 0.55, madeira, 27.2, 0.28, 16.2, null, 10); cilindro(0.1, 0.1, 0.16, mat(0xf2f4f7), 27.2, 0.63, 16.2, null, 8);
+  planta(19.1, 16.2, 1.15); planta(27.2, 8.4, 0.9); planta(29.5, 25, 1.1); planta(29.5, -4.5, 1.1);
+  cilindro(0.04, 0.04, 0.95, mat(0x4a4f57), 19.2, 0.48, 8.4, null, 6);
+  const globo = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 9), mat(0x2f6fb5)); globo.position.set(19.2, 1.2, 8.4); cena.add(globo);
+  // plaquinha "Diretoria" sobre a porta
+  criarPlaquinha('🏛️ Diretoria', 0xf5c518, D.x0, 3.6, D.portaZ);
+}
+if (TEM_DIRETORIA) construirDiretoria();
+
 // ---------------------------------------------------------------- Mesas
 const COR_TECLAS = 0x4b5563, corTmp = new THREE.Color();
 const mesas = [];     // {x, accent, monitores:[mats], kind}
@@ -727,11 +801,12 @@ function texturaMapa() {
   g.strokeStyle = '#7a6a4a'; g.lineWidth = 2; for (let i = 8; i < 64; i += 14) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 64); g.moveTo(0, i); g.lineTo(64, i); g.stroke(); }
   return new THREE.CanvasTexture(c);
 }
-function criarMesa(indice, nome, cor) {
-  const kind = tipoMesa(nome), x = X_MESAS[indice], boss = kind === 'lider';
-  const g = new THREE.Group(); g.position.set(x, 0, 0); cena.add(g);
-  const largura = boss ? 4.2 : 3.2, prof = boss ? 1.9 : 1.6;
-  const tampo = mat(boss ? 0x7a5230 : 0xb08a5e), pe = mat(0x2b313a);
+function criarMesa(indice, nome, cor, dir = false) {   // dir: mesa dentro da diretoria (agente com "sala": "diretoria")
+  const kind = dir ? 'diretoria' : tipoMesa(nome), boss = kind === 'lider';
+  const x = dir ? DIRETORIA.cx : X_MESAS[indice], z0 = dir ? DIRETORIA.mesaZ : 0;
+  const g = new THREE.Group(); g.position.set(x, 0, z0); cena.add(g);
+  const largura = dir ? 5.2 : boss ? 4.2 : 3.2, prof = dir ? 2.1 : boss ? 1.9 : 1.6;
+  const tampo = mat(dir ? 0x5a3a22 : boss ? 0x7a5230 : 0xb08a5e), pe = mat(dir ? 0x2a1a10 : 0x2b313a);
   caixa(largura, 0.12, prof, tampo, 0, 1.0, 0, g);
   caixa(0.12, 1.0, prof - 0.2, pe, -largura / 2 + 0.15, 0.5, 0, g);
   caixa(0.12, 1.0, prof - 0.2, pe, largura / 2 - 0.15, 0.5, 0, g);
@@ -754,27 +829,45 @@ function criarMesa(indice, nome, cor) {
     novoMonitor(-0.8, -0.4, 1.3, 0.8);
     const mapa = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8), new THREE.MeshLambertMaterial({ map: texturaMapa() }));
     mapa.rotation.x = -Math.PI / 2; mapa.position.set(0.8, 1.07, 0.15); g.add(mapa);
+  } else if (dir) {
+    novoMonitor(-1.0, -0.5, 1.5, 0.9); novoMonitor(0.7, -0.5, 1.5, 0.9);
+    caixa(0.7, 0.1, 0.3, mat(0xffd34d), -1.9, 1.11, 0.55, g); // plaquinha dourada
+    caixa(0.5, 0.04, 0.38, mat(0xf2f4f7), 1.7, 1.08, 0.2, g); // papéis
+    cilindro(0.1, 0.08, 0.2, mat(0x7f1d1d), 1.95, 1.18, -0.5, g, 8); // porta-canetas
   } else if (boss) {
     novoMonitor(-0.6, -0.5, 1.5, 0.9); novoMonitor(1.0, -0.5, 1.0, 0.7);
     caixa(0.5, 0.08, 0.3, mat(0xffd34d), -1.7, 1.1, 0.4, g); // plaquinha dourada
   } else novoMonitor(0, -0.4, 1.3, 0.8);
   // teclado (corpo escuro + faixa de teclas que pisca quando o agente trabalha) e mouse com mousepad
   const teclas = new THREE.MeshBasicMaterial({ color: COR_TECLAS });
-  const [kx, mx] = { dev: [0, 0.62], design: [-0.5, 0.1], pesquisa: [-0.8, -0.2], lider: [0.2, 0.85] }[kind] || [0, 0.6];
+  const [kx, mx] = { dev: [0, 0.62], design: [-0.5, 0.1], pesquisa: [-0.8, -0.2], lider: [0.2, 0.85], diretoria: [-0.1, 0.8] }[kind] || [0, 0.6];
   caixa(0.7, 0.03, 0.24, mat(0x1b2027), kx, 1.085, 0.32, g);
   caixa(0.64, 0.012, 0.17, teclas, kx, 1.107, 0.32, g);
   caixa(0.28, 0.01, 0.24, mat(0x111827), mx, 1.067, 0.32, g);
   caixa(0.09, 0.035, 0.14, mat(0x20262e), mx, 1.09, 0.32, g);
   // cadeira (assento na altura 0.5, atrás da mesa no lado +z)
   const cad = new THREE.Group(); cad.position.set(0, 0, 1.5); g.add(cad);
-  const mc = mat(boss ? 0x7f1d1d : 0x2d3643);
+  const mc = mat(dir ? 0x3b1e12 : boss ? 0x7f1d1d : 0x2d3643);
   caixa(0.85, 0.1, 0.85, mc, 0, 0.5, 0, cad);
-  caixa(0.85, 0.85, 0.1, mc, 0, 0.95, 0.42, cad);
+  caixa(0.85, dir ? 1.25 : 0.85, 0.1, mc, 0, dir ? 1.1 : 0.95, 0.42, cad);   // poltrona da diretoria: encosto alto
   cilindro(0.06, 0.06, 0.45, pe, 0, 0.25, 0, cad, 6);
   caixa(0.7, 0.05, 0.7, pe, 0, 0.03, 0, cad);
   // faixa colorida do agente na frente da mesa
   caixa(largura - 0.3, 0.1, 0.04, mat(cor, 'basic'), 0, 0.98 - 0.02, prof / 2 + 0.02, g);
-  const mesa = { indice, x, cor, kind, monitores, teclas, assento: new THREE.Vector3(x, 0, 1.6), visita: new THREE.Vector3(x + 1.2, 0, 3.0) };
+  const mesa = { indice, x, cor, kind, monitores, teclas, assento: new THREE.Vector3(x, 0, z0 + 1.6), visita: new THREE.Vector3(x + 1.2, 0, 3.0) };
+  // Rotas: saida = do assento até o corredor; entrada = o inverso; acesso = do corredor até o ponto de visita.
+  // Mesa comum: reta pelo corredor. Diretoria: pela porta da parede oeste.
+  mesa.saida = [new THREE.Vector3(x, 0, Z_CORREDOR)]; mesa.entrada = mesa.saida;
+  mesa.acesso = [new THREE.Vector3(mesa.visita.x, 0, Z_CORREDOR), mesa.visita];
+  mesa.sub = new THREE.Vector3(x - 1.6, 0, 2.6); mesa.foco = new THREE.Vector3(x, 1, 1.5);
+  if (dir) {
+    const D = DIRETORIA, xc = D.xCorredor, zp = D.portaZ;
+    mesa.visita = new THREE.Vector3(21.0, 0, 12.0);
+    mesa.saida = [new THREE.Vector3(21.2, 0, zp), new THREE.Vector3(D.x0 + 1.2, 0, zp), new THREE.Vector3(xc, 0, zp), new THREE.Vector3(xc, 0, Z_CORREDOR)];
+    mesa.entrada = [...mesa.saida].reverse();
+    mesa.acesso = [new THREE.Vector3(xc, 0, Z_CORREDOR), new THREE.Vector3(xc, 0, zp), new THREE.Vector3(D.x0 + 1.2, 0, zp), mesa.visita];
+    mesa.sub = new THREE.Vector3(26.8, 0, 11.8); mesa.foco = new THREE.Vector3(x, 1, z0 + 1.2);
+  }
   mesas.push(mesa);
   return mesa;
 }
@@ -813,7 +906,7 @@ function posturaSentado(f, sentado) {
 // ---------------------------------------------------------------- Agentes
 const agentes = new Map();   // nome -> agente
 const ordemAgentes = [];
-let extras = 0;
+let extras = 0, mesasComuns = 0, mesaDiretoria = null;
 
 function normalizarNome(n) {
   const s = String(n || '').trim();
@@ -831,9 +924,11 @@ function corDoAgente(nome) {
 function garantirAgente(nome) {
   nome = normalizarNome(nome) || 'Desconhecido';
   if (agentes.has(nome)) return agentes.get(nome);
-  if (ordemAgentes.length >= MAX_MESAS) return null; // sem mesa disponível
+  const naDiretoria = TEM_DIRETORIA && SALA_DE[nome.toLowerCase()] === 'diretoria' && !mesaDiretoria;   // uma mesa só na diretoria
+  if (!naDiretoria && mesasComuns >= MAX_MESAS) return null; // sem mesa disponível
   const cor = corDoAgente(nome);
-  const mesa = criarMesa(ordemAgentes.length, nome, cor);
+  const mesa = criarMesa(naDiretoria ? 7 : mesasComuns++, nome, cor, naDiretoria);
+  if (naDiretoria) mesaDiretoria = mesa;
   const fig = criarFigura(cor);
   cena.add(fig.raiz);
   const pf = rotulos(nome, perfil(nome));
@@ -865,17 +960,17 @@ function enfileirar(a, acao) {
 function caminhoParaCorredor(a, de) { return [new THREE.Vector3(de.x, 0, Z_CORREDOR)]; }
 function caminhoMesaAMesa(a, destino) {
   // de onde o agente estiver (mesa ou corredor) -> corredor -> frente da mesa do destinatário
-  return [new THREE.Vector3(a.mesa.x, 0, Z_CORREDOR), new THREE.Vector3(destino.visita.x, 0, Z_CORREDOR), destino.visita.clone()];
+  return [...a.mesa.saida, ...destino.acesso];
 }
-function caminhoVoltar(a, desdeVisita) {
-  return [new THREE.Vector3(desdeVisita.x, 0, Z_CORREDOR), new THREE.Vector3(a.mesa.x, 0, Z_CORREDOR), a.mesa.assento.clone()];
+function caminhoVoltar(a, mesaVisitada) {
+  return [...[...mesaVisitada.acesso].reverse(), ...a.mesa.entrada, a.mesa.assento.clone()];
 }
 function pontoAssento(i) {
   const ang = ANGULO_ASSENTO(i);
   return new THREE.Vector3(SALA.cx + Math.cos(ang) * 3.0, 0, SALA.cz + Math.sin(ang) * 3.0);
 }
 function caminhoParaSala(a, iAssento) {
-  const pts = [new THREE.Vector3(a.mesa.x, 0, Z_CORREDOR), new THREE.Vector3(SALA.cx, 0, Z_CORREDOR), new THREE.Vector3(SALA.cx, 0, SALA.z0 + 1.2)];
+  const pts = [...a.mesa.saida, new THREE.Vector3(SALA.cx, 0, Z_CORREDOR), new THREE.Vector3(SALA.cx, 0, SALA.z0 + 1.2)];
   // contorna a mesa pelo anel, no sentido mais curto, partindo do ângulo da porta (-90°)
   const alvo = ANGULO_ASSENTO(iAssento), porta = -Math.PI / 2;
   let d = alvo - porta; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -896,7 +991,7 @@ function caminhoDaSala(a, iAssento) {
     const ang = porta + d * (k / passos);
     pts.push(new THREE.Vector3(SALA.cx + Math.cos(ang) * 3.4, 0, SALA.cz + Math.sin(ang) * 3.4));
   }
-  pts.push(new THREE.Vector3(SALA.cx, 0, SALA.z0 + 1.2), new THREE.Vector3(SALA.cx, 0, Z_CORREDOR), new THREE.Vector3(a.mesa.x, 0, Z_CORREDOR), a.mesa.assento.clone());
+  pts.push(new THREE.Vector3(SALA.cx, 0, SALA.z0 + 1.2), new THREE.Vector3(SALA.cx, 0, Z_CORREDOR), ...a.mesa.entrada, a.mesa.assento.clone());
   return pts;
 }
 function acaoFim(a) { return { t: 'fn', fn: () => { a.estado = a.base; a.sentado = true; a.yawAlvo = Math.PI; } }; }
@@ -1029,7 +1124,7 @@ function lugarNormalizado(l) {
 }
 // Itens da pausa levam pausa:true; 'sair' diz por onde voltar ao corredor se a pausa for interrompida.
 function itemVolta(a, pts) {
-  return { t: 'caminho', pausa: true, volta: true, pts: [...pts, V3(a.mesa.x, Z_CORREDOR), a.mesa.assento.clone()],
+  return { t: 'caminho', pausa: true, volta: true, pts: [...pts, ...a.mesa.entrada, a.mesa.assento.clone()],
     estado: 'em pausa · voltando', sentarAoFinal: true, yawFinal: Math.PI };
 }
 function itemParaSlot(s, icone) {
@@ -1044,7 +1139,7 @@ function planejarPausa(a, s, prefixo, durFixa) {
   const estado = 'em pausa · ' + ROTULO_LUGAR[s.lugar];
   const [d0, d1] = DUR_PAUSA[s.lugar], dur = durFixa || d0 + Math.random() * (d1 - d0);
   const [icone, texto] = s.baloes[Math.floor(Math.random() * s.baloes.length)];
-  const ida = prefixo ? [...prefixo, ...s.rota, s.pos] : [V3(a.mesa.x, Z_CORREDOR), V3(s.entX, Z_CORREDOR), ...s.rota, s.pos];
+  const ida = prefixo ? [...prefixo, ...s.rota, s.pos] : [...a.mesa.saida, V3(s.entX, Z_CORREDOR), ...s.rota, s.pos];
   const saida = [...s.rota].reverse().concat([V3(s.entX, Z_CORREDOR)]);
   enfileirar(a, { t: 'caminho', pausa: true, pts: ida, estado, sentarAoFinal: s.sentar, yawFinal: s.yaw, sair: (i) => ida.slice(0, i).reverse() });
   const item = s.pp ? 'raquete' : itemParaSlot(s, icone);
@@ -1140,7 +1235,7 @@ function falar(a, destino, resumo, ferr) {
   const dirOlhar = yawPara(destino.mesa.visita, destino.mesa.assento);
   enfileirar(a, { t: 'caminho', pts, estado: 'conversando', yawFinal: dirOlhar });
   enfileirar(a, { t: 'esperar', dur: TEMPO_FALA, estado: 'conversando', balao: { texto: resumo, icone: iconeDe(ferr, 'sendmessage') } });
-  enfileirar(a, { t: 'caminho', pts: caminhoVoltar(a, destino.mesa.visita), estado: 'conversando', sentarAoFinal: true, yawFinal: Math.PI });
+  enfileirar(a, { t: 'caminho', pts: caminhoVoltar(a, destino.mesa), estado: 'conversando', sentarAoFinal: true, yawFinal: Math.PI });
   enfileirar(a, acaoFim(a));
 }
 function reuniao(participantes, falante, resumo, ferr) {
@@ -1166,7 +1261,7 @@ function balao(a, texto, ferr, dur = TEMPO_BALAO_TRABALHO) {
 // ---------------------------------------------------------------- XP, nível e comemoração
 // Dados vêm do placar.js (GET /xp ou demonstração). Aqui só desenhamos: rótulo da mesa, pulinhos, balão e confete.
 const TEMPO_FESTA = 4;
-const N_CONFETE = 140, confeteInfo = { vivos: 0 };
+const N_CONFETE = MOVEL ? 50 : 140, confeteInfo = { vivos: 0 };
 const confPos = new Float32Array(N_CONFETE * 3), confCor = new Float32Array(N_CONFETE * 3);
 const confVel = new Float32Array(N_CONFETE * 3), confVida = new Float32Array(N_CONFETE);
 const confGeo = new THREE.BufferGeometry();
@@ -1175,7 +1270,7 @@ confGeo.setAttribute('color', new THREE.BufferAttribute(confCor, 3));
 const confete = new THREE.Points(confGeo, new THREE.PointsMaterial({ size: 0.22, vertexColors: true, depthWrite: false }));
 confete.frustumCulled = false; confete.visible = false; cena.add(confete);
 const CORES_CONFETE = ['#ef4444', '#f59e0b', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'].map((c) => new THREE.Color(c));
-function soltarConfete(x, z, n = 45) {
+function soltarConfete(x, z, n = MOVEL ? 16 : 45) {
   let k = 0;
   for (let i = 0; i < N_CONFETE && k < n; i++) {
     if (confVida[i] > 0) continue;
@@ -1227,7 +1322,7 @@ function criarSubagente(pai, resumo, ferr, nomeSub, funcaoSub) {
   const rot = criarSprite(384, 96, 4.2, 1.05); desenharNome(rot, pf.titulo, cor, pf.funcao);
   rot.sprite.position.y = 2.6; fig.raiz.add(rot.sprite);
   const indice = subagentes.filter((s) => s.pai === pai).length % 3;
-  fig.raiz.position.set(pai.mesa.x - 1.6 - indice * 0.9, 0, 2.6);
+  fig.raiz.position.set(pai.mesa.sub.x - indice * 0.9, 0, pai.mesa.sub.z);
   fig.raiz.rotation.y = Math.PI * 0.9;
   const bal = criarSprite(640, 220, 7.0, 2.4);
   bal.sprite.position.y = 4.9;
@@ -1462,11 +1557,13 @@ function desenharAbaXp(lista, a) {
   }
   if ((d.auditoria || []).length) {
     secao('⚠️ Auditorias abertas');
-    for (const u of d.auditoria) { const x = el('li', 'xp-auditoria'); x.append(el('b', null, '🔴 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos zerados)')); lista.append(x); }
+    for (const u of d.auditoria) { const x = el('li', 'xp-auditoria'); x.append(el('b', null, '🔴 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos zerados)')); const bt = P.botao && P.botao('liberar', u.pr); if (bt) x.append(bt); lista.append(x); }
+    if (P.nota && P.nota('liberar')) lista.append(el('li', 'xp-linha dim', P.nota('liberar')));
   }
   if ((d.conferir || []).length) {
     secao('🟡 Para conferir');
-    for (const u of d.conferir) { const x = el('li', 'xp-conferir'); x.append(el('b', null, '🟡 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos normais)')); lista.append(x); }
+    for (const u of d.conferir) { const x = el('li', 'xp-conferir'); x.append(el('b', null, '🟡 PR #' + u.pr), el('span', null, ' — ' + u.motivo + ' (pontos normais)')); const bt = P.botao && P.botao('conferido', u.pr); if (bt) x.append(bt); lista.append(x); }
+    if (P.nota && P.nota('conferido')) lista.append(el('li', 'xp-linha dim', P.nota('conferido')));
   }
   secao('Skills');
   lista.append(el('li', 'xp-linha', (d.skills_autor || []).length ? 'Autoria: ' + d.skills_autor.join(', ') : 'Nenhuma skill de autoria ainda.'));
@@ -1491,7 +1588,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 // Foco de câmera
 let foco = null;
 function focarAgente(a) {
-  const alvo = new THREE.Vector3(a.mesa.x, 1, 1.5);
+  const alvo = a.mesa.foco.clone();
   iniciarFoco(alvo, alvo.clone().add(new THREE.Vector3(0, 6, 9)));
 }
 function iniciarFoco(alvo, pos) {
