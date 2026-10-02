@@ -155,7 +155,8 @@ let historico = [];      // GET /api/acoes, mais recentes primeiro
 const ROTULO_ACAO = { conferido: '✓ Conferido', liberar: 'Liberar pontos', desfazer: 'Desfazer' };
 const FLAG_ACAO = { conferido: '--conferido', liberar: '--liberar', desfazer: '--desfazer' };
 const TEXTO_ACAO = { conferido: 'marcado como conferido', liberar: 'liberado da auditoria', desfazer: 'voltou a ser auditado/conferido' };
-const ROTULO_HIST = { conferido: 'conferiu', liberar: 'liberou os pontos de', desfazer: 'desfez', parear: 'pareou o aparelho', revogar: 'revogou' };
+const ROTULO_HIST = { conferido: 'conferiu', liberar: 'liberou os pontos de', desfazer: 'desfez', parear: 'pareou o aparelho', revogar: 'revogou',
+  inscrever: 'ligou o push de alertas em', sair: 'desligou o push de alertas em', prefs: 'mudou os tipos de alerta em', teste: 'enviou um alerta de teste de' };
 let ocupado = false, toastTimer = null, resolvidosAberto = false, historicoAberto = false;
 const toastEl = el('div'); toastEl.id = 'placarToast'; toastEl.hidden = true; document.body.append(toastEl);
 function toast(msg, desfazerPr, erro) {

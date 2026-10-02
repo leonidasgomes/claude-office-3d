@@ -34,6 +34,9 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 - **Acesso pelo celular** (opcional, desligado por padrão): `abrir_escritorio.bat celular` liga o servidor na rede local
   com HTTPS (CA própria que só vale para IPs privados), pareamento por QR code de uso único, uma sessão por aparelho,
   permissões "só ver" ou "ver e conferir", histórico de ações e revogação. Veja a seção 9 do [INSTALACAO.md](INSTALACAO.md).
+- **Alertas** (🔔): avisa quando há algo esperando por você (PR pronto para o merge, PR com conflito ou reprovado, auditoria
+  vermelha nova, pergunta do Diretor, lembrete de 24 h) com toast e notificação com a página aberta e **Web Push** com o
+  celular fechado (cifrado, sem comando nem código no aviso, 20 por hora no máximo). Veja a seção 10 do [INSTALACAO.md](INSTALACAO.md).
 - **Responsivo no celular**: gaveta inferior arrastável com a lista de agentes, menu ☰, painéis em tela cheia, Kanban por colunas
   com "snap", toque para abrir a ficha do boneco; o painel 📱 Celular ajuda a resolver "não abre no celular" (Firewall e rede).
 - Temas: `neutro` (escritório genérico) ou `sao-paulo` (maquete de SP, placas de rua, orelhão, ipês, coxinha…).

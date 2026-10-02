@@ -227,6 +227,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
     "amostra_1_em": 10,               // 1 em cada N PRs vai para conferência humana mesmo sem suspeita (0 desliga)
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa"}, "padrao": "Dev"}   // PR sem cartão: por prefixo do branch
   },
+  "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
@@ -530,7 +531,107 @@ Nada aqui deve ser exposto à internet (nada de redirecionar porta no roteador).
 faixa permitida (reinstale-a no celular). Abra `https://<IP do Tailscale do PC>:8766/` (o painel 📱 Celular lista os dois
 endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e `*.local`): use o IP.
 
-## 10. Times de agentes do Claude Code — dicas
+## 10. Alertas no celular
+
+O escritório avisa quando **há algo esperando por você**, mesmo com o celular no bolso e a página fechada. Cada tipo liga e
+desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celular):
+
+| Tipo | Quando avisa | Padrão |
+|---|---|---|
+| PR pronto para o seu merge | PR novo, ou que ficou pronto, com o check de revisão em SUCCESS, sem conflito e fora de rascunho | ligado |
+| PR com conflito ou reprovado | PR que passou a ter conflito ou foi reprovado na revisão | ligado |
+| Auditoria vermelha nova | item novo na lista 🔴 do Placar de XP (precisa de `xp.ativo`) | ligado |
+| Item novo para conferir | item novo na lista 🟡 do Placar | **desligado** |
+| Escalonamento aberto/fechado | registro de escalonamentos do Diretor (opcional, veja abaixo) | ligado |
+| Pergunta de escopo do Diretor | mensagem (`SendMessage`) cujo texto começa com `PERGUNTA` ou contém "pergunta ao desenvolvedor" | ligado |
+| Lembrete | PR pronto esperando há mais de 24 h (no máximo 1 lembrete por dia) | ligado |
+
+### Como funciona
+
+Uma thread do servidor olha, a cada 60 s, os dados que ele já tem (PRs em cache, placar de XP, eventos) e compara com o
+estado em `dados/alertas_estado.json`, para **não repetir** o mesmo alerta. Na primeira leitura de cada fonte só se anota o
+que já existia (nada de enxurrada). Os alertas vão para a fila `dados/alertas.jsonl` (os últimos 200) e saem em camadas:
+
+1. **Web Push** (RFC 8030/8291/8292, VAPID, conteúdo cifrado aes128gcm): chega com o celular **e o escritório fechados**.
+2. **Com o escritório aberto**: toast na página, Notification API (aba em segundo plano) e selo no botão 🔔, lendo
+   `GET /api/alertas?desde=<id>` junto com o resto.
+3. **No PC, opcional**: toast do Windows (`"toast_windows": true`; usa o PowerShell, sem instalar nada).
+
+### Ligar no PC
+
+Abra `http://localhost:<porta>/` (localhost conta como contexto seguro), clique em **🔔 Alertas → Ativar alertas neste aparelho**,
+aceite a permissão do navegador e use **Enviar alerta de teste**. O Web Push precisa da biblioteca `cryptography`
+(`pip install cryptography`); sem ela o painel avisa e as camadas 2 e 3 continuam funcionando.
+
+### Ligar no celular
+
+1. Deixe o acesso pelo celular funcionando **com HTTPS** (seção 9): o Web Push só existe em contexto seguro, ou seja, o
+   endereço `https://<ip>:<porta+1>/` com a CA local instalada no celular.
+2. Pareie o celular (QR code). Qualquer permissão serve ("só ver" também recebe alertas).
+3. No celular: menu ☰ → **🔔 Alertas → Ativar alertas neste aparelho** → permitir → **Enviar alerta de teste**.
+4. **iPhone/iPad (iOS 16.4 ou mais novo):** o push só funciona com o escritório na Tela de Início. No Safari, toque em
+   Compartilhar → **Adicionar à Tela de Início**, abra o escritório por esse ícone e ative os alertas lá (a página mostra
+   esta instrução quando detecta iOS fora do modo "app"). O ícone abre em tela cheia pelo `manifest.webmanifest` do servidor.
+   Se o ícone pedir o QR code de novo, o iOS guardou a sessão só no Safari: gere outro QR e pareie de dentro do ícone.
+
+Tocar na notificação abre o escritório já no painel certo (PRs ou Placar).
+
+### O que vai (e o que não vai) no push
+
+- Só um **título curto** (até 60 caracteres), um **corpo de até 120 caracteres** (ex.: "PR #303 foi aprovado e está sem
+  conflito") e o painel a abrir. **Nunca** comando, caminho, código, token ou o texto da mensagem do agente (a pergunta do
+  Diretor aparece só dentro da página). O texto passa por uma limpeza que remove endereços, caminhos, trechos de código,
+  flags de comando e sequências longas que lembrem token.
+- O push passa pelo serviço do navegador (Google, Mozilla, Apple ou Microsoft), mas vai **cifrado de ponta a ponta**: eles só
+  veem texto cifrado, sem o conteúdo.
+- Só um aparelho **pareado** (ou o próprio PC) se inscreve, com sessão e token anti-CSRF; o servidor só envia para endereços
+  de serviços de push conhecidos (nada de enviar para a rede interna).
+- **Revogar o aparelho apaga a inscrição** dele. Máximo de **20 envios por hora** (`limite_push_hora`); o excedente fica
+  só na fila/página. Inscrição que o serviço diz estar morta (404/410) é apagada.
+- As chaves VAPID e as inscrições ficam em `dados/push/` (fora do git; a chave privada nunca sai do PC). O histórico de
+  envios (sem conteúdo) fica em `dados/push/envios.jsonl`; inscrever, sair e testar entram em `dados/acoes.jsonl`.
+
+### Configuração (bloco `alertas` do `config.json`)
+
+```jsonc
+"alertas": {
+  "ativo": true,                      // false desliga tudo (detector, fila e push)
+  "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false,
+            "escalonamento": true, "pergunta": true, "lembrete": true},   // padrão inicial de cada aparelho
+  "lembrete_horas": 24,               // PR pronto esperando há mais que isso gera o lembrete diário
+  "limite_push_hora": 20,             // máximo de pushes por hora (todos os aparelhos)
+  "toast_windows": false,             // true: também um toast do Windows no PC (PowerShell, sem dependências)
+  "contato": "mailto:alertas@example.com",   // identificação do servidor no VAPID (opcional; troque pelo seu e-mail)
+  "escalonamentos": "",               // caminho de um JSON de escalonamentos (opcional, veja abaixo)
+  "agentes_pergunta": ["Diretor"]     // só estes agentes disparam "pergunta de escopo" (vazio = qualquer um)
+}
+```
+
+Cada aparelho ainda escolhe os seus tipos no painel 🔔 (o `tipos` do config é só o ponto de partida).
+
+**Escalonamentos (opcional).** Se `alertas.escalonamentos` apontar para um JSON no formato
+`{"2026-W40": [{"cartao": 86, "motivo": "...", "aberto": "2026-10-01", "fechado": null, "resultado": ""}]}`, o escritório
+avisa quando um escalonamento abre e quando fecha. Arquivo ausente: essa fonte é ignorada.
+
+### Testar
+
+- Botão **Enviar alerta de teste** do painel (vai para a fila e, se este navegador estiver inscrito, para o push dele).
+- `python -W error ferramentas/testar_alertas.py`: detector com dados simulados, fila, cifra do push decifrada de volta
+  por uma implementação de referência (inclui o exemplo oficial do apêndice A da RFC 8291), assinatura VAPID verificada
+  com a chave pública e envio a um "serviço de push" local de mentira.
+
+### Não chegou?
+
+| Sintoma | O que fazer |
+|---|---|
+| "As notificações deste site estão bloqueadas" | Libere as notificações do site nas configurações do navegador e ative de novo no painel. |
+| O botão diz que exige conexão segura | Use `https://<ip>:<porta+1>/` (com a CA instalada) no celular, ou `localhost` no PC. |
+| Android: só chega com o escritório aberto | Tire o navegador da economia de bateria e do "Não perturbe"; o Chrome precisa poder rodar em segundo plano. |
+| iPhone: nada acontece | Precisa de iOS 16.4+, do escritório na Tela de Início e da permissão pedida de dentro do ícone. |
+| "Web Push indisponível no servidor" | `pip install cryptography` e reinicie o escritório. |
+| Parou de chegar depois de meses | A inscrição pode ter expirado: **Desligar push** e **Ativar** de novo. |
+
+## 11. Times de agentes do Claude Code — dicas
 
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
   `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
@@ -546,7 +647,7 @@ endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e 
 - Para forçar o nome de quem roda uma sessão, defina a variável de ambiente `OFFICE_AGENTE=<nome>` antes de abrir o
   Claude Code.
 
-## 11. Solução de problemas
+## 12. Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
@@ -558,9 +659,10 @@ endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e 
 | Eventos caem na mesa errada / mesas a mais | Ajuste `nome` e `outros_nomes` dos agentes para os nomes que aparecem no feed. |
 | Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
 | QR/link não abre no celular (tempo esgotado), mas o celular abre o roteador | Quase sempre é sub-rede diferente, rede do Windows como Pública ou falta de regra de entrada no Firewall. Siga "Não abre no celular? (Firewall e rede)" na seção 9. |
+| Alerta não chega no celular | Veja "Não chegou?" na seção 10 (permissão do navegador, HTTPS, iPhone na Tela de Início, `cryptography`). |
 | Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
 
-## 12. Desinstalar
+## 13. Desinstalar
 
 ```bash
 python instalar.py --desinstalar
@@ -571,12 +673,15 @@ Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.c
 (`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
 se quiser remover tudo.
 
-## 13. Privacidade
+## 14. Privacidade
 
 - Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora (a não ser que você ligue o acesso pelo
   celular, seção 9: aí ele também escuta na rede local, só para IPs privados com sessão pareada).
 - Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre
   agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
 - O servidor não entrega `config.json`, `dados/` nem os scripts pela web.
+- Alertas (seção 10): se você ativar o Web Push, o aviso passa pelo serviço do navegador (Google, Mozilla, Apple ou
+  Microsoft), **cifrado**, com título e corpo curtos e sem comando, caminho, código ou token. Desativar o push neste
+  aparelho (ou revogá-lo) apaga a inscrição.
 - A única comunicação externa é opcional: o `gh` consultando o GitHub (Kanban/PRs) com a sua conta, e o three.js
   baixado do CDN jsDelivr (ou uma vez só, no instalador, se você escolher a cópia local).

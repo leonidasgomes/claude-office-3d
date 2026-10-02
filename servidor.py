@@ -6,6 +6,8 @@ Serve esta pasta e expõe:
   GET /kanban                         -> cartões do GitHub Projects (via gh, em cache)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
+  GET /api/alertas?desde=<id>         -> fila de alertas (alertas.py); GET /api/push/chave e POST /api/push/inscrever|sair|prefs|teste
+                                         (Web Push, push.py: só aparelho pareado com sessão + CSRF, ou o PC)
 Só escuta em 127.0.0.1, na porta do config.json (padrão 8765) — a não ser que o acesso pelo celular esteja ligado
 ("rede_local": true no config.json ou --rede-local): aí escuta em 0.0.0.0 e só aceita IPs de rede privada que tenham
 o cookie do QR code (rede.py). O celular é só leitura.
@@ -28,6 +30,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import alertas  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
 
@@ -46,6 +49,7 @@ CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 _cfg = {"mtime": None, "dados": None}
 
@@ -298,9 +302,88 @@ def acao_xp(rota, dados, ident):
     return 200, {"ok": True, "placar": novo}
 
 
+# ---- Alertas (alertas.py / push.py): detector em segundo plano, fila e Web Push -------------------------------------
+ALERTAS = None   # criado no main(), só quando o servidor sobe de fato
+
+
+def criar_alertas(obj_rede):
+    """Liga o detector aos dados que o servidor já tem (PRs em cache, placar de XP, eventos, escalonamentos opcionais)."""
+    global ALERTAS
+
+    def placar():
+        return _ler_json(XP_PLACAR, None) if cfg()["xp"]["ativo"] else None
+
+    def escalonamentos():   # opcional: alertas.escalonamentos = caminho de um JSON {"semana": [{cartao, motivo, aberto, fechado, resultado}]}
+        caminho = cfg()["alertas"].get("escalonamentos") or ""
+        return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
+    fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos}
+    ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
+    obj_rede.ao_revogar.append(ALERTAS.push.remover_aparelhos)   # revogar o aparelho apaga a inscrição de push
+    return ALERTAS
+
+
+def alertas_get(rota, qs, ident):
+    """GET /api/alertas?desde=<id> (fila), /api/push/chave (chave VAPID pública) e /api/push/estado?h=<id da inscrição>."""
+    A = ALERTAS
+    if A is None or rota not in ("/api/alertas", "/api/push/chave", "/api/push/estado"):
+        return None
+    disponivel, motivo = A.push.disponivel()
+    if rota == "/api/alertas":
+        try:
+            desde = max(0, int(qs.get("desde", ["0"])[0]))
+        except ValueError:
+            desde = 0
+        lista, ultimo = A.listar(desde) if A.opcoes["ativo"] else ([], 0)
+        return 200, {"ok": True, "ativo": A.opcoes["ativo"], "alertas": lista, "ultimo": ultimo, "titulo": TITULO(),
+                     "tipos": alertas.tipos_publicos(A.opcoes), "push": {"disponivel": disponivel, "motivo": motivo}}
+    if rota == "/api/push/chave":
+        if not disponivel or not A.opcoes["ativo"]:
+            return 200, {"ok": True, "disponivel": False, "motivo": motivo or "alertas desligados"}
+        return 200, {"ok": True, "disponivel": True, "chave": A.push.chave_publica()}
+    h = qs.get("h", [""])[0]
+    ins = A.push.estado(ident["id"], h) if len(h) == 12 and all(c in "0123456789abcdef" for c in h) else None
+    return 200, {"ok": True, "inscrito": ins is not None, "tipos": ins["tipos"] if ins else None}
+
+
+def alertas_post(rota, dados, ident):
+    """POST /api/push/inscrever|sair|prefs|teste (a guarda do rede.py já exigiu sessão pareada + CSRF, ou o PC)."""
+    A = ALERTAS
+    if A is None or not A.opcoes["ativo"]:
+        return 400, {"ok": False, "erro": "alertas desligados"}
+    if rota == "/api/push/inscrever":
+        ok, erro, id_ = A.push.inscrever(ident["id"], ident["nome"], dados.get("subscription"), dados.get("tipos"))
+        return (200, {"ok": True, "id": id_}) if ok else (400 if A.push.disponivel()[0] else 503, {"ok": False, "erro": erro})
+    if rota == "/api/push/sair":
+        endpoint = dados.get("endpoint")
+        return 200, {"ok": True, "apagou": isinstance(endpoint, str) and A.push.sair(ident["id"], endpoint)}
+    if rota == "/api/push/prefs":
+        h = dados.get("h")
+        if not isinstance(h, str) or not A.push.atualizar_tipos(ident["id"], h, dados.get("tipos")):
+            return 404, {"ok": False, "erro": "este navegador não está inscrito"}
+        return 200, {"ok": True}
+    if rota == "/api/push/teste":
+        alerta, r = A.alerta_teste(ident["id"])
+        return 200, {"ok": True, "alerta": alerta["id"], "push": {k: r[k] for k in ("enviados", "falhas", "limitados", "removidos", "motivo")}}
+    return None
+
+
+def manifesto():
+    """manifest.webmanifest (PWA): necessário para o push no iPhone (só funciona com o escritório na Tela de Início)."""
+    nome = TITULO()
+    return {"name": nome, "short_name": nome[:12], "start_url": "/", "scope": "/", "display": "standalone",
+            "background_color": "#0f1419", "theme_color": "#161c24", "lang": "pt-BR",
+            "icons": [{"src": "/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                      {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}]}
+
+
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
+        if rota.startswith("/api/push/"):
+            return alertas_post(rota, dados, ident)
         return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
+
+    def api_get(self, rota, qs, ident):
+        return alertas_get(rota, qs, ident)
 
     def caminho_bloqueado(self):
         # não expõe dados brutos, configuração com caminhos locais nem scripts
@@ -336,6 +419,8 @@ class Handler(rede.HandlerSeguro):
             except (OSError, ValueError) as e:
                 corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
             return self.responder(corpo)
+        if url.path == "/manifest.webmanifest":
+            return self.responder(json.dumps(manifesto(), ensure_ascii=False).encode("utf-8"), "application/manifest+json; charset=utf-8")
         if url.path in ("/", "/index.html"):
             texto = index_html()
             self.csp_html = texto  # o hash do importmap inline entra na Content-Security-Policy
@@ -409,6 +494,12 @@ def main():
               "entram; use o botão 'Celular' da página no PC.")
     for s in extras:
         threading.Thread(target=s.serve_forever, daemon=True).start()
+    alertas_obj = criar_alertas(Handler.rede)
+    parar_alertas = alertas_obj.iniciar()
+    push_ok, push_motivo = alertas_obj.push.disponivel()
+    print("Alertas: " + ("desligados (alertas.ativo no config.json)" if not alertas_obj.opcoes["ativo"] else
+                         "ligados (notificação com a página aberta" + (", Web Push disponível)" if push_ok else
+                                                                         "; Web Push INDISPONÍVEL: " + push_motivo + ")")))
     if not configuracao.caminho_config().exists():
         print("Aviso: config.json não encontrado — usando a configuração padrão. Rode 'python instalar.py'.")
     if navegador:
@@ -418,6 +509,7 @@ def main():
     except KeyboardInterrupt:
         print("\nEncerrando.")
     finally:
+        parar_alertas.set()
         servidor.server_close()
         for s in extras:
             s.shutdown()

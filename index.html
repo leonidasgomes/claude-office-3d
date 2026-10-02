@@ -10,6 +10,12 @@
 <link rel="stylesheet" href="prs.css">
 <link rel="stylesheet" href="placar.css">
 <link rel="stylesheet" href="celular.css">
+<link rel="stylesheet" href="alertas.css">
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="icone-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- three.js: do CDN por padrão; se o instalador baixou para vendor/, o servidor troca este endereço por /vendor/three/ -->
 <script type="importmap">
 { "imports": {
@@ -49,6 +55,10 @@
       <header><div><h3>📱 Celular na rede local</h3></div><button id="celularFechar" title="Fechar (Esc)">×</button></header>
       <div id="celularCorpo"></div>
     </section>
+    <section id="alertas" hidden>
+      <header><div><h3>🔔 Alertas</h3><div id="alertasInfo"></div></div><button id="alertasFechar" title="Fechar (Esc)">×</button></header>
+      <div id="alertasCorpo"></div>
+    </section>
     <section id="ficha" hidden>
       <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)">×</button></header>
       <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
@@ -66,6 +76,7 @@
         <button id="btnPrs" title="Pull requests esperando o seu merge">PRs <span id="prsConta" hidden></span></button>
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
         <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
+        <button id="btnAlertas" title="Alertas: avisa quando há algo esperando por você (PR pronto, pergunta do Diretor...)" hidden>🔔 Alertas <span id="alertasConta" hidden></span></button>
         <button id="btnCelular" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
         <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
         <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
@@ -85,5 +96,6 @@
 <script type="module" src="prs.js"></script>
 <script type="module" src="placar.js"></script>
 <script type="module" src="celular.js"></script>
+<script type="module" src="alertas.js"></script>
 </body>
 </html>

@@ -38,6 +38,16 @@
     "amostra_1_em": 10,
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa", "design/": "Designer"}, "padrao": "Dev"}
   },
+  "alertas": {
+    "ativo": true,
+    "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true},
+    "lembrete_horas": 24,
+    "limite_push_hora": 20,
+    "toast_windows": false,
+    "contato": "mailto:alertas@example.com",
+    "escalonamentos": "",
+    "agentes_pergunta": ["Diretor"]
+  },
   "rede_local": false,
   "rede_https": true,
   "rede_tailscale": false,

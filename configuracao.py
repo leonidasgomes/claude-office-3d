@@ -64,6 +64,10 @@ XP_AMOSTRA_1_EM = 10   # 1 em cada N PRs vai para conferência humana mesmo sem 
 # prefixo de branch -> mesas cujo agente recebe o PR (usado quando "xp.atribuicao.prefixos_branch" não existe)
 XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design": ["design/", "ui/"]}
 
+# Alertas (notificação/push quando algo espera por você): cada tipo liga/desliga; "conferir" vem desligado
+ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "conferir": False, "escalonamento": True,
+                 "pergunta": True, "lembrete": True}
+
 PADRAO = {
     "porta": 8765,
     "titulo": "Claude Office 3D",
@@ -82,6 +86,8 @@ PADRAO = {
     "xp": {"ativo": False, "desde": "", "pesos": XP_PESOS, "niveis": XP_NIVEIS, "padroes_teste": XP_PADROES_TESTE,
            "padroes_avaliacao": XP_PADROES_AVALIACAO, "amostra_1_em": XP_AMOSTRA_1_EM,
            "atribuicao": {"prefixos_branch": {}, "padrao": ""}},
+    "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
+                "contato": "", "escalonamentos": "", "agentes_pergunta": []},
     "tema": "neutro",
     "apelidos": "desligado",
     "rede_local": False,        # True: escuta na rede local para o celular (QR code + sessão pareada); False: só 127.0.0.1
@@ -208,6 +214,29 @@ def normalizar_xp(bruto, agentes):
     return xp
 
 
+def normalizar_alertas(bruto):
+    """Bloco "alertas" do config: tipos corrigidos e padrões sensatos (a validação final é do alertas.py)."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    a = copy.deepcopy(PADRAO["alertas"])
+    a["ativo"] = bruto.get("ativo") is not False
+    a["toast_windows"] = bruto.get("toast_windows") is True
+    for k, minimo, maximo in (("lembrete_horas", 1, 24 * 14), ("limite_push_hora", 1, 200)):
+        try:
+            a[k] = max(minimo, min(maximo, int(bruto[k]))) if k in bruto else a[k]
+        except (TypeError, ValueError):
+            pass
+    if isinstance(bruto.get("tipos"), dict):
+        for k in ALERTAS_TIPOS:
+            if k in bruto["tipos"]:
+                a["tipos"][k] = bruto["tipos"][k] is True
+    for k in ("contato", "escalonamentos"):
+        if isinstance(bruto.get(k), str):
+            a[k] = bruto[k].strip()[:300]
+    if isinstance(bruto.get("agentes_pergunta"), list):
+        a["agentes_pergunta"] = [str(x).strip() for x in bruto["agentes_pergunta"] if str(x).strip()]
+    return a
+
+
 def normalizar(cfg):
     """Mescla com os padrões e corrige tipos; nunca levanta exceção por valor ruim."""
     base = copy.deepcopy(PADRAO)
@@ -248,6 +277,7 @@ def normalizar(cfg):
     if not isinstance(base["github"]["colunas"], list):
         base["github"]["colunas"] = []
     base["xp"] = normalizar_xp(cfg.get("xp"), base["agentes"])
+    base["alertas"] = normalizar_alertas(cfg.get("alertas"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

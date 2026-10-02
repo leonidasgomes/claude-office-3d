@@ -49,7 +49,8 @@ EVENTOS_HOOK = ("PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
-          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
+          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "push.py", "sw.js",
+          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]
@@ -651,6 +652,7 @@ def assistente(args):
     print(f"  Tema:       {tema}   apelidos: {apelidos}   porta: {porta}   three.js: {'local' if three_offline else 'CDN'}")
     print(f"  Celular:    {('LIGADO (rede local, ' + ('HTTPS' if rede_https else 'HTTP') + '; veja a seção Acesso pelo celular do INSTALACAO.md)') if rede_local else 'desligado (só neste PC)'}")
     print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o INSTALACAO.md)' if xp_ativo else 'desligado'}")
+    print("  Alertas:    ligados (botão 🔔 Alertas; Web Push no celular: veja a seção Alertas no celular do INSTALACAO.md)")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
     if not sim_nao("  Gravar tudo isso agora?", True):

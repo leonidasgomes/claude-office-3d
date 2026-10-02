@@ -45,8 +45,14 @@ MAX_ERROS, JANELA_ERROS, BLOQUEIO = 5, 600, 900   # 5 erros em 10 min -> bloquei
 ACOES_POR_MINUTO = 10
 PERMISSOES = ("ver", "conferir")
 PC = {"id": "pc", "nome": "PC", "permissao": "pc", "csrf": ""}
+ANONIMO = {"id": "anonimo", "nome": "anônimo", "permissao": "nenhuma", "csrf": ""}
+# GET sem sessão (depois do filtro de IP privado): só o que o iPhone busca sem cookie ao adicionar à Tela de Início
+ROTAS_PUBLICAS = ("/manifest.webmanifest", "/icone-192.png", "/icone-512.png")
 # quem pode o quê nas ações (POST /api/...): "pc" é o próprio computador
-PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"}}
+PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"},
+                  # alertas (push.py): qualquer aparelho pareado (ver ou mais) e o PC inscrevem o próprio navegador
+                  "/api/push/inscrever": {"pc", "ver", "conferir"}, "/api/push/sair": {"pc", "ver", "conferir"},
+                  "/api/push/prefs": {"pc", "ver", "conferir"}, "/api/push/teste": {"pc", "ver", "conferir"}}
 TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
 _ESTILO = ("<meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Claude Office 3D</title>"
            "<body style='font:18px system-ui;background:#0f1419;color:#e6edf3;display:grid;place-items:center;"
@@ -186,6 +192,7 @@ class Rede:
         self._bloqueados = {}  # ip -> instante em que o bloqueio termina
         self._logados = {}
         self._acoes_rec = {}   # id do aparelho -> instantes das últimas ações
+        self.ao_revogar = []   # funções chamadas com a lista de ids de aparelhos revogados (apagam as inscrições de push)
         # HTTPS local (preenchido por iniciar_tls): HTTP em 127.0.0.1:porta, HTTPS em porta+1, certificado público em porta+2
         self.pasta, self.tailscale = Path(pasta), False
         self.porta_http = self.porta_https = self.porta_ca = 0
@@ -296,6 +303,11 @@ class Rede:
             if fora:
                 self._dispositivos = [d for d in self._dispositivos if d not in fora]
                 self._salvar()
+                for cb in self.ao_revogar:
+                    try:
+                        cb([d.get("id") for d in fora])
+                    except Exception as e:   # um gancho com defeito não impede a revogação
+                        print(f"[rede] gancho de revogação falhou: {str(e)[:100]}", flush=True)
             return [d["nome"] for d in fora]
 
     # ------------------------------------------------------------------ códigos de pareamento (uso único, 10 min)
@@ -515,6 +527,9 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             rede.log_negado(ip, rota, "rota só do PC")
             self._negar(403, b"Acesso negado.")
             return False
+        if rota in ROTAS_PUBLICAS and self.command in ("GET", "HEAD"):
+            self.ident = ANONIMO
+            return True
         d = self.rede.sessao_do_cookie(self.headers.get("Cookie"), ip)
         if d is None:
             rede.log_negado(ip, rota, "sem sessão válida")
@@ -617,6 +632,11 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             r = self.rede or Rede(Path(__file__).resolve().parent)
             self.responder({"acoes": r.ultimas_acoes(50, com_ip=local)})
             return True
+        if rota.startswith("/api/"):   # demais GETs de API do servidor (alertas, push); None = não existe
+            resposta = self.api_get(rota, parse_qs(urlparse(self.path).query), self.ident)
+            if resposta is not None:
+                self.responder(resposta[1], codigo=resposta[0])
+                return True
         return False
 
     # ------------------------------------------------------------------ ações (POST /api/... e /rede/...)
@@ -715,6 +735,10 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
     # ------------------------------------------------------------------ ganchos do servidor
     def api_post(self, rota, dados, ident):
         """Gancho do servidor: devolve (código, dict) ou None se a rota não existe."""
+        return None
+
+    def api_get(self, rota, qs, ident):
+        """Gancho do servidor para GET /api/...: devolve (código, dict) ou None se a rota não existe."""
         return None
 
     def caminho_bloqueado(self):

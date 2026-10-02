@@ -59,6 +59,18 @@ XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no conf
   zoom, e o toque no boneco (com tolerância) abre a ficha sem confundir com arrasto ou pinça. Desempenho: a animação pausa e
   a consulta ao servidor desacelera (e as dos painéis param) quando a aba fica oculta.
 
+- **Alertas** (notificação quando algo espera por você): um detector no servidor (a cada 60 s, `alertas.py`) avisa de PR
+  pronto para o merge, PR com conflito ou reprovado, auditoria vermelha nova, item novo para conferir (desligado por
+  padrão), escalonamento aberto/fechado (opcional), pergunta de escopo do Diretor e lembrete diário de PR pronto há mais de
+  24 h, sem repetir (`dados/alertas_estado.json`; fila `dados/alertas.jsonl` com os últimos 200). Cada tipo liga/desliga
+  no botão 🔔 Alertas. Entrega em camadas: **Web Push** padrão (RFC 8030/8291/8292, VAPID, aes128gcm; `push.py` com a
+  biblioteca `cryptography` e `urllib`; `sw.js` mostra a notificação e abre o painel certo), toast/Notification API com a
+  página aberta (`GET /api/alertas?desde=`) e toast do Windows opcional. Segurança: só aparelho pareado ou o PC, com
+  sessão e CSRF; revogar o aparelho apaga a inscrição; no máximo 20 pushes por hora; push só com título curto, corpo de
+  até 120 caracteres e o painel (nunca comando, caminho, código ou token); envio só para serviços de push conhecidos.
+  `manifest.webmanifest` e ícones para o iPhone (precisa do escritório na Tela de Início, iOS 16.4+). Config: bloco
+  `alertas`. Teste: `python -W error ferramentas/testar_alertas.py`. Seção "Alertas no celular" no INSTALACAO.md.
+
 ## 1.0.0
 Primeira versão pública do Claude Office 3D.
 

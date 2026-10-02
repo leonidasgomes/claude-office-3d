@@ -1,0 +1,47 @@
+/* Alertas: botão com selo, painel "🔔 Alertas" e toasts na página */
+#alertasConta { background: #e5484d; color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 800; font-size: 11px; margin-left: 2px; }
+html.compacto #alertasConta { font-size: 13px; }
+#alertas { position: absolute; top: 10px; left: 10px; width: min(460px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow-y: auto; z-index: 6; background: #11171ef7; border: 1px solid #2a3340; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
+#alertas header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+#alertas h3 { margin: 0; font-size: 17px; }
+#alertasInfo { font-size: 12px; color: #8b98a8; }
+#alertasFechar { font-size: 18px; line-height: 1; padding: 2px 9px; }
+#alertasCorpo { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+#alertasCorpo p { margin: 0; }
+#alertasCorpo .msg { color: #8b98a8; }
+#alertasCorpo .aviso { background: #3b2a0c; border-left: 4px solid #f59e0b; border-radius: 0 6px 6px 0; padding: 6px 8px; color: #fde7c0; }
+#alertasCorpo .bom { background: #0c2b1a; border-left: 4px solid #22c55e; border-radius: 0 6px 6px 0; padding: 6px 8px; color: #c9f2d8; }
+#alertasCorpo .acoes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#alertasCorpo .bloco { background: #161c24; border: 1px solid #2a3340; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+#alertasCorpo .bloco h4 { margin: 0; font-size: 14px; }
+#alertasCorpo label.tipo { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+#alertasCorpo label.tipo input { width: 18px; height: 18px; accent-color: #22c55e; }
+#alertasCorpo ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+#alertasCorpo li.alerta { background: #1d2530; border-left: 4px solid #475569; border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+#alertasCorpo li.alerta.novo { border-left-color: #e5484d; }
+#alertasCorpo li.alerta b, #alertasCorpo li.alerta span { display: block; }
+#alertasCorpo li.alerta .hora { color: #8b98a8; font-size: 11px; }
+#alertasCorpo li.alerta .det { color: #9aa7b6; font-size: 12px; overflow-wrap: anywhere; }
+#alertasCorpo code { background: #0f1419; border-radius: 4px; padding: 1px 5px; font-family: Consolas, monospace; }
+html.movel #alertasCorpo button { min-height: 44px; font-size: 16px; }
+
+#alertasToasts { position: fixed; right: 12px; bottom: 12px; z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 24px)); pointer-events: none; }
+#alertasToasts .toast { pointer-events: auto; background: #161c24; border: 1px solid #3a4756; border-left: 5px solid #f59e0b; border-radius: 10px; padding: 8px 10px; box-shadow: 0 8px 26px #000b; color: #e6edf3; font-size: 13px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
+#alertasToasts .toast.pr_pronto, #alertasToasts .toast.lembrete { border-left-color: #22c55e; }
+#alertasToasts .toast.pr_problema, #alertasToasts .toast.auditoria { border-left-color: #e5484d; }
+#alertasToasts .toast.conferir { border-left-color: #f5b301; }
+#alertasToasts .toast .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#alertasToasts .toast b { display: block; margin-bottom: 2px; }
+#alertasToasts .toast button { flex: none; font-size: 16px; line-height: 1; padding: 2px 8px; }
+html.compacto #alertasToasts { right: 8px; left: 8px; width: auto; bottom: calc(70px + var(--seguro-b, 0px)); }
+html.compacto #alertasToasts .toast { font-size: 15px; }
+
+html.compacto #alertas { position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0; width: auto; max-height: none; border-radius: 0; border-width: 0; z-index: 20; padding: 0 calc(12px + var(--seguro-r)) calc(12px + var(--seguro-b)) calc(12px + var(--seguro-l)); gap: 10px; background: #0f1419; box-shadow: none; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+html.compacto #alertas > header { position: sticky; top: 0; z-index: 3; flex: none; align-items: center; background: #0f1419; margin: 0 calc(-12px - var(--seguro-r)) 0 calc(-12px - var(--seguro-l)); padding: calc(8px + var(--seguro-t)) calc(12px + var(--seguro-r)) 8px calc(12px + var(--seguro-l)); border-bottom: 1px solid #2a3340; }
+html.compacto #alertas h3 { font-size: 18px; }
+html.compacto #alertasInfo { font-size: 14px; }
+html.compacto #alertasFechar { flex: none; min-width: 52px; min-height: 52px; padding: 0; font-size: 28px; line-height: 1; }
+html.compacto #alertasCorpo { font-size: 15px; overflow-wrap: anywhere; }
+html.compacto #alertasCorpo .msg, html.compacto #alertasCorpo li.alerta .det { font-size: 14px; }
+html.compacto #alertasCorpo label.tipo { min-height: 44px; }
+html.compacto #alertasCorpo ol { max-height: none; }
