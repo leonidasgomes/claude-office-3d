@@ -79,3 +79,22 @@ button.acao:disabled { opacity: .6; cursor: progress; }
 #placarToast button.link { background: none; border: 0; color: #93c5fd; text-decoration: underline; padding: 0 2px; cursor: pointer; font: inherit; }
 html.movel button.acao { min-height: 44px; font-size: 15px; }
 html.movel #placarToast button.link { min-height: 44px; padding: 0 8px; }
+
+/* Celular (tela estreita/baixa): painel inteiro rola; o cabeçalho fica fixo */
+html.compacto #placarTime { flex: none; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+html.compacto #placarTime .tile span { font-size: 14px; }
+html.compacto #placarFaixas { flex: none; max-height: none; overflow: visible; }
+html.compacto #placarFaixas .faixa { font-size: 14px; }
+html.compacto #placarFaixas .como, html.compacto #placarFaixas .nota, html.compacto #placarFaixas .hora, html.compacto #placarFaixas .quem { font-size: 14px; }
+html.compacto #placarFaixas details summary { font-size: 15px; min-height: 44px; display: flex; align-items: center; }
+html.compacto #placarFaixas a { padding: 6px 2px; }
+html.compacto #placarOrdem { flex: none; font-size: 14px; }
+html.compacto #placarOrdem button { font-size: 15px; }
+html.compacto #placarLista { flex: none; overflow: visible; }
+html.compacto #placarLista .ag { padding: 10px 12px; min-height: 52px; }
+html.compacto #placarLista .nivel, html.compacto #placarLista .xp, html.compacto #placarLista .prox, html.compacto #placarLista .pontos, html.compacto #placarLista .aud, html.compacto #placarLista .conf { font-size: 14px; }
+html.compacto button.acao { min-height: 44px; font-size: 15px; }
+html.compacto #placarToast { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); font-size: 15px; }
+html.compacto #placarToast button.link { min-height: 44px; }
+html.compacto #fichaLista .xp-linha, html.compacto #fichaLista .xp-titulo { font-size: 15px; }
+html.compacto #fichaLista li.xp-secao { font-size: 14px; }

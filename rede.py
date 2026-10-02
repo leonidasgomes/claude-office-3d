@@ -24,6 +24,7 @@ import re
 import secrets
 import socket
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -76,15 +77,64 @@ def ip_permitido(ip):
     return a.is_private or (a.version == 4 and a in TAILSCALE)
 
 
-def enderecos_da_maquina():
-    """(privados, tailscale): IPv4 da máquina. getaddrinfo do hostname + o truque do UDP connect (nada é enviado)."""
-    achados = []
+_NOMES_VIRTUAIS = ("vethernet", "wsl", "hyper-v", "vmware", "virtualbox", "vbox", "docker", "npcap", "loopback", "tap-windows", "zerotier")
+_cache_adaptadores = {"t": 0.0, "dados": ({}, set())}
+
+
+def _adaptadores():
+    """({ip: nome do adaptador}, {ips de adaptadores com gateway padrão}). Só no Windows (lê o `ipconfig`); noutros
+    sistemas devolve vazio e a heurística de faixa (172.16-31) decide. Cache de 30 s: o painel consulta a cada 5 s."""
+    agora = time.time()
+    if agora - _cache_adaptadores["t"] < 30:
+        return _cache_adaptadores["dados"]
+    nomes, com_gateway = {}, set()
+    if sys.platform == "win32":
+        try:
+            saida = subprocess.run(["ipconfig"], capture_output=True, timeout=4).stdout.decode("cp850", "replace")
+            atual, ips_atual = "", []
+            for linha in saida.splitlines():
+                if linha and not linha[0].isspace() and linha.rstrip().endswith(":"):
+                    atual, ips_atual = linha.strip().rstrip(":"), []
+                elif re.search(r"gateway", linha, re.I):
+                    if linha.split(":", 1)[-1].strip() and ":" in linha:
+                        com_gateway.update(ips_atual)
+                elif re.search(r"IPv4", linha, re.I) and ":" in linha:
+                    achou = re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b", linha)
+                    if achou:
+                        nomes[achou[0]] = atual
+                        ips_atual.append(achou[0])
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    _cache_adaptadores.update(t=agora, dados=(nomes, com_gateway))
+    return nomes, com_gateway
+
+
+def _classificar(privados, padrao):
+    """(ordenados, virtuais): a placa com a rota padrão (gateway) primeiro, as reais depois, as virtuais por último.
+    Virtual = nome de adaptador vEthernet/WSL/Hyper-V/VMware/VirtualBox/Docker ou, sem nome, 172.16-31 fora da rota padrão."""
+    nomes, com_gateway = _adaptadores()
+    virtuais = set()
+    for e in privados:
+        nome = nomes.get(e, "").lower()
+        if e == padrao or e in com_gateway:
+            continue
+        if any(v in nome for v in _NOMES_VIRTUAIS) or (not nome and _ip(e) in ipaddress.ip_network("172.16.0.0/12")):
+            virtuais.add(e)
+    ordem = sorted(privados, key=lambda e: (0 if e == padrao else (1 if e in com_gateway else (3 if e in virtuais else 2))))
+    return ordem, virtuais
+
+
+def _levantar():
+    """(privados, tailscale, virtuais): IPv4 da máquina. getaddrinfo do hostname + o truque do UDP connect (nada é
+    enviado). Os privados vêm em ordem de preferência: a placa da rota padrão primeiro, adaptadores virtuais por último."""
+    achados, padrao = [], None
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
         try:
             s.connect(("8.8.8.8", 80))   # UDP: só escolhe a interface de saída, nenhum pacote sai
-            achados.append(s.getsockname()[0])
+            padrao = s.getsockname()[0]
+            achados.append(padrao)
         finally:
             s.close()
     except OSError:
@@ -103,6 +153,13 @@ def enderecos_da_maquina():
             tail.append(e)
         elif a.is_private:
             privados.append(e)
+    privados, virtuais = _classificar(privados, padrao)
+    return privados, tail, virtuais
+
+
+def enderecos_da_maquina():
+    """(privados, tailscale): IPv4 da máquina, o da rede principal primeiro (ver _levantar)."""
+    privados, tail, _ = _levantar()
     return privados, tail
 
 
@@ -339,10 +396,12 @@ class Rede:
 
     # ------------------------------------------------------------------ status (só para o PC)
     def status(self, porta):
-        privados, tail = enderecos_da_maquina()
+        privados, tail, virtuais = _levantar()
         info = {k: v for k, v in self.tls_info.items() if k in ("ok", "erro", "metodo", "ca_sha256", "servidor_sha256", "ca_expira", "servidor_expira")}
         return {"ativo": self.ativo, "porta": self.porta_http or porta, "enderecos": privados, "tailscale": tail,
                 "https": self.https, "porta_https": self.porta_https, "porta_ca": self.porta_ca, "tls": info,
+                "virtuais": sorted(virtuais), "python": sys.executable,
+                "portas": [self.porta_https, self.porta_ca] if self.https else [self.porta_http or porta],
                 "dispositivos": self.listar() if self.ativo else [], "validade_codigo": CODIGO_VALIDADE}
 
 

@@ -2,7 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161c24">
 <title>Claude Office 3D</title>
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="kanban.css">
@@ -56,9 +57,12 @@
     </section>
   </div>
   <aside id="painel">
+    <div id="gavetaAlca" role="button" tabindex="0" aria-label="Abrir ou fechar a lista de agentes"><i></i></div>
     <header>
       <h1 id="tituloEscritorio">Claude Office 3D</h1>
-      <div class="botoes">
+      <span id="resumo" aria-live="polite"></span>
+      <button id="btnMenu" aria-label="Menu" aria-haspopup="true" aria-expanded="false" title="Menu">☰</button>
+      <div class="botoes" id="menuBotoes">
         <button id="btnPrs" title="Pull requests esperando o seu merge">PRs <span id="prsConta" hidden></span></button>
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
         <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
@@ -68,10 +72,12 @@
         <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
       </div>
     </header>
-    <h2>Agentes</h2>
-    <ul id="agentes"></ul>
-    <h2>Últimos eventos</h2>
-    <ol id="feed"></ol>
+    <div id="gavetaCorpo">
+      <h2>Agentes</h2>
+      <ul id="agentes"></ul>
+      <h2>Últimos eventos</h2>
+      <ol id="feed"></ol>
+    </div>
   </aside>
 </div>
 <script type="module" src="escritorio.js"></script>

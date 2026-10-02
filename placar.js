@@ -356,7 +356,7 @@ function vigiar() {   // religa a decisão quando o botão Demo muda ou ganha me
 }
 if (xpAtivo) {
   setInterval(() => { if (!injetado && fonte === 'demo') { evoluirDemo(); decidir(); } }, 40000);
-  setInterval(buscar, ATUALIZAR_MS);
+  setInterval(() => { if (!document.hidden) buscar(); }, ATUALIZAR_MS);   // aba oculta: não consulta
   buscar(); vigiar(); carregarSessao(); carregarHistorico();
 } else {   // "xp.ativo": false no config.json: sem botão, sem aba, sem rótulos de nível
   $('btnPlacar').hidden = true; $('abaXp').hidden = true;

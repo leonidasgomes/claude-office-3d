@@ -20,3 +20,16 @@
 #kanbanColunas .vazio { color: #6b7280; text-align: center; font-size: 12px; padding: 6px; }
 #kanbanColunas .aviso { grid-column: 1 / -1; font-size: 14px; padding: 24px; color: #c3cdd9; }
 @media (max-width: 760px) { #kanbanColunas { grid-auto-columns: 78vw; } }
+
+/* Celular (tela estreita/baixa): uma coluna por vez, com rolagem horizontal e "snap" */
+html.compacto #kanban { overflow: hidden; }
+html.compacto #kanbanFiltros { flex: none; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+html.compacto #kanbanFiltros .filtro { flex: none; min-height: 44px; font-size: 14px; padding: 6px 12px; }
+html.compacto #kanbanColunas { flex: 1; min-height: 0; display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; margin: 0 calc(-12px - env(safe-area-inset-right, 0px)) 0 calc(-12px - env(safe-area-inset-left, 0px)); padding: 0 calc(12px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px)); scroll-padding: 0 calc(12px + env(safe-area-inset-left, 0px)); }
+html.compacto #kanbanColunas .coluna { flex: 0 0 88%; max-width: 440px; scroll-snap-align: start; scroll-snap-stop: always; }
+html.compacto #kanbanColunas h4 { font-size: 15px; padding: 10px 12px; }
+html.compacto #kanbanColunas .cartoes { flex: 1; min-height: 0; overscroll-behavior: contain; padding-bottom: 16px; }
+html.compacto #kanbanColunas .cartao { font-size: 15px; padding: 10px 12px; min-height: 44px; }
+html.compacto #kanbanColunas .topo, html.compacto #kanbanColunas .rodape, html.compacto #kanbanColunas .vazio { font-size: 14px; }
+html.compacto #kanbanColunas .prio { font-size: 13px; }
+html.compacto #kanban h3 a { display: inline-block; font-size: 14px; padding: 6px 0; }

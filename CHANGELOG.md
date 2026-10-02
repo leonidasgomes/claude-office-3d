@@ -44,6 +44,20 @@ XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no conf
 - Config: `rede_local`, `rede_https`, `rede_tailscale` e `"sala": "diretoria"` por agente; o assistente pergunta
   "Permitir acesso pelo celular na rede local? [s/N]" e "Usar HTTPS (recomendado)? [S/n]" no passo 6; novos arquivos
   `rede.py`, `tls.py`, `qr.js`, `movel.js`, `celular.js` e `celular.css`. Seção 9 nova no INSTALACAO.md.
+- **Não abre no celular? (Firewall e rede)**: subseção nova na seção 9 do INSTALACAO.md com as 4 checagens em ordem (mesma
+  sub-rede, rede do Windows como Privada, regra de entrada do Firewall só para o Python do servidor na rede Privada, isolamento
+  de AP/clientes) e o comando `New-NetFirewallRule` pronto; o `instalar.py` mostra esse comando (com o seu Python e as suas
+  portas) quando o celular é ativado, sem nunca executá-lo. O painel 📱 Celular ganhou o bloco "Não abriu no celular?" com os
+  4 passos e o comando para copiar com 1 clique; `GET /rede/status` (só localhost) passou a informar `python`, `portas` e
+  `virtuais`; os endereços vêm com a placa do gateway padrão primeiro (o QR usa esse IP) e adaptadores virtuais
+  (vEthernet/WSL/Hyper-V, 172.16-31) aparecem como "(virtual — não use)".
+- **Layout responsivo no celular** (tela < 760 px ou paisagem baixa): cena 3D em tela cheia com a lista de agentes e eventos numa
+  **gaveta inferior** arrastável (recolhida ~58 px com "4 agentes · 2 trabalhando", meio, cheia), botões num menu ☰,
+  Placar/PRs/Kanban/ficha/Celular em tela cheia com cabeçalho fixo e botão de fechar grande, Kanban com uma coluna por vez
+  (rolagem com snap), alvos de toque de 44 px ou mais, fontes de 14 px ou mais, `env(safe-area-inset-*)`, `100dvh` e
+  `viewport-fit=cover`; rótulos e balões 3D maiores; o centro da câmera acompanha a gaveta; toque: um dedo gira, dois dão
+  zoom, e o toque no boneco (com tolerância) abre a ficha sem confundir com arrasto ou pinça. Desempenho: a animação pausa e
+  a consulta ao servidor desacelera (e as dos painéis param) quando a aba fica oculta.
 
 ## 1.0.0
 Primeira versão pública do Claude Office 3D.

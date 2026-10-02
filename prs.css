@@ -20,3 +20,10 @@
 #prsLista .botao:hover { background: #2d3a4b; }
 #prsLista .pr.pronto .botao.principal { background: #16a34a; border-color: #22c55e; color: #fff; font-weight: 700; }
 #prsLista .vazio { color: #8b98a8; text-align: center; padding: 20px; }
+
+/* Celular (tela estreita/baixa) */
+html.compacto #prsLista { flex: none; overflow: visible; }
+html.compacto #prsLista .pr { padding: 10px 12px; }
+html.compacto #prsLista .situacao, html.compacto #prsLista .meta, html.compacto #prsLista .vazio { font-size: 14px; }
+html.compacto #prsLista .acoes { flex-wrap: wrap; }
+html.compacto #prsConta { font-size: 13px; }

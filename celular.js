@@ -6,9 +6,10 @@ import { LOCAL } from './movel.js';
 import { qrCanvas } from './qr.js';
 
 const COMO_LIGAR = 'abrir_escritorio.bat celular';   // (Linux/macOS: ./abrir_escritorio.sh celular) sobe com --rede-local
+const NOME_REGRA = 'Claude Office 3D (celular)';   // nome da regra de firewall sugerida
 const $ = (id) => document.getElementById(id);
 const botao = $('btnCelular'), painel = $('celular'), corpo = $('celularCorpo');
-let timer = null, codigo = null, vistos = null, permEscolhida = 'ver', iEnd = 0, ultimo = null;
+let ajudaAberta = false, timer = null, codigo = null, vistos = null, permEscolhida = 'ver', iEnd = 0, ultimo = null;
 
 function el(tag, classe, texto) {
   const e = document.createElement(tag);
@@ -47,16 +48,65 @@ function fingerprint(rotulo, v) {
   const d = el('div', 'impressao'); d.append(el('span', 'msg', rotulo + ': '), el('code', null, v || '—')); return d;
 }
 
+// Rótulo do endereço na lista: o primeiro é o da placa com gateway padrão (o servidor ordena assim); virtual não serve
+function rotuloEnd(e, i, s) {
+  if ((s.virtuais || []).includes(e)) return ' (virtual — não use)';
+  if ((s.tailscale || []).includes(e)) return ' (Tailscale)';
+  return i === 0 ? ' (rede principal)' : '';
+}
+
 function secaoRede(s, todos) {
   const sec = el('div', 'rede');
   if (todos.length > 1) {
     const sel = document.createElement('select');
-    todos.forEach((e, i) => { const o = el('option', null, e + ((s.tailscale || []).includes(e) ? ' (Tailscale)' : '')); o.value = i; sel.append(o); });
+    todos.forEach((e, i) => { const o = el('option', null, e + rotuloEnd(e, i, s)); o.value = i; sel.append(o); });
     sel.value = iEnd;
     sel.addEventListener('change', () => { iEnd = +sel.value; atualizar(); });
     sec.append(el('p', 'msg', 'Rede em que o celular está:'), sel);
   }
   return sec;
+}
+
+// Copia texto (clipboard quando disponível; senão seleciona num campo temporário)
+async function copiar(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; } catch (e) { /* sem permissão: cai no plano B */ }
+  const t = document.createElement('textarea'); t.value = texto; t.style.position = 'fixed'; t.style.opacity = '0';
+  document.body.append(t); t.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) { /* sem cópia */ }
+  t.remove(); return ok;
+}
+
+// "Não abriu no celular?": 4 checagens em ordem e o comando do firewall pronto (caminho do python e portas deste servidor)
+function secaoAjuda(s, todos) {
+  const det = el('details', 'ajuda'), ip = todos[iEnd] || '';
+  const portas = (s.portas && s.portas.length ? s.portas : [s.porta + 1, s.porta + 2]).join(',');
+  const py = s.python || '<caminho do python.exe>';
+  const cmd = 'New-NetFirewallRule -DisplayName "' + NOME_REGRA + '" -Direction Inbound -Program "' + py + '" -Protocol TCP -LocalPort '
+    + portas + ' -Profile Private -Action Allow';
+  det.id = 'celularAjuda';
+  det.open = ajudaAberta;   // o painel se redesenha a cada 5 s: lembra se estava aberto
+  det.addEventListener('toggle', () => { ajudaAberta = det.open; });
+  det.append(el('summary', null, 'Não abriu no celular?'));
+  const ol = el('ol');
+  const li = (...partes) => { const x = el('li'); x.append(...partes); ol.append(x); return x; };
+  li('Mesma sub-rede: no celular, Configurações → Wi-Fi → detalhes. O IP do celular deve começar igual ao do PC (',
+    el('code', null, ip.split('.').slice(0, 3).join('.') + '.x'), '). Repetidor em modo roteador cria outra sub-rede.');
+  li('Rede do Windows como Privada: no PowerShell, ', el('code', null, 'Get-NetConnectionProfile'), ' deve mostrar NetworkCategory = Private.');
+  const c3 = li('Falta regra de entrada no Firewall (a regra antiga "Python" só no perfil Público não vale na rede Privada). '
+    + 'Abra o PowerShell como Administrador e rode:');
+  const caixa = el('code', 'comando', cmd); caixa.id = 'celularComando';
+  const b = el('button', null, 'Copiar comando');
+  b.id = 'celularCopiar';
+  b.addEventListener('click', async () => {
+    const ok = await copiar(cmd);
+    b.textContent = ok ? 'Copiado ✓' : 'Selecione e copie o texto acima';
+    setTimeout(() => { b.textContent = 'Copiar comando'; }, 2500);
+  });
+  c3.append(caixa, b);
+  li('Isolamento de AP/clientes ligado no repetidor/roteador (Wi-Fi não fala com cabo): desligue. Teste no celular: abra ',
+    el('code', null, 'http://' + ip + ':' + (s.https ? s.porta_ca : s.porta) + '/'), '.');
+  det.append(ol, el('p', 'msg', 'Ignore endereços "virtuais" (vEthernet/WSL/Hyper-V): use o IP da placa real do PC.'));
+  return det;
 }
 
 function secaoCertificado(s, todos) {
@@ -168,11 +218,11 @@ async function atualizar() {
   if (!s.https && s.tls && s.tls.erro) partes.push(el('p', 'aviso', 'HTTPS indisponível: ' + s.tls.erro + ' — usando HTTP na rede local (menos seguro).'));
   partes.push(secaoRede(s, todos));
   if (s.https) partes.push(secaoCertificado(s, todos));
-  partes.push(secaoGerar(s, todos), secaoAparelhos(s), aviso(s.https));
+  partes.push(secaoGerar(s, todos), secaoAparelhos(s), secaoAjuda(s, todos), aviso(s.https));
   corpo.replaceChildren(...partes);
 }
 
-function abrir() { painel.hidden = false; vistos = null; atualizar(); timer = setInterval(atualizar, 5000); }
+function abrir() { painel.hidden = false; vistos = null; atualizar(); timer = setInterval(() => { if (!document.hidden) atualizar(); }, 5000); }
 function fechar() {   // some da tela e do DOM (o QR leva o código)
   painel.hidden = true; clearInterval(timer); codigo = null; corpo.replaceChildren();
 }

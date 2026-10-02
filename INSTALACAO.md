@@ -278,6 +278,12 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 - `reiniciar_escritorio` (`.bat`/`.sh`) encerra o servidor da porta configurada e sobe de novo; a página aberta
   reconecta sozinha.
 
+**No celular** (tela abaixo de 760 px de largura ou paisagem baixa) a página muda de layout: a cena 3D ocupa a tela e a lista de
+agentes e eventos vira uma **gaveta inferior** (arraste a alça ou toque nela: recolhida com o resumo "4 agentes · 2 trabalhando",
+meio, cheia); os botões ficam no menu **☰**; Placar, PRs, Kanban, ficha e Celular abrem em tela cheia com botão de fechar
+grande (o Kanban mostra uma coluna por vez: deslize para o lado). Um dedo gira a câmera, dois dão zoom e arrastam, e um toque
+no boneco abre a ficha. A animação pausa e a consulta ao servidor fica mais lenta quando a aba está oculta.
+
 ## 8. XP, níveis e skills
 
 Opcional (`"xp": {"ativo": true}`; o assistente pergunta no passo 6). O escritório mostra o **nível** de cada
@@ -415,6 +421,44 @@ uma lista de regras bem fechada (resumo no fim da seção).
 3. Se a caixa não apareceu ou você marcou errado: Painel de Controle > Sistema e Segurança > Firewall do Windows Defender
    > "Permitir um aplicativo..." > Python > marque só "Privada".
 
+### Não abre no celular? (Firewall e rede)
+
+Sintoma típico: o QR ou o link dá **tempo esgotado** no celular, mas o celular abre normalmente a página do roteador.
+O painel **📱 Celular** (no PC) traz um bloco "Não abriu no celular?" com estes passos e o comando abaixo já pronto para
+copiar (com o caminho do Python e as portas deste servidor). Confira **nesta ordem**:
+
+1. **Mesma sub-rede.** No celular: Configurações → Wi-Fi → detalhes da rede. O IP do celular deve ter os **3 primeiros
+   números iguais** aos do PC (PC `192.168.1.10` → celular `192.168.1.x`). Repetidor Wi-Fi em modo *roteador* cria uma
+   sub-rede separada: ponha-o em modo repetidor/ponto de acesso ou ligue o PC e o celular na mesma rede. Use o IP da
+   **placa real** do PC e ignore adaptadores virtuais (vEthernet, WSL, Hyper-V; costumam ser `172.x`): o painel marca esses
+   como "(virtual — não use)" e usa a placa com gateway padrão no QR.
+2. **Rede do Windows como Privada.** No PowerShell: `Get-NetConnectionProfile` deve mostrar `NetworkCategory : Private`
+   (se estiver `Public`, mude em Configurações → Rede e Internet → propriedades da rede → Perfil de rede = Privada).
+3. **Falta a regra de entrada no Firewall.** Uma regra antiga "Python" só no perfil **Público** não vale na rede **Privada**
+   (e ainda é um risco: libera qualquer Python em rede pública). Crie uma regra só para o Python que roda o servidor, só na
+   rede Privada. PowerShell **como Administrador**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Claude Office 3D (celular)" -Direction Inbound -Program "<caminho do python.exe>" `
+     -Protocol TCP -LocalPort <porta+1>,<porta+2> -Profile Private -Action Allow
+   ```
+
+   - `<caminho do python.exe>`: o Python que roda o `servidor.py`. Descubra com `(Get-Command python).Source` ou
+     `python -c "import sys;print(sys.executable)"`.
+   - `<porta+1>,<porta+2>`: com a porta padrão 8765, `8766,8767` (HTTPS e página do certificado). Com `--sem-https`, só a própria `porta`.
+   - Pela tela, se preferir: Firewall do Windows com Segurança Avançada → Regras de Entrada → Nova Regra → Programa →
+     caminho do `python.exe` → Permitir a conexão → marque **só Particular** → dê um nome.
+   - Recomendado: desative a regra antiga pública, se existir: `Disable-NetFirewallRule -DisplayName "Python"`
+     (para religar: `Enable-NetFirewallRule -DisplayName "Python"`).
+   - Conferir (funciona numa sessão normal; `Get-NetFirewallRule` pode não listar sem administrador):
+     `netsh advfirewall firewall show rule name="Claude Office 3D (celular)" verbose`.
+4. **Isolamento de AP/clientes** ligado no repetidor ou roteador (o Wi-Fi não "enxerga" o cabo e vice-versa): desligue
+   ("AP isolation", "client isolation" ou "isolamento de clientes" na página do roteador).
+
+**Teste:** no celular, abra `http://<IP do PC>:<porta+2>` (padrão `8767`). Se aparecer a página do certificado, a rede e o
+Firewall estão certos e o resto é o pareamento. O `instalar.py`, quando você ativa o celular no passo 6, mostra no final
+esse comando com o seu caminho do Python e as suas portas (só mostra; nunca executa nem altera o Firewall).
+
 ### Instalar o certificado (uma vez por celular) e parear
 
 No PC, abra o escritório em `http://127.0.0.1:8765/` e clique em **📱 Celular** (o botão só existe no PC, em `localhost`):
@@ -513,6 +557,7 @@ endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e 
 | O hook não registra nada | 1) Reinicie a sessão do Claude Code (hooks são lidos ao abrir). 2) A sessão precisa estar com o diretório de trabalho (`cwd`) dentro de uma das pastas de `projetos` — compare o caminho exato. 3) Rode `/hooks` no Claude Code para ver se os 4 eventos aparecem. 4) Teste à mão: `echo {"hook_event_name":"Stop","cwd":"<sua pasta>"} \| python registrar_evento.py` e veja `dados/eventos.jsonl`. 5) O `python`/`python3` do comando precisa existir no PATH. |
 | Eventos caem na mesa errada / mesas a mais | Ajuste `nome` e `outros_nomes` dos agentes para os nomes que aparecem no feed. |
 | Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
+| QR/link não abre no celular (tempo esgotado), mas o celular abre o roteador | Quase sempre é sub-rede diferente, rede do Windows como Pública ou falta de regra de entrada no Firewall. Siga "Não abre no celular? (Firewall e rede)" na seção 9. |
 | Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
 
 ## 12. Desinstalar

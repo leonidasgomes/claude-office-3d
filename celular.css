@@ -22,3 +22,18 @@
 #celularCorpo .passo h4 { margin: 0; font-size: 14px; }
 #celularCorpo .impressao code { font-size: 11px; word-break: break-all; }
 html.movel #celularCorpo select, html.movel #celularCorpo button { min-height: 44px; font-size: 16px; }
+
+/* Bloco "Não abriu no celular?": 4 passos curtos + comando do firewall pronto para copiar */
+#celularCorpo details.ajuda { background: #161c24; border: 1px solid #2a3340; border-radius: 8px; padding: 6px 10px; }
+#celularCorpo details.ajuda summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+#celularCorpo details.ajuda ol { margin: 6px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+#celularCorpo .comando { display: block; font: 12px/1.4 Consolas, monospace; background: #0f1419; border-radius: 6px; padding: 6px 8px; word-break: break-all; user-select: all; }
+#celularCorpo .virtual { color: #f59e0b; }
+#celularCorpo .copiado { color: #4ade80; }
+
+/* Celular (tela estreita/baixa) */
+html.compacto #celularCorpo { font-size: 15px; }
+html.compacto #celularCorpo .impressao code, html.compacto #celularCorpo .comando, html.compacto #celularEndereco, html.compacto #celularCorpo .msg { font-size: 14px; }
+html.compacto #celularCorpo details.ajuda summary { min-height: 44px; display: flex; align-items: center; font-size: 15px; }
+html.compacto #celularQr canvas, html.compacto #celularQrCa canvas { max-width: min(100%, 260px); }
+html.compacto #celularCorpo .aparelho { flex-wrap: wrap; }

@@ -3,7 +3,8 @@
 // Time, cores, apelidos e tema vêm do config.json (lido do servidor em /config por config.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MOVEL } from './movel.js';   // celular/tablet: modo leve (pixel ratio 1, sem antialias, menos confete)
+import { MOVEL, COMPACTO, gavetaInfo } from './movel.js';   // celular/tablet: modo leve (pixel ratio 1, sem antialias, menos confete)
+const K_ROTULO = COMPACTO ? 1.45 : 1;   // balões e rótulos 3D maiores em tela pequena
 import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG } from './config.js';
 
 const TEMA_SP = CONFIG.tema === 'sao-paulo';   // "sao-paulo": decoração temática; "neutro": sem ela
@@ -24,6 +25,7 @@ const PAUSA_OCIOSO_MIN = 25;        // s ocioso (fila vazia) antes de poder ir a
 const TRABALHO_EXPIRA = 60;         // s sem eventos e o agente volta a "ocioso"
 const MAX_MESAS = 10;
 const INTERVALO_POLL = 2000;
+const INTERVALO_POLL_OCULTO = 15000;   // aba oculta (celular com a tela apagada ou em outro app): quase não consulta
 const MAX_FEED = 30;
 
 const Z_CORREDOR = 5;               // corredor atrás das cadeiras
@@ -134,7 +136,7 @@ const VISAO_GERAL = TEM_DIRETORIA   // com a diretoria o escritório fica mais l
   : { pos: new THREE.Vector3(-10, 48, 68), alvo: new THREE.Vector3(-10, 0, 8) };
 // em telas estreitas (retrato) a visão geral se afasta para a cena caber na largura
 function posVisaoGeral() {
-  const k = Math.min(1.5, Math.max(1, 0.9 / (camera.aspect || 1.5)));
+  const k = Math.min(2.1, Math.max(1, 0.9 / (camera.aspect || 1.5)));
   return VISAO_GERAL.alvo.clone().add(VISAO_GERAL.pos.clone().sub(VISAO_GERAL.alvo).multiplyScalar(k));
 }
 camera.position.copy(VISAO_GERAL.pos);
@@ -154,8 +156,15 @@ function redimensionar() {
   const w = contCena.clientWidth || 800, h = contCena.clientHeight || 600;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
+  ajustarGaveta();
+}
+// celular: a gaveta inferior cobre parte da cena; o centro da câmera sobe para o que sobra visível
+function ajustarGaveta() {
+  const w = contCena.clientWidth || 800, h = contCena.clientHeight || 600, d = Math.min(gavetaInfo.altura, h * 0.9);
+  if (d > 0) camera.setViewOffset(w, h, 0, d / 2, w, h); else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
+window.addEventListener('gaveta', ajustarGaveta);
 new ResizeObserver(redimensionar).observe(contCena);
 redimensionar();
 camera.position.copy(posVisaoGeral());
@@ -266,7 +275,7 @@ function criarSprite(w, h, escalaX, escalaY) {
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const tex = new THREE.CanvasTexture(canvas); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sp.scale.set(escalaX, escalaY, 1); sp.renderOrder = 10;
+  sp.scale.set(escalaX * K_ROTULO, escalaY * K_ROTULO, 1); sp.renderOrder = 10;
   return { sprite: sp, canvas, ctx: canvas.getContext('2d'), tex };
 }
 function retArredondado(g, x, y, w, h, r) {
@@ -1470,6 +1479,15 @@ function atualizarPainel() {
     }
   }
 }
+// resumo da gaveta no celular ("4 agentes · 2 trabalhando")
+const elResumo = $('resumo');
+let resumoAtual = '';
+function atualizarResumo() {
+  if (!elResumo) return;
+  const n = ordemAgentes.length, w = ordemAgentes.filter((a) => String(a.estado).startsWith('trabalhando')).length;
+  const txt = `${n} agente${n === 1 ? '' : 's'} · ${w} trabalhando`;
+  if (txt !== resumoAtual) { resumoAtual = txt; elResumo.textContent = txt; }
+}
 function horaDe(ev) {
   const m = /(\d{2}:\d{2}:\d{2})/.exec(String(ev && ev.ts || ''));
   return m ? m[1] : new Date().toTimeString().slice(0, 8);
@@ -1574,15 +1592,37 @@ document.querySelectorAll('#ficha .abas button').forEach((b) => b.addEventListen
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharFicha(); });
 // clique no boneco na cena 3D (ignora arrasto da câmera)
 const raio = new THREE.Raycaster(), ponteiro = new THREE.Vector2();
-let apertou = null;
-renderer.domElement.addEventListener('pointerdown', (e) => { apertou = [e.clientX, e.clientY]; });
-renderer.domElement.addEventListener('pointerup', (e) => {
-  if (!apertou || Math.hypot(e.clientX - apertou[0], e.clientY - apertou[1]) > 5) return;
-  const r = renderer.domElement.getBoundingClientRect();
+// Toque: um dedo gira, dois dão zoom/arrastam (OrbitControls). Só vale como "toque no boneco" um dedo que não
+// andou (tolerância maior no toque), foi rápido e não teve um segundo dedo no meio (pinça não abre ficha).
+let apertou = null, dedos = new Set(), multitoque = false;
+const el3d = renderer.domElement;
+el3d.addEventListener('pointerdown', (e) => {
+  dedos.add(e.pointerId);
+  if (dedos.size > 1) { multitoque = true; apertou = null; return; }
+  multitoque = false; apertou = { x: e.clientX, y: e.clientY, t: performance.now(), toque: e.pointerType !== 'mouse' };
+});
+const soltou = (e) => { dedos.delete(e.pointerId); if (!dedos.size) setTimeout(() => { multitoque = false; }, 0); };
+el3d.addEventListener('pointercancel', (e) => { apertou = null; soltou(e); });
+el3d.addEventListener('pointerup', (e) => {
+  const a = apertou; apertou = null;
+  const outro = multitoque; soltou(e);
+  if (!a || outro) return;
+  if (Math.hypot(e.clientX - a.x, e.clientY - a.y) > (a.toque ? 12 : 5) || performance.now() - a.t > 700) return;
+  const r = el3d.getBoundingClientRect();
   ponteiro.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raio.setFromCamera(ponteiro, camera);
-  const alvo = raio.intersectObjects(cena.children, true).find((i) => i.object.userData.agente);
-  if (alvo) { focarAgente(alvo.object.userData.agente); abrirFicha(alvo.object.userData.agente); }
+  let ag = (raio.intersectObjects(cena.children, true).find((i) => i.object.userData.agente) || {}).object;
+  ag = ag && ag.userData.agente;
+  if (!ag && a.toque) {   // dedo gordo: o boneco mais perto do toque (até 40 px), medido na cabeça
+    let melhor = 40;
+    for (const x of ordemAgentes) {
+      if (!x.fig || !x.fig.dentro || !x.fig.dentro.visible) continue;
+      const p = x.pos.clone().add(new THREE.Vector3(0, 1.2, 0)).project(camera);
+      const d = Math.hypot((p.x * 0.5 + 0.5) * r.width - (e.clientX - r.left), (-p.y * 0.5 + 0.5) * r.height - (e.clientY - r.top));
+      if (p.z < 1 && d < melhor) { melhor = d; ag = x; }
+    }
+  }
+  if (ag) { focarAgente(ag); abrirFicha(ag); }
 });
 
 // Foco de câmera
@@ -1676,7 +1716,10 @@ $('btnApelidos').addEventListener('click', () => {
 $('btnApelidos').textContent = ROTULO_MODO[modoApelido];
 $('tituloEscritorio').textContent = CONFIG.titulo;
 
+let pollTimer = null, pollando = false;
 async function poll() {
+  if (pollando) return;
+  pollando = true;
   try {
     if (!iniciou) {
       const r = await fetch('/eventos?desde=0&ultimos=' + MAX_FEED, { cache: 'no-store' });
@@ -1695,7 +1738,8 @@ async function poll() {
     falhas++; if (falhas >= 1) demoAuto = true;
   }
   atualizarSelo();
-  setTimeout(poll, INTERVALO_POLL);
+  pollando = false;
+  pollTimer = setTimeout(poll, document.hidden ? INTERVALO_POLL_OCULTO : INTERVALO_POLL);
 }
 
 // Demonstração: eventos falsos plausíveis
@@ -1748,8 +1792,14 @@ function tickDemo(t) {
 
 // ---------------------------------------------------------------- Loop principal
 let anterior = agora();
+let oculto = document.hidden;
+document.addEventListener('visibilitychange', () => {
+  oculto = document.hidden;
+  if (!oculto) { anterior = agora(); clearTimeout(pollTimer); poll(); }   // voltou: não acumula tempo e atualiza já
+});
 function quadro() {
   requestAnimationFrame(quadro);
+  if (oculto) return;   // aba oculta: não gasta bateria desenhando
   const t = agora(), dt = Math.min(0.1, t - anterior); anterior = t;
   tickDemo(t);
   tickSocial(t); tickConfete(dt);
@@ -1770,6 +1820,7 @@ function quadro() {
   }
   controles.update();
   atualizarPainel();
+  atualizarResumo();
   renderer.render(cena, camera);
 }
 requestAnimationFrame(quadro);

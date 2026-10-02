@@ -121,7 +121,7 @@ function abrir() {
   if (!dados) infoEl.textContent = 'carregando o quadro do GitHub…';
   carregar();
   clearInterval(timer);
-  if (GH.kanban) timer = setInterval(carregar, ATUALIZAR_MS);
+  if (GH.kanban) timer = setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS);
 }
 function fechar() { painel.hidden = true; clearInterval(timer); }
 

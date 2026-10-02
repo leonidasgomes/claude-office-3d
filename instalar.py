@@ -664,6 +664,13 @@ def assistente(args):
     if cfg.get("rede_local"):
         print("  Acesso pelo celular: se o Firewall do Windows perguntar ao abrir, marque SÓ \"Redes privadas\"; depois use o botão"
               " 📱 Celular da página (no PC) para ver o QR code.")
+        if WINDOWS:   # só mostra: o instalador nunca altera o Firewall
+            portas = f"{cfg['porta'] + 1},{cfg['porta'] + 2}" if cfg.get("rede_https", True) else str(cfg["porta"])
+            print("  Se o celular não abrir o link (tempo esgotado), crie a regra de entrada UMA vez, no PowerShell como Administrador:")
+            print(f'    New-NetFirewallRule -DisplayName "Claude Office 3D (celular)" -Direction Inbound -Program "{sys.executable}"'
+                  f" -Protocol TCP -LocalPort {portas} -Profile Private -Action Allow")
+            print("  (confira também: celular e PC na mesma sub-rede e a rede do Windows como Privada; detalhes no INSTALACAO.md,"
+                  " seção Acesso pelo celular > Não abre no celular?)")
     if hook != "nenhum":
         print("  Sessões do Claude Code já abertas precisam ser reiniciadas para carregar o hook.")
     if not args.sem_abrir and sim_nao("  Abrir o escritório agora?", True):

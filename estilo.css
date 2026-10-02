@@ -43,23 +43,63 @@ button.ativo { background: #b45309; border-color: #f59e0b; }
 #fichaLista .resumo { margin-top: 2px; }
 #fichaLista .detalhe { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 Consolas, monospace; color: #c9d4e0; background: #0f1419; border-radius: 4px; padding: 5px 6px; max-height: 220px; overflow: auto; }
 [hidden] { display: none !important; }
-@media (max-width: 760px) {
-  #app { flex-direction: column; }
-  #painel { width: 100%; height: 42%; border-left: 0; border-top: 1px solid #2a3340; }
-  #agentes { flex-direction: row; flex-wrap: wrap; }
-  #agentes li { flex: 1 1 45%; }
-}
+/* Elementos só do celular: ficam escondidos no PC */
+#gavetaAlca, #btnMenu, #resumo { display: none; }
+#gavetaCorpo { display: contents; }
 
-/* Modo leve no celular/tablet (classe "movel" posta por movel.js): painéis em tela cheia e botões grandes para o toque */
+/* Toque (classe "movel", posta por movel.js: pointer coarse ou tela pequena): alvos de toque grandes */
 html.movel, html.movel body { overscroll-behavior: none; }
-html.movel #app { flex-direction: column; }
-html.movel #painel { width: 100%; height: 42%; border-left: 0; border-top: 1px solid #2a3340; }
-html.movel #agentes { flex-direction: row; flex-wrap: wrap; max-height: none; }
-html.movel #agentes li { flex: 1 1 45%; min-height: 48px; }
-html.movel .botoes { flex-wrap: wrap; }
 html.movel button, html.movel #placarOrdem button { min-height: 44px; padding: 8px 14px; font-size: 16px; }
-html.movel #prs, html.movel #kanban, html.movel #placar, html.movel #ficha, html.movel #celular { position: fixed; inset: 0; width: auto; max-height: none; border-radius: 0; border-width: 0; z-index: 20; padding: 12px; }
-html.movel #prsFechar, html.movel #kanbanFechar, html.movel #placarFechar, html.movel #fichaFechar, html.movel #celularFechar { min-width: 48px; min-height: 48px; font-size: 26px; }
+html.movel #prsLista .botao { min-height: 44px; display: inline-flex; align-items: center; padding: 8px 14px; font-size: 16px; }
 html.movel #ficha .abas button { min-height: 48px; }
-html.movel #prsLista .botao { padding: 10px 14px; font-size: 16px; }
-html.movel #feed li, html.movel #fichaLista li { font-size: 14px; }
+
+/* Tela estreita (< 760 px) ou baixa (paisagem de celular): classe "compacto" */
+html.compacto { --seguro-b: env(safe-area-inset-bottom, 0px); --seguro-t: env(safe-area-inset-top, 0px); --seguro-l: env(safe-area-inset-left, 0px); --seguro-r: env(safe-area-inset-right, 0px); }
+html.compacto, html.compacto body { height: 100dvh; overflow: hidden; font-size: 15px; }
+html.compacto #app { display: block; position: relative; height: 100dvh; }
+html.compacto #cena { position: absolute; inset: 0; }   /* absolute (não fixed): sem contexto de empilhamento, os painéis z 20 ficam acima da gaveta z 10 */
+html.compacto #selo { top: calc(10px + var(--seguro-t)); left: calc(10px + var(--seguro-l)); font-size: 14px; }
+html.compacto #erro { font-size: 15px; }
+
+/* gaveta inferior: recolhida (~58 px, com o resumo), meio e cheia; altura em --gaveta-h (movel.js) */
+html.compacto #painel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; width: auto; height: calc(var(--gaveta-h, 58px) + var(--seguro-b)); max-height: 100dvh; border-left: 0; border-top: 1px solid #2a3340; border-radius: 16px 16px 0 0; padding: 0 calc(12px + var(--seguro-r)) var(--seguro-b) calc(12px + var(--seguro-l)); gap: 0; box-shadow: 0 -6px 24px #0009; transition: height .22s ease; }
+html.compacto #painel.arrastando { transition: none; }
+html.compacto #gavetaAlca { display: flex; flex: none; justify-content: center; align-items: center; height: 16px; margin: 0 -12px; cursor: grab; touch-action: none; }
+html.compacto #gavetaAlca i { display: block; width: 44px; height: 5px; border-radius: 3px; background: #4b5a6c; }
+html.compacto #painel > header { flex: none; height: 42px; gap: 8px; touch-action: none; }
+html.compacto #painel h1 { font-size: 17px; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html.compacto #resumo { display: block; flex: 1 0 auto; margin-left: auto; text-align: right; font-size: 14px; color: #9aa7b6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.compacto #btnMenu { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 48px; height: 44px; padding: 0; font-size: 22px; line-height: 1; }
+html.compacto #gavetaCorpo { display: block; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+html.compacto #gavetaCorpo h2 { font-size: 13px; margin: 10px 0 4px; }
+html.compacto #agentes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; max-height: none; overflow: visible; }
+html.compacto #agentes li { min-height: 52px; flex: none; }
+html.compacto .funcao, html.compacto .sub, html.compacto .hora, html.compacto #feed li, html.compacto #feed .t { font-size: 14px; }
+html.compacto #feed { overflow: visible; flex: none; min-height: 0; }
+html.compacto #feed li { padding: 6px 8px; }
+
+/* menu "☰": os botões do cabeçalho viram uma folha no topo da tela */
+html.compacto #painel > header .botoes { display: none; }
+html.compacto #painel.menu > header .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; position: fixed; top: calc(8px + var(--seguro-t)); right: calc(8px + var(--seguro-r)); z-index: 40; width: min(380px, calc(100vw - 16px - var(--seguro-l) - var(--seguro-r))); max-height: calc(100dvh - 16px - var(--seguro-t)); overflow-y: auto; padding: 10px; background: #161c24; border: 1px solid #3a4756; border-radius: 12px; box-shadow: 0 10px 30px #000c; }
+html.compacto .botoes button { min-height: 48px; font-size: 16px; }
+
+/* painéis em tela cheia, com cabeçalho fixo e botão de fechar grande */
+html.compacto #prs, html.compacto #kanban, html.compacto #placar, html.compacto #ficha, html.compacto #celular { position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0; width: auto; max-height: none; border-radius: 0; border-width: 0; z-index: 20; padding: 0 calc(12px + var(--seguro-r)) calc(12px + var(--seguro-b)) calc(12px + var(--seguro-l)); gap: 10px; background: #0f1419; box-shadow: none; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+html.compacto #prs, html.compacto #placar, html.compacto #ficha, html.compacto #celular { overflow-x: hidden; }
+html.compacto #placarFaixas li, html.compacto #fichaLista li, html.compacto #prsLista .pr, html.compacto #celularCorpo { overflow-wrap: anywhere; }
+html.compacto #ficha { border-top: 4px solid #888; padding-top: 0; }
+html.compacto #prs > header, html.compacto #kanban > header, html.compacto #placar > header, html.compacto #ficha > header, html.compacto #celular > header { position: sticky; top: 0; z-index: 3; flex: none; align-items: center; background: #0f1419; margin: 0 calc(-12px - var(--seguro-r)) 0 calc(-12px - var(--seguro-l)); padding: calc(8px + var(--seguro-t)) calc(12px + var(--seguro-r)) 8px calc(12px + var(--seguro-l)); border-bottom: 1px solid #2a3340; }
+html.compacto #prs h3, html.compacto #kanban h3, html.compacto #placar h3, html.compacto #ficha h3, html.compacto #celular h3 { font-size: 18px; }
+html.compacto #prsInfo, html.compacto #kanbanInfo, html.compacto #placarInfo, html.compacto #fichaEstado { font-size: 14px; }
+html.compacto #prsFechar, html.compacto #kanbanFechar, html.compacto #placarFechar, html.compacto #fichaFechar, html.compacto #celularFechar { flex: none; min-width: 52px; min-height: 52px; padding: 0; font-size: 28px; line-height: 1; }
+html.compacto #ficha .agora { font-size: 15px; flex: none; }
+html.compacto #ficha .abas { flex: none; flex-wrap: wrap; }
+html.compacto #ficha .abas button { flex: 1 1 30%; font-size: 15px; }
+html.compacto #fichaLista { overflow: visible; flex: none; }
+html.compacto #fichaLista li { font-size: 14px; padding: 8px 10px; }
+html.compacto #fichaLista .t, html.compacto #fichaLista .motivo { font-size: 14px; }
+html.compacto #fichaLista .detalhe { font-size: 14px; max-height: 260px; }
+
+@media (max-height: 480px) {   /* paisagem de celular: gaveta cheia/meio mais generosas e nada de enfeite vertical */
+  html.compacto #painel h1 { font-size: 16px; }
+}

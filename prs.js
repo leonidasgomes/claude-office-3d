@@ -100,5 +100,5 @@ $('prsFechar').addEventListener('click', fechar);
 $('prsAtualizar').addEventListener('click', () => { info.textContent = 'buscando…'; carregar(true); });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hidden) fechar(); });
 // o contador no botão fica sempre em dia, mesmo com o painel fechado (só se o repositório estiver configurado)
-if (GH.prs) { carregar(); setInterval(carregar, ATUALIZAR_MS); }
+if (GH.prs) { carregar(); setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS); }   // aba oculta: não consulta
 window.__prs = { carregar, situacao };
