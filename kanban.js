@@ -99,7 +99,8 @@ function desenhar() {
   infoEl.textContent = dados.erro
     ? `⚠️ não consegui atualizar (${dados.erro}) — mostrando o último quadro${dados.atualizado ? ' de ' + dados.atualizado : ''}`
     : `atualizado às ${dados.atualizado} · ${dados.cartoes.length} cartões`;
-  if (dados.limite) infoEl.textContent += ` · ⏳ ${dados.limite}`;   // GraphQL do GitHub estourado: o servidor diz até quando
+  if (dados.limite) infoEl.textContent += ` · ⏳ ${dados.limite}`;   // limite do GitHub estourado: o servidor diz até quando
+  if (dados.cota) infoEl.textContent += ` · ${dados.cota_baixa ? '⚠️ ' : ''}${dados.cota}`;   // vigia da cota (ex.: GraphQL: 3.200/5.000 (volta 11:25))
 }
 
 async function carregar() {

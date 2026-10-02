@@ -3,6 +3,16 @@
 ## 1.1.0
 XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no config).
 
+- **Vigia da cota do GitHub** (`cota.py`): a cada 5 min lê a cota (REST `gh api rate_limit` + a consulta GraphQL `{rateLimit}`,
+  que o GitHub não cobra), guarda o histórico em `dados/github_cota.jsonl` (uma linha por leitura, 7 dias) e mostra no
+  rodapé do Kanban e dos PRs "GraphQL: 3.200/5.000 (volta 11:25)" (pontos usados na hora / limite; REST só quando baixo).
+  Restando menos de 20% sai o alerta "Cota do GitHub baixa" (tipo novo `cota`, ligado por padrão, um por janela e por
+  recurso). `GET /kanban` e `GET /prs` ganham `cota` e `cota_baixa`.
+- **Kanban pelo REST do Projects v2**: `GET /kanban` lê itens e campos por `/users|orgs/<dono>/projectsV2/<n>/fields|items`
+  (100 por página) em vez de `gh project item-list`, que gasta ~200 dos 5000 pontos GraphQL por leitura. Sem REST do
+  Projects (gh antigo, escopo, projeto), cai no GraphQL como antes.
+- Instalador: `cota.py` e `sugestoes_bot.py` entram na lista de arquivos do pacote.
+
 - `xp.py`: pontua os PRs mergeados por resultado verificado (aprovado de primeira, sem conflito com testes, cartão
   fechado, retrabalho, regressão); apagar teste ou acrescentar skip/xfail zera os pontos e abre uma auditoria
   (`xp.py --liberar N`). Atribuição pelo mapa `github.times`, rótulos e prefixos de branch; grava `dados/xp/placar.json`.

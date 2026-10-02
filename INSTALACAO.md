@@ -548,6 +548,7 @@ desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celula
 | Pergunta de escopo do Diretor | mensagem (`SendMessage`) cujo texto começa com `PERGUNTA` ou contém "pergunta ao desenvolvedor" | ligado |
 | Lembrete | PR pronto esperando há mais de 24 h (no máximo 1 lembrete por dia) | ligado |
 | Sugestão P0/P1 do bot de revisão | sugestão nova de prioridade P0 ou P1 de um bot de `github.bots_revisao` (seção 11) | ligado |
+| Cota do GitHub baixa | restam menos de 20% dos pontos da hora na API do GitHub (GraphQL ou REST); o vigia `cota.py` lê a cota a cada 5 min e grava `dados/github_cota.jsonl`; o rodapé do Kanban e dos PRs mostra "GraphQL: 3.200/5.000 (volta 11:25)" | ligado |
 
 ### Como funciona
 

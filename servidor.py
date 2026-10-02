@@ -3,7 +3,7 @@
 Serve esta pasta e expõe:
   GET /config                         -> configuração pública (título, tema, agentes, GitHub) para a página
   GET /eventos?desde=<n>[&ultimos=<k>] -> {"total": N, "eventos": [...]} a partir de dados/eventos.jsonl
-  GET /kanban                         -> cartões do GitHub Projects (via gh, em cache)
+  GET /kanban                         -> cartões do GitHub Projects (REST via gh, em cache; traz também o texto da cota do GitHub)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
   GET /api/alertas?desde=<id>         -> fila de alertas (alertas.py); GET /api/push/chave e POST /api/push/inscrever|sair|prefs|teste
@@ -35,6 +35,7 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import alertas  # noqa: E402
+import cota  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
 import sugestoes_bot  # noqa: E402
@@ -47,7 +48,7 @@ XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
 XP_PASTA = PASTA / "dados" / "xp"
 XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
-KANBAN_VALIDADE = 600   # s; GraphQL (gh project): o quadro é lido no máximo a cada 10 min
+KANBAN_VALIDADE = 600   # s; o quadro é lido no máximo a cada 10 min (REST; o GraphQL do `gh project` só entra como reserva)
 PRS_VALIDADE = 180      # s; REST, com ETag na lista (304 não conta no limite) e cache por sha
 MERGEAVEL_TTL = 1800    # s; a base pode andar sem o sha do PR mudar, então o "conflito" é conferido de novo a cada 30 min
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
@@ -159,7 +160,7 @@ def aviso_limite(erro, recurso="core"):
     try:
         r = subprocess.run([gh() or "gh", "api", "rate_limit"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         recursos = json.loads(r.stdout)["resources"]
-        esgotados = [v for k, v in recursos.items() if k == recurso and v.get("remaining", 1) <= 0]
+        esgotados = [v for k, v in recursos.items() if k in recurso.split("|") and v.get("remaining", 1) <= 0]
         if esgotados:
             texto = "limite da API do GitHub atingido — volta às " + time.strftime("%H:%M", time.localtime(esgotados[0]["reset"]))
     except Exception:
@@ -205,10 +206,68 @@ class Cache:
 
 
 _url_projeto = {}
+_base_rest = {}   # (dono, número) -> "users/<dono>/projectsV2/<n>" ou "orgs/<dono>/projectsV2/<n>"
+
+
+def _paginas_rest(caminho):
+    """GET REST paginado pelo gh (`--paginate --slurp`): lista única com os itens de todas as páginas."""
+    paginas = json.loads(rodar_gh(["api", caminho, "--paginate", "--slurp"]) or "[]")
+    return [x for p in paginas for x in (p if isinstance(p, list) else [p])]
+
+
+def _valor_rest(campo):
+    """Texto do valor de um campo de um item do Projects (REST): nome da opção, texto ou título."""
+    v = (campo or {}).get("value")
+    if isinstance(v, dict):
+        v = v.get("name") or v.get("raw") or v.get("title") or ""
+        v = v.get("raw", "") if isinstance(v, dict) else v
+    return str(v or "")
+
+
+def _ler_kanban_rest(g):
+    """Cartões pela API REST do Projects v2 (`/users|orgs/<dono>/projectsV2/<n>/fields|items`, 100 por página): não gasta a cota
+    do GraphQL (um `gh project item-list` de 180 cartões custa ~200 dos 5000 pontos/h). Levanta RuntimeError se falhar."""
+    owner, numero = g["projeto_owner"], g["projeto_numero"]
+    chave = (owner, numero)
+    ultimo = RuntimeError("projeto não encontrado")
+    for base in ([_base_rest[chave]] if chave in _base_rest else [f"users/{owner}/projectsV2/{numero}", f"orgs/{owner}/projectsV2/{numero}"]):
+        try:
+            campos = _paginas_rest(f"{base}/fields")
+            _base_rest[chave] = base
+            break
+        except RuntimeError as e:
+            if RE_LIMITE.search(str(e)):
+                raise
+            ultimo = e
+    else:
+        raise ultimo
+    por_nome = {c["name"].lower(): c["id"] for c in campos if isinstance(c, dict) and "id" in c and "name" in c}
+    nomes = {"status": "status", "time": g["campo_time"], "prioridade": g["campo_prioridade"]}
+    ids = {k: por_nome.get(str(n).lower()) for k, n in nomes.items() if n}
+    brutos = _paginas_rest(f"{base}/items?per_page=100&fields=" + ",".join(str(i) for i in ids.values() if i))
+    cartoes = []
+    for i in brutos:
+        c = i.get("content") or {}
+        por_id = {f.get("id"): f for f in i.get("fields") or []}
+        valor = {k: _valor_rest(por_id.get(ids.get(k))) for k in nomes}
+        cartoes.append({"numero": c.get("number"), "titulo": c.get("title") or "", "url": c.get("html_url") or "",
+                        "tipo": i.get("content_type") or "", "status": valor["status"] or "Sem status",
+                        "time": valor["time"], "prioridade": valor["prioridade"]})
+    url = f"https://github.com/{base.split('/')[0]}/{owner}/projects/{numero}"
+    return {"configurado": True, "projeto": url, "cartoes": cartoes, "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
 
 
 def _ler_kanban():
     g = cfg()["github"]
+    try:
+        return _ler_kanban_rest(g)
+    except Exception as e:   # REST do Projects indisponível (gh antigo, escopo, projeto): cai no GraphQL do `gh project`
+        if RE_LIMITE.search(str(e)):
+            raise
+    return _ler_kanban_graphql(g)
+
+
+def _ler_kanban_graphql(g):
     saida = rodar_gh(["project", "item-list", str(g["projeto_numero"]), "--owner", g["projeto_owner"],
                       "--format", "json", "--limit", "500"])
     cartoes = []
@@ -326,7 +385,7 @@ def _ler_prs():
             "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
 
 
-_kanban = Cache(KANBAN_VALIDADE, _ler_kanban, lambda: {"configurado": True, "projeto": "", "cartoes": [], "atualizado": ""}, "graphql")
+_kanban = Cache(KANBAN_VALIDADE, _ler_kanban, lambda: {"configurado": True, "projeto": "", "cartoes": [], "atualizado": ""}, "graphql|core")
 _prs = Cache(PRS_VALIDADE, _ler_prs, lambda: {"configurado": True, "repo": "", "prs": [], "atualizado": ""}, "core")
 
 
@@ -411,6 +470,13 @@ def acao_xp(rota, dados, ident):
 
 # ---- Alertas (alertas.py / push.py): detector em segundo plano, fila e Web Push -------------------------------------
 ALERTAS = None   # criado no main(), só quando o servidor sobe de fato
+VIGIA = cota.Vigia(PASTA / "dados", "gh", leitor=lambda: cota.ler(gh()) if gh() else None)   # cota do GitHub: leitura barata a cada 5 min -> dados/github_cota.jsonl
+
+
+def com_cota(dados):
+    """Acrescenta ao JSON do Kanban/PRs o texto do rodapé ("GraphQL: 3.200/5.000 (volta 11:25)") e se a cota está baixa."""
+    c = VIGIA.resumo() if gh() else None
+    return dict(dados, cota=c["texto"] if c else "", cota_baixa=bool(c and c["baixa"]))
 
 
 # ---- Sugestões dos bots de revisão (sugestoes_bot.py): coleta em segundo plano, leitura e tratamento ---------------------
@@ -480,7 +546,7 @@ def criar_alertas(obj_rede):
         caminho = cfg()["alertas"].get("escalonamentos") or ""
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
     fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
-              "sugestoes": lambda: sugestoes_bot.resumo()}
+              "sugestoes": lambda: sugestoes_bot.resumo(), "cota": VIGIA.resumo}
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
     obj_rede.ao_revogar.append(ALERTAS.push.remover_aparelhos)   # revogar o aparelho apaga a inscrição de push
     return ALERTAS
@@ -575,9 +641,9 @@ class Handler(rede.HandlerSeguro):
             total, eventos = ler_eventos(desde, ultimos)
             return self.responder({"total": total, "eventos": eventos})
         if url.path == "/kanban":
-            return self.responder(kanban())
+            return self.responder(com_cota(kanban()))
         if url.path == "/prs":
-            return self.responder(prs("forcar" in qs))
+            return self.responder(com_cota(prs("forcar" in qs)))
         if url.path == "/xp":
             if not cfg()["xp"]["ativo"]:
                 return self.responder({"ativo": False, "agentes": {}})
@@ -665,6 +731,8 @@ def main():
     alertas_obj = criar_alertas(Handler.rede)
     parar_alertas = alertas_obj.iniciar()
     parar_sugestoes = iniciar_sugestoes()
+    parar_cota = VIGIA.iniciar()
+    print(f"Cota do GitHub: vigia a cada {cota.INTERVALO // 60} min (dados/github_cota.jsonl)")
     cfg_sug = sugestoes_bot.configuracao()
     print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
           + ("triagem " + cfg_sug["modelo"] if cfg_sug["modelo"] else "sem triagem") + ")" if cfg_sug["bots"] and cfg_sug["repo"]
@@ -684,6 +752,7 @@ def main():
     finally:
         parar_alertas.set()
         parar_sugestoes.set()
+        parar_cota.set()
         servidor.server_close()
         for s in extras:
             s.shutdown()

@@ -151,6 +151,7 @@ function desenhar() {
     ? `⚠️ não consegui atualizar (${dados.erro})`
     : `${dados.repo} · ${prs.length} aberto(s), ${prontos} pronto(s) · atualizado às ${dados.atualizado}`)
     + (dados.limite ? ` · ⏳ ${dados.limite}` : '')
+    + (dados.cota ? ` · ${dados.cota_baixa ? '⚠️ ' : ''}${dados.cota}` : '')
     + (sugestoes.erro ? ` · 🤖 coleta de sugestões: ${sugestoes.erro}` : '');
 }
 

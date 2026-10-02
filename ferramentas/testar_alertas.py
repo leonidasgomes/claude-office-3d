@@ -18,6 +18,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 import alertas  # noqa: E402
+import cota  # noqa: E402
 import push  # noqa: E402
 
 if push.CRIPTO_ERRO:
@@ -343,6 +344,57 @@ def testar_detector():
     ok("opções do config normalizadas (valor ruim cai no padrão)")
 
 
+# ---------------------------------------------------------------- vigia da cota do GitHub
+def testar_cota():
+    agora = time.time()
+    reset = int(agora + 1500)
+
+    def rec(gq_restante, core_restante=5000, reset_=reset):
+        return {"graphql": {"limit": 5000, "remaining": gq_restante, "used": 5000 - gq_restante, "reset": reset_},
+                "core": {"limit": 5000, "remaining": core_restante, "used": 5000 - core_restante, "reset": reset_}}
+    bruto = {"resources": {k: {"limit": 5000, "remaining": 1800, "used": 3200, "reset": reset} for k in ("graphql", "core", "search")}}
+    n = cota.normalizar(bruto)
+    assert n["graphql"]["used"] == 3200 and cota.normalizar({"resources": {}}) is None and cota.normalizar(None) is None
+    t = cota.texto(rec(1800))
+    assert t == f"GraphQL: 3.200/5.000 (volta {cota.hora(reset)})", t
+    assert "REST" not in t and "REST: 4.900/5.000" in cota.texto(rec(1800, 100))
+    g = cota.normalizar_gql({"data": {"rateLimit": {"limit": 5000, "remaining": 4788, "used": 212, "resetAt": "2026-10-02T12:19:20Z"}}})
+    assert g == {"limit": 5000, "remaining": 4788, "used": 212, "reset": 1790943560} and cota.normalizar_gql({"errors": []}) is None
+    assert cota.baixa(rec(900)) and not cota.baixa(rec(1800)) and not cota.baixa(rec(10, reset_=int(agora - 5)))
+    ok("cota.py: rodapé 'GraphQL: 3.200/5.000 (volta HH:MM)', REST só quando baixo, 'baixa' < 20% e só na janela atual")
+    with tempfile.TemporaryDirectory() as tmp:
+        leituras = [rec(4000), rec(3000), rec(2000)]
+        v = cota.Vigia(tmp, "gh-falso", leitor=lambda: leituras.pop(0) if leituras else None)
+        assert v.ultimo() is None and v.resumo() is None
+        for i in range(3):
+            assert v.passo(agora - 600 + i * 300)["graphql"]["remaining"] == [4000, 3000, 2000][i]
+        assert v.passo(agora) is None, "gh falhou: nada é gravado"
+        linhas = (Path(tmp) / "github_cota.jsonl").read_text(encoding="utf-8").splitlines()
+        assert len(linhas) == 3 and json.loads(linhas[0])["graphql"]["used"] == 1000
+        r = v.resumo()
+        assert r["graphql"]["remaining"] == 2000 and not r["baixa"] and r["ritmo_hora"] == 12000, r   # 2000 pontos em 10 min
+        v2 = cota.Vigia(tmp, "gh-falso", leitor=lambda: None)
+        assert v2.ultimo()["graphql"]["remaining"] == 2000, "servidor reiniciado lê o último do arquivo"
+        ok("Vigia: histórico em github_cota.jsonl (1 linha por leitura), ritmo em pontos/hora, sobrevive a reinício")
+    with tempfile.TemporaryDirectory() as tmp:
+        estado = {"cota": rec(4000)}
+        a = alertas.Alertas(tmp, {"cota": lambda: estado["cota"]}, {"limite_push_hora": 20})
+        assert a.passo(agora) == []
+        estado["cota"] = rec(900)
+        r = a.passo(agora + 300)
+        assert [x["tipo"] for x in r] == ["cota"] and "GraphQL" in r[0]["titulo"] and "900" in r[0]["corpo"], r
+        assert a.passo(agora + 600) == [] and a.passo(agora + 900) == [], "mesma janela: não repete"
+        estado["cota"] = rec(0, 100)
+        r = a.passo(agora + 1200)
+        assert [x["tipo"] for x in r] == ["cota"] and "REST" in r[0]["titulo"], "REST baixo é outro alerta (GraphQL já avisado)"
+        estado["cota"] = rec(800, reset_=reset + 3600)
+        assert [x["tipo"] for x in a.passo(agora + 4000)] == ["cota"], "nova janela com cota baixa alerta de novo"
+        estado["cota"] = None
+        assert a.passo(agora + 4300) == []
+        assert next(t for t in alertas.TIPOS if t["id"] == "cota")["padrao"] is True
+        ok("alerta 'Cota do GitHub baixa': < 20% alerta uma vez por janela e por recurso; fonte ausente não alerta")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     t = time.time()
@@ -352,6 +404,7 @@ def main():
     testar_sanear_e_endpoints()
     testar_envio()
     testar_detector()
+    testar_cota()
     print(f"OK: {len(feitos)} verificações em {time.time() - t:.1f} s")
 
 

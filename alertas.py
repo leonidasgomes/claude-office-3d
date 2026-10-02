@@ -35,6 +35,7 @@ TIPOS = [
     {"id": "pergunta", "rotulo": "Pergunta de escopo do Diretor", "padrao": True, "painel": ""},
     {"id": "lembrete", "rotulo": "Lembrete de PR pronto esperando há mais de 24 h", "padrao": True, "painel": "prs"},
     {"id": "sugestao", "rotulo": "Sugestão P0/P1 nova do bot de revisão", "padrao": True, "painel": "prs"},
+    {"id": "cota", "rotulo": "Cota do GitHub baixa", "padrao": True, "painel": "prs"},
 ]
 PADROES = {t["id"]: t["padrao"] for t in TIPOS}
 OPCOES_PADRAO = {"ativo": True, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
@@ -217,6 +218,28 @@ def _detectar_sugestoes(est, resumo, novos):
     base["sug"] = True
 
 
+def _detectar_cota(est, cota, novos):
+    """Cota do GitHub baixa (cota.Vigia.resumo()): um alerta por janela de 1 h e por recurso (GraphQL/REST) quando restam menos
+    de 20% do limite. A 1ª leitura também alerta (cota baixa é fato do presente, não novidade a ignorar)."""
+    avisados = est.setdefault("cota", {})   # {recurso: reset da janela já avisada}
+    for chave, rotulo in (("graphql", "GraphQL"), ("core", "REST")):
+        r = cota.get(chave)
+        if not isinstance(r, dict) or not all(isinstance(r.get(k), int) for k in ("limit", "remaining", "reset")) or r["limit"] <= 0:
+            continue
+        if r["remaining"] < 0.2 * r["limit"] and avisados.get(chave) != r["reset"]:
+            avisados[chave] = r["reset"]
+            volta = time.strftime("%H:%M", time.localtime(r["reset"]))
+            esgotada = r["remaining"] <= 0
+            novos.append(_alerta("cota", f"Cota do GitHub baixa ({rotulo})",
+                                 (f"A cota {rotulo} do GitHub esgotou; volta às {volta}." if esgotada else
+                                  f"Restam {r['remaining']} de {r['limit']} pontos {rotulo} do GitHub; a cota volta às {volta}."),
+                                 f"cota:{chave}:{r['reset']}",
+                                 "Prefira a API REST (gh api repos/...) e leituras em lote a gh pr/issue --json e gh project."))
+    for chave in list(avisados):
+        if chave not in ("graphql", "core"):
+            del avisados[chave]
+
+
 def eh_pergunta(texto):
     t = str(texto or "").strip()
     return t.upper().startswith("PERGUNTA") or "pergunta ao desenvolvedor" in t.lower()
@@ -258,6 +281,9 @@ def detectar(est, entradas, agora, opc):
     sg = entradas.get("sugestoes")
     if isinstance(sg, dict) and sg.get("ativo") is not False and isinstance(sg.get("itens"), list):
         _detectar_sugestoes(est, sg, novos)
+    ct = entradas.get("cota")
+    if isinstance(ct, dict):
+        _detectar_cota(est, ct, novos)
     ult = est.get("ultimo", {})   # esquece chaves com mais de 2 dias
     est["ultimo"] = {k: v for k, v in ult.items() if agora - v < 2 * 86400}
     return novos
@@ -376,7 +402,7 @@ class Alertas:
         """Uma leitura do detector. Devolve os alertas que saíram. Falha de uma fonte não derruba as outras."""
         agora = time.time() if agora is None else agora
         ent = {}
-        for nome in ("prs", "placar", "escalonamentos", "sugestoes"):
+        for nome in ("prs", "placar", "escalonamentos", "sugestoes", "cota"):
             fn = self.fontes.get(nome)
             if fn:
                 try:
