@@ -84,3 +84,19 @@ Primeira versão pública do Claude Office 3D.
 - Hook do Claude Code que registra eventos localmente (só das pastas configuradas) e servidor local em 127.0.0.1.
 - Assistente de instalação em 7 passos (`instalar.bat` / `instalar.sh`), instalação silenciosa e desinstalação.
 - Modo demonstração quando não há eventos.
+
+- **Sugestões do bot de revisão** (opcional, `github.bots_revisao` vazio = desligado): `sugestoes_bot.py` coleta os comentários em
+  linha e as revisões dos bots de revisão (id, PR, arquivo, linha, prioridade P0 a P3, título, texto, link) só dos PRs abertos,
+  com `ETag` (304 não conta no limite do GitHub) e no máximo 1 chamada de comentários + 1 de PRs abertos + as reviews dos PRs com
+  comentário novo. Caixa em `dados/sugestoes/` com situação `nova -> triada -> encaminhada | ignorada | discutir -> resolvida`
+  (`--coletar`, `--pendentes`, `--tratar`, `--listar`). **Triagem barata opcional** (`sugestoes.triagem_modelo`, padrão Haiku): uma
+  chamada de `claude -p` sem ferramentas por coleta com itens novos, até 30 itens, que sugere corrigir/ignorar/discutir. O servidor
+  coleta a cada `sugestoes.intervalo_min` (15) minutos; `GET /api/sugestoes` (o celular pareado lê) e `POST /api/sugestoes/tratar`
+  (só o PC, com CSRF). Alerta novo "Sugestão P0/P1 do bot de revisão". Painel PRs: selo "🤖 3 (1 P1)", lista expansível com link e
+  botões Encaminhar/Ignorar/Resolvido no PC. `modelos/sugestoes_lider.md`: prompt do job do líder. Seção 11 nova no INSTALACAO.md
+  (as seções seguintes foram renumeradas).
+- **Menos chamadas à API do GitHub**: o painel PRs passou do GraphQL (`gh pr list`) para REST (lista com `ETag`, status do commit
+  e `mergeable` em cache por `sha`, validade de 180 s); o Kanban (GraphQL) passou de 2 para 10 minutos e a URL do projeto é lida
+  uma vez só; o exemplo `modelos/briefing_diretor.py` lista as issues por REST. Quando o limite do GitHub estoura, o Kanban e o
+  painel PRs mostram "limite da API do GitHub atingido — volta às HH:MM" (`gh api rate_limit`, lido só quando dá erro).
+  Diferenças: "fecha #n" vem do texto do PR e, com `check_revisao` vazio, a aprovação vem de `/pulls/{n}/reviews`.

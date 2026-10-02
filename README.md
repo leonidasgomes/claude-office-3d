@@ -37,6 +37,10 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 - **Alertas** (🔔): avisa quando há algo esperando por você (PR pronto para o merge, PR com conflito ou reprovado, auditoria
   vermelha nova, pergunta do Diretor, lembrete de 24 h) com toast e notificação com a página aberta e **Web Push** com o
   celular fechado (cifrado, sem comando nem código no aviso, 20 por hora no máximo). Veja a seção 10 do [INSTALACAO.md](INSTALACAO.md).
+- **Sugestões do bot de revisão** (opcional): junta os comentários dos bots de revisão (Codex, CodeRabbit, Copilot...) dos PRs
+  abertos numa caixa local, com triagem barata opcional (Haiku, sem ferramentas), selo "🤖 3 (1 P1)" no painel PRs, botões
+  Encaminhar/Ignorar/Resolvido no PC e entrega ao líder do time. Só REST com ETag (resposta 304 não gasta a cota do GitHub).
+  Veja a seção 11 do [INSTALACAO.md](INSTALACAO.md) e `modelos/sugestoes_lider.md`.
 - **Responsivo no celular**: gaveta inferior arrastável com a lista de agentes, menu ☰, painéis em tela cheia, Kanban por colunas
   com "snap", toque para abrir a ficha do boneco; o painel 📱 Celular ajuda a resolver "não abre no celular" (Firewall e rede).
 - Temas: `neutro` (escritório genérico) ou `sao-paulo` (maquete de SP, placas de rua, orelhão, ipês, coxinha…).

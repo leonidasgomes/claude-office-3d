@@ -71,7 +71,7 @@ function desenhar() {
   $('kanbanLink').hidden = !dados.projeto;
   if (dados.projeto) $('kanbanLink').href = dados.projeto;
   if (dados.configurado === false || (!dados.cartoes.length && dados.erro)) {
-    aviso('⚠️ ' + dados.erro);
+    aviso('⚠️ ' + dados.erro + (dados.limite ? ' — ⏳ ' + dados.limite : ''));
     infoEl.textContent = '';
     return;
   }
@@ -99,6 +99,7 @@ function desenhar() {
   infoEl.textContent = dados.erro
     ? `⚠️ não consegui atualizar (${dados.erro}) — mostrando o último quadro${dados.atualizado ? ' de ' + dados.atualizado : ''}`
     : `atualizado às ${dados.atualizado} · ${dados.cartoes.length} cartões`;
+  if (dados.limite) infoEl.textContent += ` · ⏳ ${dados.limite}`;   // GraphQL do GitHub estourado: o servidor diz até quando
 }
 
 async function carregar() {

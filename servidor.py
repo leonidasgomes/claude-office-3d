@@ -8,6 +8,10 @@ Serve esta pasta e expõe:
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
   GET /api/alertas?desde=<id>         -> fila de alertas (alertas.py); GET /api/push/chave e POST /api/push/inscrever|sair|prefs|teste
                                          (Web Push, push.py: só aparelho pareado com sessão + CSRF, ou o PC)
+  GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
+  POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
+O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
+sugestões a cada sugestoes.intervalo_min (padrão 15) minutos.
 Só escuta em 127.0.0.1, na porta do config.json (padrão 8765) — a não ser que o acesso pelo celular esteja ligado
 ("rede_local": true no config.json ou --rede-local): aí escuta em 0.0.0.0 e só aceita IPs de rede privada que tenham
 o cookie do QR code (rede.py). O celular é só leitura.
@@ -33,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import alertas  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
+import sugestoes_bot  # noqa: E402
 
 HOST = "127.0.0.1"
 PASTA = Path(__file__).resolve().parent
@@ -42,8 +47,9 @@ XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
 XP_PASTA = PASTA / "dados" / "xp"
 XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
-KANBAN_VALIDADE = 120   # s; o gh leva alguns segundos, então o quadro é lido no máximo a cada 2 min
-PRS_VALIDADE = 60       # s
+KANBAN_VALIDADE = 600   # s; GraphQL (gh project): o quadro é lido no máximo a cada 10 min
+PRS_VALIDADE = 180      # s; REST, com ETag na lista (304 não conta no limite) e cache por sha
+MERGEAVEL_TTL = 1800    # s; a base pode andar sem o sha do PR mudar, então o "conflito" é conferido de novo a cada 30 min
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 
 mimetypes.add_type("text/javascript", ".js")
@@ -137,11 +143,36 @@ def _campo(item, nome):
     return ""
 
 
+RE_LIMITE = re.compile(r"rate limit", re.I)
+_limite = {"quando": 0.0, "texto": ""}
+
+
+def aviso_limite(erro, recurso="core"):
+    """Se `erro` é o limite da API do GitHub estourado, lê `gh api rate_limit` (essa consulta não conta no limite) e devolve
+    "limite da API do GitHub atingido — volta às HH:MM". Só chama o gh quando dá erro de limite; vazio nos outros erros."""
+    if not RE_LIMITE.search(erro or ""):
+        return ""
+    agora = time.time()
+    if _limite["texto"] and agora - _limite["quando"] < 60:
+        return _limite["texto"]
+    texto = "limite da API do GitHub atingido — tente de novo em alguns minutos"
+    try:
+        r = subprocess.run([gh() or "gh", "api", "rate_limit"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+        recursos = json.loads(r.stdout)["resources"]
+        esgotados = [v for k, v in recursos.items() if k == recurso and v.get("remaining", 1) <= 0]
+        if esgotados:
+            texto = "limite da API do GitHub atingido — volta às " + time.strftime("%H:%M", time.localtime(esgotados[0]["reset"]))
+    except Exception:
+        pass
+    _limite.update(quando=agora, texto=texto)
+    return texto
+
+
 class Cache:
     """Resultado do gh em cache; renova em segundo plano quando vence (a primeira leitura espera)."""
 
-    def __init__(self, validade, ler, vazio):
-        self.validade, self.ler, self.vazio = validade, ler, vazio
+    def __init__(self, validade, ler, vazio, recurso="core"):
+        self.validade, self.ler, self.vazio, self.recurso = validade, ler, vazio, recurso
         self.quando, self.dados, self.lendo, self.chave = 0.0, None, False, None
         self.trava = threading.Lock()
 
@@ -149,7 +180,7 @@ class Cache:
         try:
             dados = self.ler()
         except Exception as e:  # sem gh, sem rede ou sem permissão: mantém o último resultado e avisa
-            dados = dict(self.dados or self.vazio(), erro=str(e)[:300])
+            dados = dict(self.dados or self.vazio(), erro=str(e)[:300], limite=aviso_limite(str(e), self.recurso))
         with self.trava:
             self.quando, self.dados, self.lendo, self.chave = time.time(), dados, False, chave
 
@@ -173,6 +204,9 @@ class Cache:
         return self.dados or dict(self.vazio(), erro="tempo esgotado esperando o gh")
 
 
+_url_projeto = {}
+
+
 def _ler_kanban():
     g = cfg()["github"]
     saida = rodar_gh(["project", "item-list", str(g["projeto_numero"]), "--owner", g["projeto_owner"],
@@ -186,41 +220,114 @@ def _ler_kanban():
                         "time": str(_campo(i, g["campo_time"]) or ""),
                         "prioridade": str(_campo(i, g["campo_prioridade"]) or "")})
     owner = g["projeto_owner"]
-    url = f"https://github.com/users/{owner}/projects/{g['projeto_numero']}"
-    try:  # organização usa /orgs/; o gh informa a URL certa
-        info = json.loads(rodar_gh(["project", "view", str(g["projeto_numero"]), "--owner", owner, "--format", "json"]))
-        url = info.get("url") or url
-    except Exception:
-        pass
-    return {"configurado": True, "projeto": url, "cartoes": cartoes, "atualizado": time.strftime("%H:%M:%S"), "erro": ""}
+    url = _url_projeto.get((owner, g["projeto_numero"]))
+    if not url:   # a URL não muda: o `project view` (uma chamada GraphQL a mais) só roda na primeira leitura
+        url = f"https://github.com/users/{owner}/projects/{g['projeto_numero']}"
+        try:  # organização usa /orgs/; o gh informa a URL certa
+            info = json.loads(rodar_gh(["project", "view", str(g["projeto_numero"]), "--owner", owner, "--format", "json"]))
+            url = info.get("url") or url
+            _url_projeto[(owner, g["projeto_numero"])] = url
+        except Exception:
+            pass
+    return {"configurado": True, "projeto": url, "cartoes": cartoes, "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
+
+
+_rest = {"repo": "", "etag": None, "lista": None, "status": {}, "merge": {}, "review": {}}   # caches por sha do commit
+RE_FECHA = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:[\w.-]+/[\w.-]+)?#(\d+)", re.I)
+FINAIS = ("SUCCESS", "FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "NEUTRAL", "SKIPPED", "ACTION_REQUIRED", "STALE")
+
+
+def _rest_get(caminho, etag=None):
+    """GET REST pelo gh (sugestoes_bot.gh_api): (status, json, cabeçalhos). Erros viram sugestoes_bot.ErroApi."""
+    exe = gh()
+    if not exe:
+        raise RuntimeError("GitHub CLI (gh) não encontrado — instale em https://cli.github.com e rode 'gh auth login'")
+    return sugestoes_bot.gh_api({"gh": exe}, caminho, etag)
+
+
+def _checks_do_sha(repo, sha, check, agora):
+    """Status do commit (REST /commits/{sha}/status; e, se o check de revisão for um check-run do Actions, /check-runs).
+    Só fica em cache por sha quando o veredito do check de revisão já saiu; enquanto não saiu, é consultado de novo."""
+    c = _rest["status"].get(sha)
+    if c and c["final"]:
+        return c["checks"]
+    _, dados, _ = _rest_get(f"repos/{repo}/commits/{sha}/status")
+    checks = {s["context"]: str(s.get("state") or "pending").upper() for s in (dados or {}).get("statuses") or []}
+    if check and check not in checks:
+        _, runs, _ = _rest_get(f"repos/{repo}/commits/{sha}/check-runs?per_page=100")
+        for r in (runs or {}).get("check_runs") or []:
+            checks[r["name"]] = str(r.get("conclusion") or "pending").upper() if r.get("status") == "completed" else "PENDING"
+    _rest["status"][sha] = {"checks": checks, "final": bool(check) and checks.get(check, "") in FINAIS, "quando": agora}
+    return checks
+
+
+def _decisao_review(repo, n, sha, atualizado):
+    """Sem check configurado: decisão das reviews (REST /pulls/{n}/reviews), em cache enquanto o PR não mudar."""
+    c = _rest["review"].get(n)
+    if c and c["chave"] == (sha, atualizado):
+        return c["decisao"]
+    _, lista, _ = _rest_get(f"repos/{repo}/pulls/{n}/reviews?per_page=100")
+    ultimo = {}
+    for r in lista if isinstance(lista, list) else []:
+        if r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            ultimo[(r.get("user") or {}).get("login")] = r["state"]
+    estados = set(ultimo.values())
+    decisao = "FAILURE" if "CHANGES_REQUESTED" in estados else ("SUCCESS" if "APPROVED" in estados else "")
+    _rest["review"][n] = {"chave": (sha, atualizado), "decisao": decisao}
+    return decisao
+
+
+def _conflito_do_pr(repo, n, sha, agora):
+    """mergeable do PR (REST /pulls/{n}): só quando o sha mudou (ou a cada MERGEAVEL_TTL, ou se o GitHub ainda calculava)."""
+    c = _rest["merge"].get(sha)
+    if c and c["conflito"] is not None and agora - c["quando"] < MERGEAVEL_TTL:
+        return c["conflito"]
+    _, dados, _ = _rest_get(f"repos/{repo}/pulls/{n}")
+    dados = dados or {}
+    mergeavel = dados.get("mergeable")
+    conflito = None if mergeavel is None else (mergeavel is False or dados.get("mergeable_state") == "dirty")
+    _rest["merge"][sha] = {"conflito": conflito, "quando": agora}
+    return bool(conflito)
 
 
 def _ler_prs():
+    """PRs abertos do repositório configurado. Só REST: lista (ETag) + status por sha + mergeable por sha. O que o GraphQL dava
+    e o REST não dá: "fecha" vem do texto do PR (Closes/Fixes/Resolves #n)."""
     g = cfg()["github"]
-    saida = rodar_gh(["pr", "list", "-R", g["repo"], "--state", "open", "--limit", "50", "--json",
-                      "number,title,url,headRefName,isDraft,mergeable,reviewDecision,statusCheckRollup,"
-                      "author,updatedAt,labels,closingIssuesReferences"])
-    check = g["check_revisao"]
+    repo, check = g["repo"], g["check_revisao"]
+    if (_rest["repo"], _rest.get("check")) != (repo, check):
+        _rest.update(repo=repo, check=check, etag=None, lista=None, status={}, merge={}, review={})
+    estado, lista, cab = _rest_get(f"repos/{repo}/pulls?state=open&per_page=50", _rest["etag"] if _rest["lista"] is not None else None)
+    if estado == 304:
+        lista = _rest["lista"]
+    else:
+        lista = lista if isinstance(lista, list) else []
+        _rest.update(etag=cab.get("etag"), lista=lista)
+    agora = time.time()
     prs = []
-    for pr in json.loads(saida or "[]"):
-        checks = {(c.get("context") or c.get("name") or "?"): (c.get("conclusion") or c.get("state") or "PENDING")
-                  for c in pr.get("statusCheckRollup") or []}
+    for pr in lista:
+        sha, n = pr["head"]["sha"], pr["number"]
+        checks = _checks_do_sha(repo, sha, check, agora) if check else {}
         if check:
             revisao = checks.get(check, "")
         else:  # sem check configurado: usa a decisão de review do GitHub
-            revisao = {"APPROVED": "SUCCESS", "CHANGES_REQUESTED": "FAILURE"}.get(pr.get("reviewDecision") or "", "")
-        prs.append({"numero": pr["number"], "titulo": pr["title"], "url": pr["url"], "branch": pr["headRefName"],
-                    "rascunho": pr.get("isDraft", False), "conflito": pr.get("mergeable") == "CONFLICTING",
+            revisao = _decisao_review(repo, n, sha, pr.get("updated_at", ""))
+        prs.append({"numero": n, "titulo": pr["title"], "url": pr["html_url"], "branch": pr["head"]["ref"],
+                    "rascunho": bool(pr.get("draft")), "conflito": False if pr.get("draft") else _conflito_do_pr(repo, n, sha, agora),
                     "revisao": revisao, "checks": checks,
                     "rotulos": [lb["name"] for lb in pr.get("labels") or []],
-                    "fecha": [i["number"] for i in pr.get("closingIssuesReferences") or []],
-                    "autor": (pr.get("author") or {}).get("login", ""), "atualizado": pr.get("updatedAt", "")})
-    return {"configurado": True, "repo": g["repo"], "check": check, "prs": prs,
-            "atualizado": time.strftime("%H:%M:%S"), "erro": ""}
+                    "fecha": sorted({int(x) for x in RE_FECHA.findall(pr.get("body") or "")}),
+                    "autor": (pr.get("user") or {}).get("login", ""), "atualizado": pr.get("updated_at", "")})
+    vivos = {pr["head"]["sha"] for pr in lista}
+    for k in ("status", "merge"):
+        _rest[k] = {sha: v for sha, v in _rest[k].items() if sha in vivos}
+    _rest["review"] = {n: v for n, v in _rest["review"].items() if n in {pr["number"] for pr in lista}}
+    return {"configurado": True, "repo": repo, "check": check, "prs": prs,
+            "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
 
 
-_kanban = Cache(KANBAN_VALIDADE, _ler_kanban, lambda: {"configurado": True, "projeto": "", "cartoes": [], "atualizado": ""})
-_prs = Cache(PRS_VALIDADE, _ler_prs, lambda: {"configurado": True, "repo": "", "prs": [], "atualizado": ""})
+_kanban = Cache(KANBAN_VALIDADE, _ler_kanban, lambda: {"configurado": True, "projeto": "", "cartoes": [], "atualizado": ""}, "graphql")
+_prs = Cache(PRS_VALIDADE, _ler_prs, lambda: {"configurado": True, "repo": "", "prs": [], "atualizado": ""}, "core")
 
 
 def kanban():
@@ -306,6 +413,62 @@ def acao_xp(rota, dados, ident):
 ALERTAS = None   # criado no main(), só quando o servidor sobe de fato
 
 
+# ---- Sugestões dos bots de revisão (sugestoes_bot.py): coleta em segundo plano, leitura e tratamento ---------------------
+ACOES_SUGESTAO = ("encaminhada", "ignorada", "discutir", "resolvida", "reabrir")
+_sug_trava = threading.Lock()   # uma coleta por vez
+
+
+def sugestoes_laco(parar):
+    """Thread: coleta as sugestões dos bots a cada sugestoes.intervalo_min (padrão 15). Sem github.bots_revisao, não faz nada."""
+    if parar.wait(25):
+        return
+    while not parar.is_set():
+        c = sugestoes_bot.configuracao()
+        if c["bots"] and c["repo"]:
+            with _sug_trava:
+                res = sugestoes_bot.coletar(c, log=lambda m: print(f"[sugestoes] {m}", flush=True))
+            if res["erro"] or res["novas"]:
+                print(f"[sugestoes] {res['novas']} nova(s), {res['triadas']} triada(s), {res['chamadas']} chamada(s)"
+                      + (f"; ERRO: {res['erro'][:120]}" if res["erro"] else ""), flush=True)
+        parar.wait(c["intervalo_min"] * 60)
+
+
+def iniciar_sugestoes():
+    parar = threading.Event()
+    threading.Thread(target=sugestoes_laco, args=(parar,), daemon=True, name="sugestoes").start()
+    return parar
+
+
+def sugestoes_get():
+    """GET /api/sugestoes: contagem por PR e prioridade, itens abertos e o estado da última coleta (leitura de arquivo local)."""
+    try:
+        r = sugestoes_bot.resumo()
+    except Exception as e:
+        return 200, {"ok": True, "ativo": False, "por_pr": {}, "itens": [], "erro": str(e)[:200]}
+    aviso = aviso_limite("rate limit") if r.get("limite_ate") and r["limite_ate"] > time.time() else ""
+    return 200, dict(r, ok=True, limite=aviso)
+
+
+def sugestoes_tratar(dados, ident):
+    """POST /api/sugestoes/tratar {"id", "acao": encaminhada|ignorada|discutir|resolvida|reabrir, "nota"}: só o PC (rede.py)."""
+    id_, acao, nota = dados.get("id"), dados.get("acao"), dados.get("nota") or ""
+    if not isinstance(id_, (str, int)) or isinstance(id_, bool) or not str(id_).strip():
+        return 400, {"ok": False, "erro": "id inválido"}
+    if acao not in ACOES_SUGESTAO or not isinstance(nota, str):
+        return 400, {"ok": False, "erro": "acao deve ser " + ", ".join(ACOES_SUGESTAO)}
+    c = sugestoes_bot.configuracao()
+    try:
+        ok, msg = sugestoes_bot.tratar(c, id_, acao, nota)
+    except TimeoutError:
+        return 409, {"ok": False, "erro": "caixa de sugestões ocupada; tente de novo"}
+    if not ok:
+        return 404, {"ok": False, "erro": msg}
+    item = next((x for x in sugestoes_bot.ler_caixa(c) if str(x["id"]) == str(id_).strip()), None)
+    dados["pr"] = item.get("pr") if item else None   # vai para o histórico de ações (dados/acoes.jsonl)
+    print(f"[sugestoes] {msg}", flush=True)
+    return 200, {"ok": True, "mensagem": msg, "sugestoes": sugestoes_get()[1]}
+
+
 def criar_alertas(obj_rede):
     """Liga o detector aos dados que o servidor já tem (PRs em cache, placar de XP, eventos, escalonamentos opcionais)."""
     global ALERTAS
@@ -316,7 +479,8 @@ def criar_alertas(obj_rede):
     def escalonamentos():   # opcional: alertas.escalonamentos = caminho de um JSON {"semana": [{cartao, motivo, aberto, fechado, resultado}]}
         caminho = cfg()["alertas"].get("escalonamentos") or ""
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
-    fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos}
+    fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
+              "sugestoes": lambda: sugestoes_bot.resumo()}
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
     obj_rede.ao_revogar.append(ALERTAS.push.remover_aparelhos)   # revogar o aparelho apaga a inscrição de push
     return ALERTAS
@@ -380,9 +544,13 @@ class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
         if rota.startswith("/api/push/"):
             return alertas_post(rota, dados, ident)
+        if rota == "/api/sugestoes/tratar":
+            return sugestoes_tratar(dados, ident)
         return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
 
     def api_get(self, rota, qs, ident):
+        if rota == "/api/sugestoes":
+            return sugestoes_get()
         return alertas_get(rota, qs, ident)
 
     def caminho_bloqueado(self):
@@ -496,6 +664,11 @@ def main():
         threading.Thread(target=s.serve_forever, daemon=True).start()
     alertas_obj = criar_alertas(Handler.rede)
     parar_alertas = alertas_obj.iniciar()
+    parar_sugestoes = iniciar_sugestoes()
+    cfg_sug = sugestoes_bot.configuracao()
+    print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
+          + ("triagem " + cfg_sug["modelo"] if cfg_sug["modelo"] else "sem triagem") + ")" if cfg_sug["bots"] and cfg_sug["repo"]
+          else "desligadas (github.bots_revisao vazio no config.json)"))
     push_ok, push_motivo = alertas_obj.push.disponivel()
     print("Alertas: " + ("desligados (alertas.ativo no config.json)" if not alertas_obj.opcoes["ativo"] else
                          "ligados (notificação com a página aberta" + (", Web Push disponível)" if push_ok else
@@ -510,6 +683,7 @@ def main():
         print("\nEncerrando.")
     finally:
         parar_alertas.set()
+        parar_sugestoes.set()
         servidor.server_close()
         for s in extras:
             s.shutdown()

@@ -66,7 +66,10 @@ XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design":
 
 # Alertas (notificação/push quando algo espera por você): cada tipo liga/desliga; "conferir" vem desligado
 ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "conferir": False, "escalonamento": True,
-                 "pergunta": True, "lembrete": True}
+                 "pergunta": True, "lembrete": True, "sugestao": True}
+
+# Sugestões do bot de revisão (sugestoes_bot.py): só funciona com github.repo e github.bots_revisao preenchidos
+SUGESTOES_MODELO = "claude-haiku-4-5-20251001"   # triagem barata (uma chamada de `claude -p` por coleta com itens novos)
 
 PADRAO = {
     "porta": 8765,
@@ -78,6 +81,7 @@ PADRAO = {
         "projeto_owner": "",        # dono do GitHub Projects (usuário ou organização) — Kanban
         "projeto_numero": 0,        # número do project (aparece na URL .../projects/<n>)
         "check_revisao": "",        # status check que significa "aprovado pela revisão"; vazio = aprovação de review
+        "bots_revisao": [],         # logins dos bots de revisão (ex.: "chatgpt-codex-connector[bot]"); vazio = sugestões desligadas
         "campo_time": "time",       # campo do Projects que diz qual time/agente cuida do cartão
         "campo_prioridade": "prioridade",
         "times": {},                # valor do campo_time (ou rótulo do PR) -> nome do agente
@@ -86,6 +90,9 @@ PADRAO = {
     "xp": {"ativo": False, "desde": "", "pesos": XP_PESOS, "niveis": XP_NIVEIS, "padroes_teste": XP_PADROES_TESTE,
            "padroes_avaliacao": XP_PADROES_AVALIACAO, "amostra_1_em": XP_AMOSTRA_1_EM,
            "atribuicao": {"prefixos_branch": {}, "padrao": ""}},
+    "sugestoes": {"triagem_modelo": SUGESTOES_MODELO,   # "" desliga a triagem (o líder tria sozinho)
+                  "intervalo_min": 15,                   # de quanto em quanto tempo o servidor coleta
+                  "janela_dias": 3},                     # na 1ª coleta, quanto do passado olhar
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
                 "contato": "", "escalonamentos": "", "agentes_pergunta": []},
     "tema": "neutro",
@@ -214,6 +221,20 @@ def normalizar_xp(bruto, agentes):
     return xp
 
 
+def normalizar_sugestoes(bruto):
+    """Bloco "sugestoes" do config: modelo da triagem ("" desliga), intervalo em minutos e janela inicial em dias."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    s = copy.deepcopy(PADRAO["sugestoes"])
+    if isinstance(bruto.get("triagem_modelo"), str):
+        s["triagem_modelo"] = bruto["triagem_modelo"].strip()[:80]
+    for k, minimo, maximo in (("intervalo_min", 1, 1440), ("janela_dias", 1, 30)):
+        try:
+            s[k] = max(minimo, min(maximo, int(bruto[k]))) if k in bruto else s[k]
+        except (TypeError, ValueError):
+            pass
+    return s
+
+
 def normalizar_alertas(bruto):
     """Bloco "alertas" do config: tipos corrigidos e padrões sensatos (a validação final é do alertas.py)."""
     bruto = bruto if isinstance(bruto, dict) else {}
@@ -274,10 +295,14 @@ def normalizar(cfg):
         base["github"]["projeto_numero"] = 0
     if not isinstance(base["github"]["times"], dict):
         base["github"]["times"] = {}
+    bots = base["github"]["bots_revisao"]
+    base["github"]["bots_revisao"] = [str(b).strip() for b in bots if str(b).strip()] if isinstance(bots, list) else []
+    base["github"]["repo"] = str(base["github"]["repo"] or "").strip()
     if not isinstance(base["github"]["colunas"], list):
         base["github"]["colunas"] = []
     base["xp"] = normalizar_xp(cfg.get("xp"), base["agentes"])
     base["alertas"] = normalizar_alertas(cfg.get("alertas"))
+    base["sugestoes"] = normalizar_sugestoes(cfg.get("sugestoes"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

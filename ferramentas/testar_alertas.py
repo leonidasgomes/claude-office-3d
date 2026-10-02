@@ -248,9 +248,11 @@ def testar_detector():
     with tempfile.TemporaryDirectory() as tmp:
         estado = {"prs": {"prs": [pr(10, guardiao="SUCCESS"), pr(11, guardiao="PENDING")], "erro": ""},
                   "placar": {"agentes": {"A": {"auditoria": [{"pr": 5}], "conferir": [{"pr": 6}]}}},
-                  "esc": {}, "eventos": []}
+                  "esc": {}, "eventos": [],
+                  "sug": {"ativo": True, "itens": [{"id": "1", "pr": 10, "prioridade": "P1", "titulo": "antiga"}, {"id": "2", "pr": 10, "prioridade": "P2", "titulo": "menor"}]}}
         fontes = {"prs": lambda: estado["prs"], "placar": lambda: estado["placar"], "escalonamentos": lambda: estado["esc"],
-                  "eventos": lambda desde: (len(estado["eventos"]), estado["eventos"][desde:])}   # como o ler_eventos do servidor
+                  "eventos": lambda desde: (len(estado["eventos"]), estado["eventos"][desde:]),   # como o ler_eventos do servidor
+                  "sugestoes": lambda: estado["sug"]}
         a = alertas.Alertas(tmp, fontes, {"limite_push_hora": 20})
         assert a.passo(t0) == [], "a primeira leitura é só baseline"
         assert a.passo(t0 + 60) == []
@@ -310,6 +312,17 @@ def testar_detector():
         r = a.passo(t0 + 54 * H)
         assert [x["titulo"] for x in r] == ["Escalonamento fechado"] and a.passo(t0 + 54 * H + 60) == []
         ok("escalonamento aberto e depois fechado: 1 alerta de cada")
+        # sugestões do bot de revisão: só P0/P1 novas alertam; as que já existiam na 1ª leitura não
+        estado["sug"]["itens"] += [{"id": "3", "pr": 11, "prioridade": "P2", "titulo": "pequena"},
+                                   {"id": "4", "pr": 11, "prioridade": "P1", "titulo": "grave"}]
+        r = a.passo(t0 + 53 * H + 1800)
+        assert [x["tipo"] for x in r] == ["sugestao"] and "#11" in r[0]["corpo"] and "P1" in r[0]["titulo"] and "grave" in r[0]["detalhe"], r
+        assert a.passo(t0 + 53 * H + 1860) == []
+        estado["sug"] = {"ativo": True, "erro": "x", "itens": []}   # tratadas/PR fechado: some sem alerta
+        assert a.passo(t0 + 53 * H + 1920) == []
+        estado["sug"]["itens"] = [{"id": "4", "pr": 11, "prioridade": "P1", "titulo": "grave"}]   # reaberta: alerta de novo
+        assert [x["tipo"] for x in a.passo(t0 + 53 * H + 1980)] == ["sugestao"]
+        ok("sugestão P0/P1 nova do bot de revisão: 1 alerta, P2 e as já existentes não alertam, sem repetir")
         # estado persistido: outro Alertas na mesma pasta não repete nada
         b = alertas.Alertas(tmp, fontes)
         assert b.passo(t0 + 55 * H) == [], "o estado em disco evita repetir alertas depois de reiniciar o servidor"

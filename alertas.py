@@ -5,7 +5,8 @@ escalonamentos) e compara com o estado guardado em dados/alertas_estado.json par
 Cada alerta novo vai para a fila dados/alertas.jsonl (últimos 200), para o Web Push (push.py) e, no Windows e se
 ligado, para um toast do sistema. A página lê a fila em GET /api/alertas?desde=<id>.
 
-Tipos: pr_pronto, pr_problema, auditoria, conferir, escalonamento, pergunta, lembrete (e "teste", do botão de teste).
+Tipos: pr_pronto, pr_problema, auditoria, conferir, escalonamento, pergunta, lembrete, sugestao (sugestão P0/P1 do bot de
+revisão; fonte "sugestoes") e "teste" (do botão de teste).
 Na primeira leitura de cada fonte o estado só é registrado (baseline): o que já existia não vira alerta.
 """
 import json
@@ -33,6 +34,7 @@ TIPOS = [
     {"id": "escalonamento", "rotulo": "Escalonamento do Diretor aberto ou fechado", "padrao": True, "painel": ""},
     {"id": "pergunta", "rotulo": "Pergunta de escopo do Diretor", "padrao": True, "painel": ""},
     {"id": "lembrete", "rotulo": "Lembrete de PR pronto esperando há mais de 24 h", "padrao": True, "painel": "prs"},
+    {"id": "sugestao", "rotulo": "Sugestão P0/P1 nova do bot de revisão", "padrao": True, "painel": "prs"},
 ]
 PADROES = {t["id"]: t["padrao"] for t in TIPOS}
 OPCOES_PADRAO = {"ativo": True, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
@@ -192,6 +194,29 @@ def _detectar_escalonamentos(est, registro, novos):
     base["esc"] = True
 
 
+PRIORIDADES_ALERTA = ("P0", "P1")
+
+
+def _detectar_sugestoes(est, resumo, novos):
+    """Sugestão P0/P1 nova do bot de revisão (sugestoes_bot.resumo(): só as abertas). Na 1ª leitura só registra."""
+    base = est.setdefault("base", {})
+    itens = [x for x in resumo["itens"] if isinstance(x, dict) and x.get("id") is not None and x.get("prioridade") in PRIORIDADES_ALERTA]
+    atuais = sorted({str(x["id"]) for x in itens})
+    ids_novos = set(atuais) - set(est.get("sug", []))
+    est["sug"] = atuais   # quem sai (tratada, PR fechado) e voltar depois alerta de novo
+    if ids_novos and base.get("sug"):
+        novas = [x for x in itens if str(x["id"]) in ids_novos]
+        prios = sorted({x["prioridade"] for x in novas})
+        prs_ = sorted({x["pr"] for x in novas if isinstance(x.get("pr"), int)})
+        um = len(novas) == 1
+        titulo = f"Sugestão {prios[0]} do bot de revisão" if um else f"{len(novas)} sugestões {'/'.join(prios)} do bot de revisão"
+        corpo = (f"O bot apontou uma sugestão {prios[0]} no PR #{prs_[0]}." if um and prs_ else
+                 f"O bot apontou {len(novas)} sugestões {'/'.join(prios)} em {_lista_prs(prs_) or 'PRs abertos'}.")
+        novos.append(_alerta("sugestao", titulo, corpo, "sugestao:" + ",".join(sorted(ids_novos))[:120],
+                             "; ".join(f"#{x.get('pr')} {x['prioridade']} {x.get('titulo', '')}" for x in novas)[:300]))
+    base["sug"] = True
+
+
 def eh_pergunta(texto):
     t = str(texto or "").strip()
     return t.upper().startswith("PERGUNTA") or "pergunta ao desenvolvedor" in t.lower()
@@ -230,6 +255,9 @@ def detectar(est, entradas, agora, opc):
     ev = entradas.get("eventos")
     if isinstance(ev, tuple) and len(ev) == 2:
         _detectar_eventos(est, ev[0], ev[1], opc, novos)
+    sg = entradas.get("sugestoes")
+    if isinstance(sg, dict) and sg.get("ativo") is not False and isinstance(sg.get("itens"), list):
+        _detectar_sugestoes(est, sg, novos)
     ult = est.get("ultimo", {})   # esquece chaves com mais de 2 dias
     est["ultimo"] = {k: v for k, v in ult.items() if agora - v < 2 * 86400}
     return novos
@@ -348,7 +376,7 @@ class Alertas:
         """Uma leitura do detector. Devolve os alertas que saíram. Falha de uma fonte não derruba as outras."""
         agora = time.time() if agora is None else agora
         ent = {}
-        for nome in ("prs", "placar", "escalonamentos"):
+        for nome in ("prs", "placar", "escalonamentos", "sugestoes"):
             fn = self.fontes.get(nome)
             if fn:
                 try:

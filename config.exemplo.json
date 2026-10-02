@@ -20,6 +20,7 @@
     "projeto_owner": "minha-org",
     "projeto_numero": 3,
     "check_revisao": "revisao-ia",
+    "bots_revisao": ["chatgpt-codex-connector[bot]", "coderabbitai[bot]", "copilot-pull-request-reviewer[bot]"],
     "campo_time": "time",
     "campo_prioridade": "prioridade",
     "times": {"Time Dev": "Dev", "Time Design": "Designer", "team:dev": "Dev"},
@@ -40,13 +41,18 @@
   },
   "alertas": {
     "ativo": true,
-    "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true},
+    "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true},
     "lembrete_horas": 24,
     "limite_push_hora": 20,
     "toast_windows": false,
     "contato": "mailto:alertas@example.com",
     "escalonamentos": "",
     "agentes_pergunta": ["Diretor"]
+  },
+  "sugestoes": {
+    "triagem_modelo": "claude-haiku-4-5-20251001",
+    "intervalo_min": 15,
+    "janela_dias": 3
   },
   "rede_local": false,
   "rede_https": true,

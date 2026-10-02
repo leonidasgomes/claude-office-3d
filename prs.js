@@ -10,6 +10,11 @@ const REVISOR = GH.check_revisao ? `a revisão (${GH.check_revisao})` : 'a revis
 const $ = (id) => document.getElementById(id);
 const painel = $('prs'), lista = $('prsLista'), info = $('prsInfo'), conta = $('prsConta');
 let dados = null;
+let sugestoes = { itens: [], por_pr: {} };   // GET /api/sugestoes: sugestões abertas dos bots de revisão, por PR
+let sessao = null;                           // GET /api/sessao: só o PC (permissao 'pc') vê os botões de tratar
+const sugAbertas = new Set();                // PRs com a lista de sugestões expandida (sobrevive ao redesenho)
+const COR_PRIO = { P0: '#ef4444', P1: '#f59e0b', P2: '#64748b', P3: '#475569', '?': '#475569' };
+const ROTULO_ACAO = { corrigir: 'sugere corrigir', ignorar: 'sugere ignorar', discutir: 'sugere discutir' };
 
 function el(tag, cls, texto) {
   const e = document.createElement(tag);
@@ -38,6 +43,74 @@ function situacao(pr) {
   return { classe: 'espera', rotulo: `⏳ aguardando ${REVISOR}${LIDER ? ' (' + LIDER.titulo + ')' : ''}` };
 }
 const ordem = { pronto: 0, espera: 1, bloqueado: 2 };
+
+// "🤖 3 (1 P1)": total de sugestões abertas dos bots e, entre parênteses, as P0/P1
+function seloSugestoes(itens) {
+  const n = (p) => itens.filter((x) => x.prioridade === p).length;
+  const graves = ['P0', 'P1'].filter((p) => n(p)).map((p) => `${n(p)} ${p}`);
+  return `🤖 ${itens.length}` + (graves.length ? ` (${graves.join(', ')})` : '');
+}
+
+async function pegarSessao() {
+  if (!sessao) { try { sessao = await (await fetch('/api/sessao', { cache: 'no-store' })).json(); } catch (e) { sessao = null; } }
+  return sessao;
+}
+
+async function tratar(item, acao, botao) {
+  const s = await pegarSessao();
+  const cab = { 'Content-Type': 'application/json', 'X-Office-Acao': '1' };
+  if (s && s.csrf) cab['X-Office-Csrf'] = s.csrf;
+  botao.disabled = true;
+  try {
+    const r = await fetch('/api/sugestoes/tratar', { method: 'POST', headers: cab, body: JSON.stringify({ id: item.id, acao }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.erro || 'falhou (' + r.status + ')');
+    if (j.sugestoes) sugestoes = j.sugestoes;
+    desenhar();
+  } catch (e) {
+    botao.disabled = false;
+    botao.title = 'não deu: ' + e.message;
+    info.textContent = '⚠️ não consegui tratar a sugestão (' + e.message + ')';
+  }
+}
+
+function itemSugestao(item, ehPc) {
+  const li = el('li', 'sug');
+  const topo = el('div', 'sug-topo');
+  const prio = el('span', 'prio', item.prioridade); prio.style.background = COR_PRIO[item.prioridade] || '#475569';
+  const t = el('a', 'sug-titulo', item.titulo); t.href = item.link; t.target = '_blank'; t.rel = 'noopener';
+  topo.append(prio, t);
+  const meta = el('div', 'sug-meta');
+  if (item.arquivo) meta.append(el('span', null, item.linha ? `${item.arquivo}:${item.linha}` : item.arquivo));
+  else if (item.tipo === 'revisao') meta.append(el('span', null, 'revisão geral'));
+  if (item.acao_sugerida) meta.append(el('span', 'sug-acao ' + item.acao_sugerida, ROTULO_ACAO[item.acao_sugerida] || item.acao_sugerida));
+  if (item.situacao === 'discutir') meta.append(el('span', 'sug-acao discutir', 'em discussão'));
+  li.append(topo, meta);
+  if (item.motivo) li.append(el('div', 'sug-motivo', item.motivo));
+  if (item.texto) { const d = el('details', 'sug-texto'); d.append(el('summary', null, 'ver o texto do bot'), el('p', null, item.texto)); li.append(d); }
+  if (ehPc) {
+    const ac = el('div', 'sug-acoes');
+    for (const [acao, rotulo] of [['encaminhada', 'Encaminhar'], ['ignorada', 'Ignorar'], ['resolvida', 'Resolvido']]) {
+      const b = el('button', 'botao', rotulo); b.title = acao === 'encaminhada' ? 'Já foi mandada ao colega' : acao === 'ignorada' ? 'Descartar a sugestão' : 'Já foi corrigida';
+      b.addEventListener('click', () => tratar(item, acao, b));
+      ac.append(b);
+    }
+    li.append(ac);
+  }
+  return li;
+}
+
+function blocoSugestoes(numero, itens) {
+  const det = el('details', 'sugestoes' + (itens.some((x) => x.prioridade === 'P0' || x.prioridade === 'P1') ? ' grave' : ''));
+  det.open = sugAbertas.has(numero);
+  det.addEventListener('toggle', () => { if (det.open) sugAbertas.add(numero); else sugAbertas.delete(numero); });
+  det.append(el('summary', null, seloSugestoes(itens) + ' — sugestões do bot de revisão'));
+  const ehPc = !!sessao && sessao.permissao === 'pc';
+  const ul = el('ul', 'sug-lista');
+  itens.forEach((x) => ul.append(itemSugestao(x, ehPc)));
+  det.append(ul);
+  return det;
+}
 
 function desenhar() {
   if (!dados) return;
@@ -70,11 +143,15 @@ function desenhar() {
     arquivos.href = pr.url + '/files'; arquivos.target = '_blank'; arquivos.rel = 'noopener';
     acoes.append(abrir, arquivos);
     li.append(topo, el('div', 'situacao', s.rotulo), meta, acoes);
+    const sg = (sugestoes.itens || []).filter((x) => x.pr === pr.numero);
+    if (sg.length) li.append(blocoSugestoes(pr.numero, sg));
     lista.append(li);
   }
-  info.textContent = dados.erro && prs.length
+  info.textContent = (dados.erro && prs.length
     ? `⚠️ não consegui atualizar (${dados.erro})`
-    : `${dados.repo} · ${prs.length} aberto(s), ${prontos} pronto(s) · atualizado às ${dados.atualizado}`;
+    : `${dados.repo} · ${prs.length} aberto(s), ${prontos} pronto(s) · atualizado às ${dados.atualizado}`)
+    + (dados.limite ? ` · ⏳ ${dados.limite}` : '')
+    + (sugestoes.erro ? ` · 🤖 coleta de sugestões: ${sugestoes.erro}` : '');
 }
 
 async function carregar(forcar = false) {
@@ -89,6 +166,12 @@ async function carregar(forcar = false) {
     dados = dados || { prs: [], repo: '', atualizado: '' };
     dados.erro = 'servidor do escritório fora do ar (abra pelo abrir_escritorio)';
   }
+  try {   // sugestões dos bots: leitura local do servidor (não chama o GitHub)
+    await pegarSessao();
+    const rs = await fetch('/api/sugestoes', { cache: 'no-store' });
+    const js = await rs.json();
+    if (js && js.ok) sugestoes = js;
+  } catch (e) { /* mantém as últimas */ }
   desenhar();
 }
 
@@ -101,4 +184,4 @@ $('prsAtualizar').addEventListener('click', () => { info.textContent = 'buscando
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hidden) fechar(); });
 // o contador no botão fica sempre em dia, mesmo com o painel fechado (só se o repositório estiver configurado)
 if (GH.prs) { carregar(); setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS); }   // aba oculta: não consulta
-window.__prs = { carregar, situacao };
+window.__prs = { carregar, situacao, seloSugestoes };

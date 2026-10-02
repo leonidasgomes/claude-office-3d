@@ -53,8 +53,12 @@ def secao_quadro(cartoes):
 
 def secao_parados(cartoes, repo, dias):
     agora = datetime.now(timezone.utc)
-    issues = {i["number"]: i["updatedAt"] for i in gh("issue", "list", "-R", repo, "--state", "open", "--limit", "500",
-                                                      "--json", "number,updatedAt") or []}
+    issues = {}   # REST (não gasta a cota do GraphQL): 100 por página; os PRs vêm junto e saem pelo campo pull_request
+    for pagina in range(1, 11):
+        lista = gh("api", f"repos/{repo}/issues?state=open&per_page=100&page={pagina}") or []
+        issues.update({i["number"]: i["updated_at"] for i in lista if "pull_request" not in i})
+        if len(lista) < 100:
+            break
     achados = []
     for c in cartoes:
         quando = issues.get(c["numero"])

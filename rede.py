@@ -50,6 +50,8 @@ ANONIMO = {"id": "anonimo", "nome": "anônimo", "permissao": "nenhuma", "csrf": 
 ROTAS_PUBLICAS = ("/manifest.webmanifest", "/icone-192.png", "/icone-512.png")
 # quem pode o quê nas ações (POST /api/...): "pc" é o próprio computador
 PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"},
+                  # sugestões do bot de revisão: tratar (encaminhar/ignorar/resolver) é só do PC; o celular só lê (GET)
+                  "/api/sugestoes/tratar": {"pc"},
                   # alertas (push.py): qualquer aparelho pareado (ver ou mais) e o PC inscrevem o próprio navegador
                   "/api/push/inscrever": {"pc", "ver", "conferir"}, "/api/push/sair": {"pc", "ver", "conferir"},
                   "/api/push/prefs": {"pc", "ver", "conferir"}, "/api/push/teste": {"pc", "ver", "conferir"}}

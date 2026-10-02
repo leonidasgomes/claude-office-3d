@@ -27,3 +27,28 @@ html.compacto #prsLista .pr { padding: 10px 12px; }
 html.compacto #prsLista .situacao, html.compacto #prsLista .meta, html.compacto #prsLista .vazio { font-size: 14px; }
 html.compacto #prsLista .acoes { flex-wrap: wrap; }
 html.compacto #prsConta { font-size: 13px; }
+
+/* Sugestões do bot de revisão (🤖) dentro de cada PR */
+#prsLista .sugestoes { margin-top: 8px; background: #0d1319; border: 1px solid #2a3340; border-radius: 6px; padding: 4px 8px; }
+#prsLista .sugestoes.grave { border-color: #b45309; }
+#prsLista .sugestoes > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+#prsLista .sug-lista { list-style: none; margin: 6px 0 2px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#prsLista .sug { border-top: 1px solid #222c38; padding-top: 6px; font-size: 13px; }
+#prsLista .sug:first-child { border-top: 0; padding-top: 0; }
+#prsLista .sug-topo { display: flex; gap: 8px; align-items: baseline; }
+#prsLista .sug .prio { color: #fff; border-radius: 4px; padding: 0 6px; font-size: 11px; font-weight: 800; }
+#prsLista .sug-titulo { color: #93c5fd; text-decoration: none; font-weight: 600; }
+#prsLista .sug-titulo:hover { text-decoration: underline; }
+#prsLista .sug-meta { display: flex; flex-wrap: wrap; gap: 8px; color: #8b98a8; font-size: 12px; margin-top: 2px; word-break: break-all; }
+#prsLista .sug-acao { border-radius: 999px; padding: 0 8px; background: #232d3a; color: #e6edf3; word-break: normal; }
+#prsLista .sug-acao.corrigir { background: #14532d; }
+#prsLista .sug-acao.ignorar { background: #3f3f46; }
+#prsLista .sug-acao.discutir { background: #713f12; }
+#prsLista .sug-motivo { color: #b6c2d0; font-size: 12px; margin-top: 2px; }
+#prsLista .sug-texto { margin-top: 4px; }
+#prsLista .sug-texto summary { cursor: pointer; font-size: 12px; color: #8b98a8; }
+#prsLista .sug-texto p { margin: 4px 0 0; font-size: 12px; line-height: 1.4; white-space: pre-wrap; color: #cbd5e1; }
+#prsLista .sug-acoes { display: flex; gap: 6px; margin-top: 6px; }
+#prsLista .sug-acoes .botao { cursor: pointer; font-size: 12px; padding: 2px 8px; font-family: inherit; }
+#prsLista .sug-acoes .botao:disabled { opacity: .5; cursor: default; }
+html.compacto #prsLista .sug, html.compacto #prsLista .sugestoes > summary { font-size: 14px; }

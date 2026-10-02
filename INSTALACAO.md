@@ -210,6 +210,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
     "projeto_numero": 2,              // número do project (na URL .../projects/2)
     "check_revisao": "",              // status check que significa "aprovado pela revisão";
                                       // vazio = usa a aprovação de review (APPROVED) do GitHub
+    "bots_revisao": ["chatgpt-codex-connector[bot]"],   // logins dos bots de revisão (seção 11); vazio = sugestões desligadas
     "campo_time": "time",             // campo do Projects que diz o time/agente do cartão
     "campo_prioridade": "prioridade", // campo de prioridade (P0/P1/P2 ou high/medium/low ganham cor)
     "times": {"Time Back": "backend", "team:front": "frontend"},
@@ -228,6 +229,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa"}, "padrao": "Dev"}   // PR sem cartão: por prefixo do branch
   },
   "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
+  "sugestoes": {"triagem_modelo": "claude-haiku-4-5-20251001", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
@@ -545,6 +547,7 @@ desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celula
 | Escalonamento aberto/fechado | registro de escalonamentos do Diretor (opcional, veja abaixo) | ligado |
 | Pergunta de escopo do Diretor | mensagem (`SendMessage`) cujo texto começa com `PERGUNTA` ou contém "pergunta ao desenvolvedor" | ligado |
 | Lembrete | PR pronto esperando há mais de 24 h (no máximo 1 lembrete por dia) | ligado |
+| Sugestão P0/P1 do bot de revisão | sugestão nova de prioridade P0 ou P1 de um bot de `github.bots_revisao` (seção 11) | ligado |
 
 ### Como funciona
 
@@ -597,7 +600,7 @@ Tocar na notificação abre o escritório já no painel certo (PRs ou Placar).
 "alertas": {
   "ativo": true,                      // false desliga tudo (detector, fila e push)
   "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false,
-            "escalonamento": true, "pergunta": true, "lembrete": true},   // padrão inicial de cada aparelho
+            "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true},   // padrão inicial de cada aparelho
   "lembrete_horas": 24,               // PR pronto esperando há mais que isso gera o lembrete diário
   "limite_push_hora": 20,             // máximo de pushes por hora (todos os aparelhos)
   "toast_windows": false,             // true: também um toast do Windows no PC (PowerShell, sem dependências)
@@ -631,7 +634,99 @@ avisa quando um escalonamento abre e quando fecha. Arquivo ausente: essa fonte �
 | "Web Push indisponível no servidor" | `pip install cryptography` e reinicie o escritório. |
 | Parou de chegar depois de meses | A inscrição pode ter expirado: **Desligar push** e **Ativar** de novo. |
 
-## 11. Times de agentes do Claude Code — dicas
+## 11. Sugestões do bot de revisão
+
+Bots de revisão (Codex, CodeRabbit, Copilot...) comentam nos seus PRs: um comentário por trecho de código, com título e, em
+alguns, uma prioridade (P0 a P3), e às vezes um resumo na revisão. Esta função junta tudo numa **caixa local**, mostra no painel
+PRs do escritório e entrega ao **líder** do time, que manda corrigir, ignora ou leva a você. Ninguém precisa abrir o GitHub.
+
+```
+bot de revisão ──comentários──> GitHub ──REST (ETag)──> sugestoes_bot.py ──> dados/sugestoes/caixa.jsonl
+                                                          │ (triagem barata, opcional: claude -p com Haiku)
+                         painel PRs: selo "🤖 3 (1 P1)" <─┤
+                         alerta "Sugestão P1/P0 do bot" <─┤
+                         líder (job a cada 15 min) <──────┘ --pendentes
+```
+
+### Configurar
+
+Preencha, no `config.json`, o repositório e os logins dos bots (a lista vazia, que é o padrão, deixa tudo desligado):
+
+```jsonc
+"github": {
+  "repo": "ana/loja",
+  "bots_revisao": ["chatgpt-codex-connector[bot]", "coderabbitai[bot]", "copilot-pull-request-reviewer[bot]"],
+  "times": {"team:back": "backend"}              // rótulo do PR -> agente dono (aparece como [backend] no resumo do líder)
+},
+"sugestoes": {
+  "triagem_modelo": "claude-haiku-4-5-20251001", // "" desliga a triagem; o líder passa a triar sozinho
+  "intervalo_min": 15,                           // de quanto em quanto tempo o servidor coleta
+  "janela_dias": 3                               // na primeira coleta, quantos dias para trás olhar
+}
+```
+
+O login é o do autor do comentário na API do GitHub (`user.login`); `[bot]` no fim é opcional na comparação. Para descobrir o do
+seu bot: `gh api repos/<dono>/<repo>/pulls/comments?per_page=5 --jq '.[].user.login'`.
+
+### O que é coletado
+
+Só sugestões de **PRs abertos** (as de PR já fechado entram como `arquivada`). De cada comentário do bot: id, PR, arquivo, linha,
+prioridade (do selo `P0` a `P3`; sem selo = `?`), título (o negrito da primeira linha), texto (sem o selo e sem o rodapé, até
+1200 caracteres) e o link. Respostas de conversa são ignoradas. Das revisões `COMMENTED`, só as que têm texto próprio (a casca
+padrão "Codex Review" não vira item). Cada item tem uma **situação**: `nova` -> `triada` -> `encaminhada`, `ignorada`, `discutir` ou
+`resolvida`. Estado e caixa ficam em `dados/sugestoes/` (fora do git).
+
+### Custo de API do GitHub (mínimo, só REST)
+
+Cada coleta faz: 1 chamada a `/pulls/comments?since=<último>` (traz os comentários de **todos** os PRs de uma vez; o `ETag` é
+guardado e a resposta `304 Not Modified` **não conta** no limite), 1 a `/pulls?state=open` (também com `ETag`) e as reviews
+(`/pulls/{n}/reviews`) só dos PRs abertos que tiveram comentário novo do bot. Sem novidade, são 0 chamadas contadas.
+Quando o GitHub responde "rate limit", a coleta apenas registra o erro e tenta de novo na próxima rodada.
+
+O mesmo vale para o resto do escritório: o painel PRs usa REST (lista com `ETag`, status do commit e `mergeable` em cache por
+`sha`; validade de 180 s) e o Kanban (GraphQL, o único jeito de ler o Projects) tem validade de 10 min. Se a cota do GitHub
+estourar, o painel mostra "limite da API do GitHub atingido — volta às HH:MM" (lido de `gh api rate_limit`, que não conta).
+O que o REST não dá: o campo "fecha #n" do PR passa a vir do texto do PR (`Closes #n`, `Fixes #n`...).
+
+### Triagem barata (opcional)
+
+Quando uma coleta traz itens novos, o escritório chama **uma vez** `claude -p` em modo headless com o modelo pequeno
+(`sugestoes.triagem_modelo`, padrão Haiku), **sem ferramentas** (`--tools ""`, sem MCP, sem sessão gravada), a partir da pasta do
+escritório (fora dos seus projetos, então nada entra no feed). O prompt fixo pede, para cada item (até 30 por chamada), um JSON
+`{id, acao: corrigir|ignorar|discutir, motivo, time_sugerido}`. O resultado só **sugere**: o item vira `triada`, e quem decide é
+o líder. Se a chamada falhar ou passar de 120 s, os itens ficam `nova` e o líder tria sozinho. **Custo medido**: um lote de 5 itens
+usou cerca de 2 mil tokens de entrada e 2 mil de saída (aprox. 0,014 USD; o gasto é quase todo de saída); o gasto acumulado fica em
+`dados/sugestoes/estado.json` (`triagem`). Para desligar, `"triagem_modelo": ""`. Precisa do Claude Code (`claude`) no PATH.
+
+### Como o líder recebe
+
+O líder agenda com `CronCreate` um job a cada 15 minutos que roda `python sugestoes_bot.py --pendentes`: a saída é **NADA** (o
+job responde "ok" e para, sem gastar nada) ou um resumo compacto (no máximo ~25 linhas: por PR, prioridade, título,
+`arquivo:linha`, ação sugerida e link). Para cada item o líder decide: corrigir (manda o pedido ao colega dono do PR, com o
+link, e marca `encaminhada`), ignorar (marca `ignorada` com uma nota) ou discutir (leva a você em 1 linha). O prompt pronto do
+job e o trecho para os colegas estão em `modelos/sugestoes_lider.md`.
+
+### Linha de comando
+
+```bash
+python sugestoes_bot.py                 # coleta agora (e tria os itens novos); imprime um resumo de uma linha
+python sugestoes_bot.py --sem-triagem   # coleta sem chamar o modelo
+python sugestoes_bot.py --pendentes     # NADA, ou o resumo compacto para o líder
+python sugestoes_bot.py --listar [--todas]
+python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "texto"]
+```
+
+### No escritório
+
+- **Painel PRs**: em cada PR com sugestões abertas aparece o selo `🤖 3 (1 P1)` e, ao expandir, a lista com prioridade, título (link
+  para o comentário no GitHub), `arquivo:linha`, ação sugerida pela triagem e o texto do bot. **No PC** há os botões
+  Encaminhar, Ignorar e Resolvido (`POST /api/sugestoes/tratar`, só localhost, com o mesmo esquema anti-CSRF das ações do XP).
+  O celular pareado **só lê** (`GET /api/sugestoes`), qualquer permissão; tratar é só do PC.
+- **Alerta** "Sugestão P0/P1 do bot de revisão" (seção 10), ligado por padrão: só para sugestões novas de prioridade P0 ou P1,
+  sem repetir, e o corpo do push não leva o texto do bot (só o PR e a prioridade).
+- O servidor coleta sozinho a cada `sugestoes.intervalo_min` minutos enquanto está de pé (primeira coleta ~25 s depois de abrir).
+
+## 12. Times de agentes do Claude Code — dicas
 
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
   `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
@@ -647,7 +742,7 @@ avisa quando um escalonamento abre e quando fecha. Arquivo ausente: essa fonte �
 - Para forçar o nome de quem roda uma sessão, defina a variável de ambiente `OFFICE_AGENTE=<nome>` antes de abrir o
   Claude Code.
 
-## 12. Solução de problemas
+## 13. Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
@@ -662,7 +757,7 @@ avisa quando um escalonamento abre e quando fecha. Arquivo ausente: essa fonte �
 | Alerta não chega no celular | Veja "Não chegou?" na seção 10 (permissão do navegador, HTTPS, iPhone na Tela de Início, `cryptography`). |
 | Escritório em "demonstração" sozinho | A página não alcança o servidor: abra pelo `abrir_escritorio` e acesse `http://127.0.0.1:<porta>/`, não o arquivo direto. |
 
-## 13. Desinstalar
+## 14. Desinstalar
 
 ```bash
 python instalar.py --desinstalar
@@ -673,13 +768,15 @@ Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.c
 (`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
 se quiser remover tudo.
 
-## 14. Privacidade
+## 15. Privacidade
 
 - Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora (a não ser que você ligue o acesso pelo
   celular, seção 9: aí ele também escuta na rede local, só para IPs privados com sessão pareada).
 - Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre
   agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
 - O servidor não entrega `config.json`, `dados/` nem os scripts pela web.
+- Sugestões do bot de revisão (seção 11): o texto dos comentários do bot fica em `dados/sugestoes/` no seu computador. Só a
+  triagem opcional manda os itens (título e até 700 caracteres de cada comentário) ao modelo configurado, via o seu Claude Code.
 - Alertas (seção 10): se você ativar o Web Push, o aviso passa pelo serviço do navegador (Google, Mozilla, Apple ou
   Microsoft), **cifrado**, com título e corpo curtos e sem comando, caminho, código ou token. Desativar o push neste
   aparelho (ou revogá-lo) apaga a inscrição.
