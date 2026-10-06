@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.0
+- **Revisor de código confere o aceite do cartão**: o `revisor_ia.py` lê os cartões citados no corpo do PR (`Closes #n` /
+  `Parte de #n`, no começo da linha) e põe o corpo de cada issue na revisão; o prompt manda verificar primeiro se o diff
+  cumpre o aceite e se há prova (teste/comando) — não cumprir é P1. Teto: a partir da 4ª revisão do mesmo PR, só P0/P1.
+- **`sugestoes_bot.py --pendentes --pr <n>` e `--listar --pr <n>`**: o dono do PR trata as sugestões do próprio PR antes
+  de avisar o líder.
+- **Hooks do escritório em segundo plano** (`"async": true`, doc hooks "Run hooks in the background"): o
+  `registrar_evento.py` só grava o evento, então não trava mais cada chamada de ferramenta esperando o Python subir.
+  Rode o instalador de novo para atualizar os hooks já instalados.
+- Dicas para times de agentes, da documentação do Claude Code (não são do pacote, mas valem para quem usa o escritório
+  com agent teams): no Sonnet/Opus 5.x a lista de tarefas compartilhada só existe com `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`;
+  colegas e subagentes usam cache de 5 min por padrão (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` compensa quando há
+  esperas longas); os hooks `TeammateIdle`/`TaskCompleted` não aceitam `additionalContext` (use só `systemMessage`).
+
 ## 1.4.2
 - **Revisor de código converge na re-revisão**: num commit novo de PR já revisado, o `revisor_ia.py` passa ao modelo as
   conversas anteriores do PR (cada achado e a resposta dada: corrigido, falso positivo e o motivo) com a ordem de não repetir

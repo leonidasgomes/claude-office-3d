@@ -245,7 +245,9 @@ def comando_hook(pasta):
 
 
 def bloco_hooks(pasta):
-    h = {"type": "command", "command": comando_hook(pasta), "timeout": 5}
+    # async: o registrar_evento.py só grava o evento (não imprime nem decide), então não precisa travar cada chamada de
+    # ferramenta do agente esperando o Python subir (doc hooks: "Run hooks in the background").
+    h = {"type": "command", "command": comando_hook(pasta), "timeout": 5, "async": True}
     return {"hooks": {ev: [({"matcher": "*"} if ev == "PostToolUse" else {}) | {"hooks": [dict(h)]}]
                       for ev in EVENTOS_HOOK}}
 

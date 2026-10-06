@@ -162,10 +162,10 @@ Opções úteis: `--hook usuario|projeto|nenhum`, `--destino PASTA`, `--settings
 ```json
 {
   "hooks": {
-    "PostToolUse":  [{"matcher": "*", "hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
-    "TeammateIdle": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
-    "Stop":         [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}],
-    "SubagentStop": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5}]}]
+    "PostToolUse":  [{"matcher": "*", "hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
+    "TeammateIdle": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
+    "Stop":         [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}]
   }
 }
 ```
