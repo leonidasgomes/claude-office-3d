@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+- Correção: `plugins_projeto.py --projeto <pasta>` mostrava se o plugin estava ligado na pasta atual, não no projeto pedido.
+  Agora a lista do `claude plugin list --json` é feita dentro da pasta do projeto.
+
 ## 1.3.0
 - **`plugins_projeto.py`** (sem tokens): lista os plugins do Claude Code com o peso de cada um no contexto (tokens das
   descrições de skills e comandos, nº de skills e de servidores MCP) e desliga/religa plugins **num projeto só**

@@ -20,11 +20,13 @@ import sys
 from pathlib import Path
 
 
-def plugins():
+def plugins(projeto=None):
+    """Lista do `claude plugin list --json` rodado DENTRO da pasta do projeto: o "enabled" é o daquele projeto."""
     exe = shutil.which("claude")
     if not exe:
         sys.exit("não achei o comando `claude` no PATH")
-    r = subprocess.run([exe, "plugin", "list", "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    r = subprocess.run([exe, "plugin", "list", "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=projeto or None)
     if r.returncode:
         sys.exit("`claude plugin list --json` falhou: " + (r.stderr.strip() or "sem detalhe")[:200])
     vistos = {}
@@ -91,7 +93,7 @@ def main():
         print(f"gravado em {arq}: " + ", ".join(f"{k}={v}" for k, v in ep.items()))
         print("Vale na próxima sessão aberta nesse projeto (os outros projetos não mudam).")
         return 0
-    ps = plugins()
+    ps = plugins(proj)
     proj_ep = {}
     if proj:
         try:
@@ -101,7 +103,7 @@ def main():
     linhas = []
     for p in ps:
         s, c, m, tok = peso(p)
-        ativo = proj_ep.get(p["id"], p.get("enabled", True)) if proj else p.get("enabled", True)
+        ativo = proj_ep.get(p["id"], p.get("enabled", True))   # o settings do projeto manda; senão, o que o claude disse ali
         linhas.append((tok, p["id"], p.get("scope", ""), ativo, s, c, m))
     total = sum(l[0] for l in linhas if l[3])
     print(f"Plugins (peso = tokens das descrições que entram em toda sessão; ativos somam ~{total})"
