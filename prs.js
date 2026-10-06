@@ -81,6 +81,9 @@ function itemSugestao(item, ehPc) {
   const t = el('a', 'sug-titulo', item.titulo); t.href = item.link; t.target = '_blank'; t.rel = 'noopener';
   topo.append(prio, t);
   const meta = el('div', 'sug-meta');
+  const autor = String(item.autor || ''), bot = /copilot/i.test(autor) ? 'Copilot' : /codex/i.test(autor) ? 'Codex'
+    : /coderabbit/i.test(autor) ? 'CodeRabbit' : autor.replace(/\[bot\]$/i, '');
+  if (bot) meta.append(el('span', 'sug-bot', bot));
   if (item.arquivo) meta.append(el('span', null, item.linha ? `${item.arquivo}:${item.linha}` : item.arquivo));
   else if (item.tipo === 'revisao') meta.append(el('span', null, 'revisão geral'));
   if (item.acao_sugerida) meta.append(el('span', 'sug-acao ' + item.acao_sugerida, ROTULO_ACAO[item.acao_sugerida] || item.acao_sugerida));

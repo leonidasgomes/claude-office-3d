@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1
+- **Sugestões do Copilot completas**: o Copilot assina a revisão como `copilot-pull-request-reviewer[bot]`, mas os comentários
+  em linha como `Copilot`, e por isso eles não eram coletados. Agora `copilot-pull-request-reviewer[bot]` em
+  `github.bots_revisao` também aceita `Copilot`, sem mudar o config.
+- A revisão geral do Copilot ("Copilot review overview") é só um índice: não vira item e dá a prioridade de cada comentário
+  em linha pela gravidade (Critical/High/Medium/Low = P0/P1/P2/P3); antes ficavam todos como `?`.
+- `sugestoes_bot.py --coletar --recoletar`: relê a janela `janela_dias` uma vez (depois de acrescentar um bot), sem duplicar.
+- Painel PRs: cada sugestão mostra qual bot a deixou (Codex, Copilot, CodeRabbit…).
+
 ## 1.1.0
 XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no config).
 

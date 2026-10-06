@@ -17,6 +17,7 @@ Uso:  python sugestoes_bot.py [--coletar]          coleta (padrão) e imprime um
       python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "..."]
       python sugestoes_bot.py --listar [--todas]   itens abertos (ou todos)
       python sugestoes_bot.py --sem-triagem        (com --coletar) não chama o modelo nesta rodada
+      python sugestoes_bot.py --recoletar          (com --coletar) relê a janela inteira (janela_dias), uma vez; sem duplicar
 
 Estado em dados/sugestoes/estado.json e caixa em dados/sugestoes/caixa.jsonl (fora do git).
 Situação de cada item: nova -> triada -> encaminhada | ignorada | discutir -> resolvida (arquivada = PR já fechado).
@@ -66,6 +67,12 @@ RE_TAGS = re.compile(r"</?sub>", re.I)
 RE_RODAPE = re.compile(r"\n+\s*Useful\?\s*React with.*\Z", re.S | re.I)
 RE_DETALHES = re.compile(r"<details>.*?</details>", re.S | re.I)
 RE_LIMITE = re.compile(r"rate limit", re.I)
+# Revisão geral do Copilot ("Copilot review overview"): só um índice dos achados em linha, com a gravidade de cada um.
+RE_COPILOT_INDICE = re.compile(r"<!--\s*ccr-overview", re.I)
+RE_COPILOT_GRAVIDADE = re.compile(r'alt="(critical|high|medium|low) severity"[^\n]*?\(#discussion_r(\d+)\)', re.I)
+PRIO_GRAVIDADE = {"critical": "P0", "high": "P1", "medium": "P2", "low": "P3"}
+# Um bot, dois logins: o Copilot assina a revisão como copilot-pull-request-reviewer[bot] e o comentário em linha como "Copilot".
+APELIDOS_BOT = {"copilot-pull-request-reviewer": ("copilot",)}
 
 
 class ErroApi(Exception):
@@ -206,7 +213,10 @@ def gh_api(cfg, caminho, etag=None, timeout=90):
 def eh_bot(login, bots):
     """O login é de um dos bots configurados? Compara sem diferenciar maiúsculas e sem o sufixo "[bot]"."""
     n = lambda t: str(t or "").strip().lower().removesuffix("[bot]")
-    return n(login) in {n(b) for b in bots}
+    nomes = {n(b) for b in bots}
+    for b in list(nomes):
+        nomes.update(APELIDOS_BOT.get(b, ()))
+    return n(login) in nomes
 
 
 def _links_proxima(cab):
@@ -323,21 +333,27 @@ def _baixar_comentarios(cfg, est):
 
 
 def _revisoes(cfg, n, prs, existentes):
-    """Itens de revisão (COMMENTED, com texto próprio) do bot no PR n."""
+    """(itens, gravidades) do PR n: itens de revisão (COMMENTED, com texto próprio) dos bots e, do índice do Copilot,
+    {id do comentário em linha: prioridade} pela gravidade (Critical/High/Medium/Low -> P0..P3)."""
     status, dados, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
-    saida = []
+    saida, gravidades = [], {}
     for r in dados if isinstance(dados, list) else []:
         if not eh_bot((r.get("user") or {}).get("login"), cfg["bots"]) or r.get("state") != "COMMENTED":
+            continue
+        if RE_COPILOT_INDICE.search(r.get("body") or ""):   # índice: não vira item, só dá a gravidade
+            for g, cid in RE_COPILOT_GRAVIDADE.findall(r["body"]):
+                gravidades[cid] = PRIO_GRAVIDADE[g.lower()]
             continue
         if not (r.get("body") or "").strip() or f"r{r['id']}" in existentes or _eh_resumo_vazio(r["body"]):
             continue
         r = dict(r, pull_request_url=f"x/{n}", path="", line=None)
         saida.append(_item(cfg, r, prs, "revisao", "r"))
-    return saida
+    return saida, gravidades
 
 
-def coletar(cfg=None, triagem=True, log=None):
-    """Uma coleta completa. Nunca levanta exceção: devolve {'novas', 'chamadas', 'erro', 'limite', 'triadas'}."""
+def coletar(cfg=None, triagem=True, log=None, recoletar=False):
+    """Uma coleta completa. Nunca levanta exceção: devolve {'novas', 'chamadas', 'erro', 'limite', 'triadas'}.
+    recoletar: ignora o cursor e o ETag e relê a janela inteira (ex.: depois de acrescentar um bot); a caixa não duplica."""
     cfg = cfg or configuracao()
     log = log or (lambda m: None)
     res = {"novas": 0, "chamadas": 0, "erro": "", "limite": 0, "triadas": 0}
@@ -350,6 +366,9 @@ def coletar(cfg=None, triagem=True, log=None):
     try:
         with trava(cfg["pasta"]):
             est = ler_estado(cfg)
+        if recoletar:
+            for k in ("since", "etag_url", "etag_comentarios"):
+                est.pop(k, None)
         res["chamadas"] += _baixar_prs_abertos(cfg, est)
         comentarios, ch = _baixar_comentarios(cfg, est)
         res["chamadas"] += ch
@@ -367,8 +386,11 @@ def coletar(cfg=None, triagem=True, log=None):
         abertos_com_novo = sorted({x["pr"] for x in novos if x["situacao"] == "nova"})
         for n in abertos_com_novo:
             try:
-                extra = _revisoes(cfg, n, prs, ids)
+                extra, gravidades = _revisoes(cfg, n, prs, ids)
                 res["chamadas"] += 1
+                for x in novos:   # Copilot não põe selo no comentário em linha: a prioridade vem do índice da revisão
+                    if x["prioridade"] == "?" and str(x["id"]) in gravidades:
+                        x["prioridade"] = gravidades[str(x["id"])]
                 novos += extra
                 ids |= {x["id"] for x in extra}
             except ErroApi as e:
@@ -631,7 +653,8 @@ def main(argv=None):
         ok, msg = tratar(cfg, _arg(args, "--tratar"), _arg(args, "--acao"), _arg(args, "--nota"))
         print(msg)
         return 0 if ok else 1
-    res = coletar(cfg, triagem="--sem-triagem" not in args, log=lambda m: print(m, file=sys.stderr))
+    res = coletar(cfg, triagem="--sem-triagem" not in args, log=lambda m: print(m, file=sys.stderr),
+                  recoletar="--recoletar" in args)
     if res["erro"].startswith("desligado"):
         print(res["erro"])
         return 0

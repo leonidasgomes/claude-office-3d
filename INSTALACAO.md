@@ -669,14 +669,18 @@ Preencha, no `config.json`, o repositório e os logins dos bots (a lista vazia, 
 ```
 
 O login é o do autor do comentário na API do GitHub (`user.login`); `[bot]` no fim é opcional na comparação. Para descobrir o do
-seu bot: `gh api repos/<dono>/<repo>/pulls/comments?per_page=5 --jq '.[].user.login'`.
+seu bot: `gh api repos/<dono>/<repo>/pulls/comments?per_page=5 --jq '.[].user.login'`. O Copilot usa dois logins:
+`copilot-pull-request-reviewer[bot]` na revisão e `Copilot` nos comentários em linha; basta o primeiro na lista, o segundo vem junto.
+Depois de acrescentar um bot, rode uma vez `python sugestoes_bot.py --coletar --recoletar` para trazer os comentários que ele já
+deixou (relê a janela `janela_dias`, sem duplicar).
 
 ### O que é coletado
 
 Só sugestões de **PRs abertos** (as de PR já fechado entram como `arquivada`). De cada comentário do bot: id, PR, arquivo, linha,
-prioridade (do selo `P0` a `P3`; sem selo = `?`), título (o negrito da primeira linha), texto (sem o selo e sem o rodapé, até
+prioridade (do selo `P0` a `P3`; no Copilot, da gravidade no índice da revisão: Critical/High/Medium/Low = P0/P1/P2/P3;
+sem nenhum dos dois = `?`), título (o negrito da primeira linha), texto (sem o selo e sem o rodapé, até
 1200 caracteres) e o link. Respostas de conversa são ignoradas. Das revisões `COMMENTED`, só as que têm texto próprio (a casca
-padrão "Codex Review" não vira item). Cada item tem uma **situação**: `nova` -> `triada` -> `encaminhada`, `ignorada`, `discutir` ou
+padrão "Codex Review" e o índice "Copilot review overview" não viram item). Cada item tem uma **situação**: `nova` -> `triada` -> `encaminhada`, `ignorada`, `discutir` ou
 `resolvida`. Estado e caixa ficam em `dados/sugestoes/` (fora do git).
 
 ### Custo de API do GitHub (mínimo, só REST)
