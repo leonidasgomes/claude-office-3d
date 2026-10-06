@@ -19,7 +19,13 @@ Uso: python revisor_ia.py --pr 12             revisa o commit atual do PR (se ai
      python revisor_ia.py --pendentes         revisa todo PR aberto cujo commit atual ainda não foi revisado
      python revisor_ia.py --pr 12 --forcar    revisa de novo o mesmo commit
      python revisor_ia.py --pr 12 --seco      só mostra os achados, sem comentar no PR
-Estado (commits revisados, custo e tokens de cada revisão) em dados/revisor/estado.json (fora do git).
+Estado (commits revisados, custo e tokens de cada revisão) em dados/revisor/estado.json (fora do git); o custo_time.py
+soma esse custo ao do time.
+
+Re-revisão (commit novo num PR já revisado) converge em vez de recomeçar: o modelo recebe as conversas anteriores do PR
+(achados + respostas: corrigido, falso positivo e o motivo) e não pode repetir achado já respondido; P2/P3 só valem em
+linha adicionada desde o último commit revisado (P0/P1 valem em qualquer lugar). Sem isso, cada commit de correção gera
+uma rodada nova de P2/P3 sobre código que não mudou e o PR nunca fica pronto.
 """
 import json
 import os
@@ -164,11 +170,73 @@ def montar_diff(arquivos, max_diff):
     return "".join(diff), fora, validas
 
 
-def revisar_com_claude(modelo, contexto, cabecalho, diff):
+def linhas_adicionadas(patch):
+    """Números de linha do lado novo marcadas com "+" no patch (o que de fato mudou)."""
+    ok, n = set(), 0
+    for l in (patch or "").splitlines():
+        m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", l)
+        if m:
+            n = int(m.group(1))
+            continue
+        if l.startswith("-"):
+            continue
+        if l.startswith("+"):
+            ok.add(n)
+        n += 1
+    return ok
+
+
+def mudou_desde(cfg, repo, antes, depois):
+    """{arquivo: linhas adicionadas} entre o último commit revisado e o atual, ou None (sem revisão anterior ou
+    histórico reescrito: aí vale a revisão completa)."""
+    if not antes:
+        return None
+    cmp_ = gh(cfg, f"repos/{repo}/compare/{antes}...{depois}") or {}
+    if cmp_.get("status") != "ahead" or not isinstance(cmp_.get("files"), list):
+        return None
+    return {f.get("filename", ""): linhas_adicionadas(f.get("patch")) for f in cmp_["files"]}
+
+
+def conversas_anteriores(cfg, repo, n, limite=9000):
+    """Achados anteriores do revisor neste PR e as respostas dadas em cada conversa (texto compacto para o prompt)."""
+    coms, pagina = [], 1
+    while True:
+        lote = gh(cfg, f"repos/{repo}/pulls/{n}/comments?per_page=100&page={pagina}") or []
+        coms += lote
+        if len(lote) < 100 or pagina >= 10:
+            break
+        pagina += 1
+    respostas = {}
+    for c in coms:
+        if c.get("in_reply_to_id"):
+            respostas.setdefault(c["in_reply_to_id"], []).append(c.get("body") or "")
+    linhas = []
+    for c in coms:
+        corpo = c.get("body") or ""
+        if c.get("in_reply_to_id") or MARCA not in corpo:
+            continue
+        titulo = corpo.split("\n", 1)[0].strip("* ")
+        resp = " / ".join(r.replace("\n", " ")[:300] for r in respostas.get(c["id"], [])) or "(sem resposta)"
+        linhas.append(f"- {c.get('path')}:{c.get('line') or c.get('original_line')} — {titulo[:120]} → resposta: {resp}")
+    texto = "\n".join(linhas)
+    return texto[-limite:]
+
+
+def revisar_com_claude(modelo, contexto, cabecalho, diff, anteriores="", mudou=None):
     exe = sugestoes_bot._achar_claude()
     if not exe:
         raise RuntimeError("comando `claude` não encontrado no PATH")
-    entrada = f"# Contexto do projeto\n{contexto}\n\n# Pull request\n{cabecalho}\n\n# Diff\n{diff}"
+    entrada = f"# Contexto do projeto\n{contexto}\n\n# Pull request\n{cabecalho}\n\n"
+    if anteriores:
+        entrada += ("# Revisões anteriores deste PR (achados já feitos e a resposta de cada um)\n"
+                    "NÃO repita nenhum destes, nem com outras palavras: os corrigidos já foram tratados e os respondidos como "
+                    "falso positivo foram aceitos pelo time. Só volte a um deles se o commit novo o quebrou de novo (P0/P1).\n"
+                    f"{anteriores}\n\n")
+    if mudou is not None:
+        entrada += ("# O que mudou desde a última revisão (linhas adicionadas, lado novo)\n"
+                    + "\n".join(f"- {a}: {len(l)} linha(s)" for a, l in mudou.items() if l)
+                    + "\nEsta é uma RE-REVISÃO: P2/P3 só em linha adicionada desde a última revisão; P0/P1 em qualquer lugar.\n\n")
+    entrada += f"# Diff\n{diff}"
     cmd = [exe, "-p", "--model", modelo, "--tools", "", "--strict-mcp-config", "--disable-slash-commands",
            "--no-session-persistence", "--output-format", "json", "--system-prompt", prompt()]
     r = subprocess.run(cmd, input=entrada.encode("utf-8"), capture_output=True, timeout=TIMEOUT, cwd=str(RAIZ),
@@ -219,12 +287,16 @@ def revisar(n, forcar=False, seco=False, log=print):
                 break
             pagina += 1
         diff, fora, validas = montar_diff(arquivos, op["max_diff"])
+        antes = [s for s in est["revisados"].get(str(n), []) if s != cabeca]
+        mudou = mudou_desde(cfg, repo, antes[-1] if antes else None, cabeca)
+        descartados = 0
         if not diff:
             achados, env = [], {}
         else:
             cab = (f"#{n} {pr.get('title', '')}\nBranch {pr['head']['ref']} -> {pr['base']['ref']}\n"
                    f"Corpo do PR:\n{(pr.get('body') or '')[:3000]}")
-            achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff)
+            anteriores = conversas_anteriores(cfg, repo, n) if antes else ""
+            achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
         em_linha, no_corpo = [], []
         for a in achados if isinstance(achados, list) else []:
             if not isinstance(a, dict) or not a.get("titulo") or not a.get("texto"):
@@ -234,19 +306,26 @@ def revisar(n, forcar=False, seco=False, log=print):
                 linha = int(a.get("linha"))
             except (TypeError, ValueError):
                 linha = None
+            if mudou is not None and a["prioridade"] in ("P2", "P3") and linha not in mudou.get(a.get("arquivo"), set()):
+                descartados += 1     # re-revisão: P2/P3 fora do que mudou não reabre o PR
+                continue
             if a.get("arquivo") in validas and linha in validas[a["arquivo"]]:
                 em_linha.append({"path": a["arquivo"], "line": linha, "side": "RIGHT", "body": corpo_comentario(a, modelo)})
             else:
                 no_corpo.append(a)
-        resumo = [f"{MARCA} Revisão automática do commit `{cabeca[:8]}` ({modelo}): "
+        resumo = [f"{MARCA} {'Re-revisão' if mudou is not None else 'Revisão'} automática do commit `{cabeca[:8]}` ({modelo}): "
                   + (f"{len(em_linha) + len(no_corpo)} achado(s)." if (em_linha or no_corpo) else "nenhum problema encontrado.")]
+        if mudou is not None:
+            resumo.append(f"\n<sub>Re-revisão: P2/P3 só no que mudou desde `{antes[-1][:8]}`"
+                          + (f" ({descartados} fora disso descartado(s))" if descartados else "") + ".</sub>")
         for a in no_corpo:
             resumo.append(f"\n- **{a['prioridade']} — {a['titulo'][:90]}** (`{a.get('arquivo')}:{a.get('linha')}`): {a['texto'][:600]}")
         if fora:
             resumo.append(f"\n<sub>Não revisados (binário, gerado ou acima de {op['max_diff'] // 1000} mil caracteres): "
                           + ", ".join(f"`{f}`" for f in fora[:15]) + (" …" if len(fora) > 15 else "") + "</sub>")
         if seco:
-            return json.dumps({"em_linha": em_linha, "no_corpo": no_corpo, "fora": fora}, ensure_ascii=False, indent=1)
+            return json.dumps({"em_linha": em_linha, "no_corpo": no_corpo, "fora": fora, "descartados": descartados,
+                               "re_revisao": mudou is not None}, ensure_ascii=False, indent=1)
         corpo = {"commit_id": cabeca, "event": "COMMENT", "body": "\n".join(resumo), "comments": em_linha}
         r = subprocess.run([cfg["gh"], "api", "-X", "POST", f"repos/{repo}/pulls/{n}/reviews", "--input", "-"],
                            input=json.dumps(corpo).encode("utf-8"), capture_output=True)

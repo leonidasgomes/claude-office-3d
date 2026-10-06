@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.2
+- **Revisor de código converge na re-revisão**: num commit novo de PR já revisado, o `revisor_ia.py` passa ao modelo as
+  conversas anteriores do PR (cada achado e a resposta dada: corrigido, falso positivo e o motivo) com a ordem de não repetir
+  nada já respondido, e só aceita P2/P3 em linha adicionada desde o último commit revisado (P0/P1 valem em qualquer lugar).
+  Antes, cada commit de correção gerava uma rodada nova de P2/P3 sobre código que não mudou, repetindo inclusive falsos
+  positivos já explicados, e o PR nunca ficava pronto. O resumo da revisão diz "Re-revisão" e quantos achados foram
+  descartados por estarem fora do que mudou.
+
 ## 1.4.1
 - **Custo do revisor de código**: `custo_time.py` soma o custo das revisões do `revisor_ia.py` no período (lido de
   `dados/revisor/estado.json`, já que o `claude -p` dele não aparece nos transcritos) ao total e ao custo por PR, e grava
