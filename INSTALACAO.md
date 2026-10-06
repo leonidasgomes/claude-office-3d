@@ -745,6 +745,31 @@ python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resol
 
 ## 12. Times de agentes do Claude Code — dicas
 
+### Custo do time e como baixar
+
+`python custo_time.py [--dias 7]` (sem tokens; lê os transcritos do Claude Code das pastas em `projetos`) mostra o custo por
+agente, por cartão e por PR mergeado, o **contexto médio** por resposta, as sessões abertas por mais de 12 h e quanto cada
+agente explorou o código na mão (Read/Grep e grep/cat no shell). O Placar mostra o "US$ por PR" e o custo de cada agente
+(o servidor regenera `dados/xp/custos.json` de hora em hora). O custo de cada sessão é o que o próprio Claude Code grava no
+transcrito; só a divisão entre as respostas é estimada (pelos pesos de preço de entrada, cache e saída).
+
+O que um time real mostrou (7 dias, 3 colegas no Opus, US$ 10 por PR mergeado): **78% do custo era reler o contexto**
+(leitura de cache), os colegas trabalhavam com 270 a 380 mil tokens de contexto por resposta, uma sessão aberta por 53 h
+custou mais de um terço da semana, e subagentes sem `model` caíam no modelo da sessão (Opus). As alavancas, no `env` do
+`.claude/settings.json` do projeto (vale para toda sessão nele):
+
+```jsonc
+"env": {
+  "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",        // subagente sem modelo explícito vai no Sonnet (o explícito continua valendo)
+  "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "300000"    // compacta perto de 300 mil tokens em vez de perto de 1 milhão
+}
+```
+
+E sessão nova por tarefa (ou `/compact` ao terminar uma), em vez de uma sessão aberta por dias. Depois de uma semana, rode o
+`custo_time.py` de novo e compare o contexto médio e o "US$ por PR".
+
+### Nomes, líder, reuniões e subagentes
+
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
   `agent_type` de um `.claude/agents/<nome>.md`). Para cair na mesa certa, o `nome` no config precisa ser igual a esse
   nome — ou estar em `outros_nomes`. Sufixos numéricos (`Dev_235`, um por tarefa) são removidos.

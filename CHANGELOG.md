@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+- **Custo do time** (`custo_time.py`, sem tokens): lê os transcritos do Claude Code das pastas em `projetos` e mostra o custo
+  por agente, por cartão e por PR mergeado, o contexto médio por resposta, as sessões abertas por mais de 12 h e a
+  exploração de código na mão por agente. O custo de cada sessão é o `cost-state` que o Claude Code grava no transcrito (já
+  inclui colegas e subagentes); só a divisão entre as respostas é estimada. Grava `dados/xp/custos.json`.
+- **Placar**: bloco "US$ por PR mergeado" e o custo de cada agente (só com dados reais); o servidor regenera o custo em
+  segundo plano quando passa de 1 h (`GET /xp` ganha `custos`).
+- **INSTALACAO.md §12 "Custo do time e como baixar"**: o que um time real mostrou (78% do custo era reler o contexto) e as
+  alavancas `CLAUDE_CODE_SUBAGENT_MODEL` e `CLAUDE_CODE_AUTO_COMPACT_WINDOW` no `env` do projeto.
+
 ## 1.1.2
 - **Pronto para o merge só com os bots em dia**: `sugestoes_bot.py --pronto <n>` diz OK ou o que ainda segura o PR (sugestão
   sem decisão, sugestão encaminhada e ainda não corrigida, bot que revisou o PR mas não o commit atual, PR novo que nenhum bot

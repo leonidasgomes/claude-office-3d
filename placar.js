@@ -275,6 +275,8 @@ function desenharFaixas() {
   if (res.length) faixasEl.append(listaResolvidos(res));
   if (hist.length) faixasEl.append(listaHistorico(hist));
 }
+let custos = null;
+const usd = (v) => 'US$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 function desenhar() {
   const o = office(); if (!atual) return;
   const cn = (n) => (o ? o.CORES_NIVEL : ['#9ca3af'])[Math.max(0, Math.min(4, n - 1))] || '#9ca3af';
@@ -284,6 +286,12 @@ function desenhar() {
   timeEl.append(tile(String(t.xp_total ?? 0), 'XP total do time', '#f59e0b'), tile(pct(t.aprovacao_primeira), 'aprovado de primeira', '#22c55e'),
     tile(pct(t.retrabalho_14d), 'retrabalho em 14 dias', '#3b82f6'), tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0),
     tile(String(conf), 'para conferir', '#22c55e', conf > 0 ? 'amarelo' : false));
+  const c = fonte === 'real' && custos;
+  if (c && c.usd_por_pr != null) {
+    const tl = tile(usd(c.usd_por_pr), `por PR mergeado (${c.dias} d)`, '#a855f7');
+    tl.title = `${usd(c.total_usd)} em ${c.dias} dia(s), ${c.prs_mergeados} PR(s) mergeado(s) · custo_time.py, ${c.gerado}`;
+    timeEl.append(tl);
+  }
   desenharFaixas();
   document.querySelectorAll('#placarOrdem button').forEach((b) => b.classList.toggle('ativo', b.dataset.ordem === ordem));
   const ags = Object.entries(atual.agentes);
@@ -299,6 +307,8 @@ function desenhar() {
     if (d.auditoria.length) topo.append(el('span', 'aud', '⚠ ' + d.auditoria.length + ' auditoria(s)'));
     if (d.conferir.length) topo.append(el('span', 'conf', '● ' + d.conferir.length + ' para conferir'));
     topo.append(el('span', 'xp', d.xp + ' XP · ' + (d.prs || 0) + ' PR(s)'));
+    const gasto = c && c.agentes ? c.agentes[nome] : null;
+    if (gasto != null) { const g = el('span', 'xp', usd(gasto)); g.title = `custo nos últimos ${c.dias} dia(s)`; topo.append(g); }
     const barra = el('div', 'xp-barra'), enc = el('i');
     enc.style.width = Math.round((o ? o.progressoXp(d) : 0) * 100) + '%'; enc.style.background = cn(d.nivel); barra.append(enc);
     li.append(topo, barra, el('div', 'prox', d.xp_proximo == null ? 'nível máximo' : 'faltam ' + Math.max(0, d.xp_proximo - d.xp) + ' XP para ' + (d.titulo_proximo || 'o próximo nível')));
@@ -336,6 +346,7 @@ async function buscar() {
     const r = await fetch('/xp', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
+    custos = j.custos || null;   // custo_time.py: US$ por agente e por PR (só com dados reais)
     normalizar(j);
     real = j;
   } catch (e) { real = null; }

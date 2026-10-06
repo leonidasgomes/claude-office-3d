@@ -45,6 +45,28 @@ PASTA = Path(__file__).resolve().parent
 EVENTOS = PASTA / "dados" / "eventos.jsonl"
 VENDOR = PASTA / "vendor" / "three"
 XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
+XP_CUSTOS = PASTA / "dados" / "xp" / "custos.json"  # gerado por custo_time.py (custo por agente, cartão e PR; sem tokens)
+CUSTOS_VALIDADE = 3600  # s; mais velho que isso, o /xp pede um custo_time.py novo em segundo plano
+_custos_rodando = {"desde": 0.0}
+
+
+def custos():
+    """Custo do time (dados/xp/custos.json) ou None; velho ou ausente, roda custo_time.py em segundo plano.
+    Só com "projetos" no config (é onde ficam os transcritos que ele lê)."""
+    if not cfg().get("projetos"):
+        return None
+    try:
+        idade = time.time() - XP_CUSTOS.stat().st_mtime
+    except OSError:
+        idade = None
+    if (idade is None or idade > CUSTOS_VALIDADE) and time.time() - _custos_rodando["desde"] > 600:
+        _custos_rodando["desde"] = time.time()
+        try:
+            subprocess.Popen([sys.executable, str(PASTA / "custo_time.py")], cwd=str(PASTA),
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+    return _ler_json(XP_CUSTOS, None)
 XP_PASTA = PASTA / "dados" / "xp"
 XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
@@ -648,8 +670,8 @@ class Handler(rede.HandlerSeguro):
             if not cfg()["xp"]["ativo"]:
                 return self.responder({"ativo": False, "agentes": {}})
             try:
-                corpo = XP_PLACAR.read_bytes()
-                json.loads(corpo)
+                corpo = json.loads(XP_PLACAR.read_bytes())
+                corpo["custos"] = custos()
             except (OSError, ValueError) as e:
                 corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
             return self.responder(corpo)
