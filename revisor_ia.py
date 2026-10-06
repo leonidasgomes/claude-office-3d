@@ -19,6 +19,7 @@ Uso: python revisor_ia.py --pr 12             revisa o commit atual do PR (se ai
      python revisor_ia.py --pendentes         revisa todo PR aberto cujo commit atual ainda não foi revisado
      python revisor_ia.py --pr 12 --forcar    revisa de novo o mesmo commit
      python revisor_ia.py --pr 12 --seco      só mostra os achados, sem comentar no PR
+     python revisor_ia.py --local <worktree> [--base origin/main]   revisa o diff da worktree ANTES do PR (não comenta)
 Estado (commits revisados, custo e tokens de cada revisão) em dados/revisor/estado.json (fora do git); o custo_time.py
 soma esse custo ao do time.
 
@@ -335,7 +336,11 @@ def revisar(n, forcar=False, seco=False, log=print):
             if aceite:
                 cab += "\n\n" + aceite
             anteriores = conversas_anteriores(cfg, repo, n) if antes else ""
-            achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
+            try:
+                achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
+            except ValueError as e:   # JSON mal formado do modelo: uma nova tentativa antes de desistir
+                log(f"#{n}: resposta do modelo sem JSON válido ({str(e)[:80]}); tentando de novo")
+                achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
         em_linha, no_corpo = [], []
         for a in achados if isinstance(achados, list) else []:
             if not isinstance(a, dict) or not a.get("titulo") or not a.get("texto"):
@@ -405,12 +410,56 @@ def pendentes(log=print):
     return saida
 
 
+def revisar_local(wt, base=None):
+    """Revisão ANTES do PR: o mesmo prompt e contexto sobre o diff `base...HEAD` da worktree, sem comentar no GitHub nem
+    gravar estado. Achado resolvido aqui não vira rodada de PR. Base padrão: o branch padrão do origin."""
+    def git(*args):
+        r = subprocess.run(["git", "-C", wt, *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        return r.stdout
+    op = opcoes()
+    if not base:
+        base = (git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").strip() or "origin/main")
+    arquivos = []
+    for linha in git("diff", "--name-status", f"{base}...HEAD").splitlines():
+        partes = linha.split("\t")
+        if len(partes) < 2:
+            continue
+        nome = partes[-1]
+        estado = {"A": "added", "D": "removed"}.get(partes[0][:1], "modified")
+        patch = git("diff", f"{base}...HEAD", "--", nome)
+        patch = patch[patch.find("@@"):] if "@@" in patch else ""     # só os hunks, como no pulls/files da API
+        arquivos.append({"filename": nome, "status": estado, "patch": patch})
+    diff, fora, _ = montar_diff(arquivos, op["max_diff"])
+    if not diff:
+        return f"nada para revisar (sem diff em relação a {base})"
+    ramo = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    commits = git("log", "--format=- %s", f"{base}..HEAD")[:3000]
+    cab = f"(revisão local, antes do PR) branch {ramo} -> {base}\nCommits:\n{commits}"
+    achados, env = revisar_com_claude(op["modelo"], contexto_projeto(op), cab, diff)
+    linhas = []
+    for a in achados if isinstance(achados, list) else []:
+        if isinstance(a, dict):
+            linhas.append(f"{a.get('prioridade', 'P3')} {a.get('arquivo')}:{a.get('linha')} — {a.get('titulo')}\n"
+                          f"    {str(a.get('texto', ''))[:500]}")
+    saida = "\n".join(linhas) or "nenhum problema encontrado"
+    custo = env.get("total_cost_usd")
+    if custo:
+        saida += f"\n(custo US$ {custo:.3f})"
+    if fora:
+        saida += "\nnão revisados: " + ", ".join(fora[:10])
+    return saida
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
         pass
     a = sys.argv[1:]
+    if "--local" in a and a.index("--local") + 1 < len(a):
+        base = a[a.index("--base") + 1] if "--base" in a and a.index("--base") + 1 < len(a) else None
+        print(revisar_local(a[a.index("--local") + 1], base))
+        return 0
     if "--pendentes" in a:
         for l in pendentes() or ["nenhum PR aberto com commit novo"]:
             print(l)

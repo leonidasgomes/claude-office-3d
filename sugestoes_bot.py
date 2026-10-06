@@ -508,7 +508,8 @@ def _arquivar(cfg, caixa, prs):
     """PR que fechou: itens abertos viram 'arquivada'; arquivadas antigas saem da caixa."""
     corte = _iso(_agora() - timedelta(days=GUARDAR_ARQUIVADAS_DIAS))
     for x in caixa:
-        if x.get("situacao") in ABERTAS and str(x.get("pr")) not in prs:
+        # "encaminhada" também: sem isso, a sugestão encaminhada de PR fechado ficava para sempre segurando o merge
+        if x.get("situacao") in ABERTAS + ("encaminhada",) and str(x.get("pr")) not in prs:
             x["situacao"], x["tratada_em"] = "arquivada", _iso(_agora())
     caixa[:] = [x for x in caixa if x.get("situacao") != "arquivada" or (x.get("criado") or "") >= corte]
 

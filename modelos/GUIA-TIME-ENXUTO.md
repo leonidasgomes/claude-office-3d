@@ -65,3 +65,22 @@ sozinho: são ajustes no seu projeto e no jeito de abrir o time.
   (orçamento por tarefa) para não continuar quando já tem o suficiente (mesmo artigo; building-effective-agents).
 - **Avaliador-otimizador com critério claro**: o `revisor_ia.py` confere o aceite da issue citada no PR e para de apontar
   detalhe a partir da 4ª revisão (building-effective-agents: "stopping conditions such as a maximum number of iterations").
+
+## 7. Documento de design não é changelog (o que medimos no GDD)
+- No nosso time o GDD fazia quatro papéis: design, **changelog** (uma revisão nova a cada PR), **quadro de estado** ("Próximo")
+  e **registro de entregas** escrito por script. Resultado medido: 41 edições e 37 commits em 7 dias, quase tudo reescrita de
+  estado, 12 contradições (o mesmo número copiado em vários lugares e envelhecendo) e PRs só para corrigir o próprio documento.
+  Nos achados dos revisores, porém, ele era só 2%: o custo estava no retrabalho e na informação velha, não em bugs.
+- O que resolveu: o documento fica só com o que muda pouco (visão, objetivos com **critério de pronto verificável**, escopo,
+  orçamento); histórico, decisões e registros vão para arquivos próprios; estado vai para o quadro; número medido fica no
+  CSV/manifesto e o documento **aponta para a fonte**; PR de código não edita o documento; a revisão nova sai no fechamento de
+  um objetivo. Uma checagem no revisor de arquitetura avisa quando um PR de código o edita e reprova acima de um teto de tamanho.
+
+## 8. Revisar antes de abrir o PR
+- `python <pasta do escritório>/revisor_ia.py --local <worktree>` roda o mesmo revisor do PR sobre o diff contra a base, sem
+  comentar nada (~US$ 0,07). Achado resolvido ali não vira mais uma rodada de PR. Ponha no prompt dos colegas: "antes de abrir
+  o PR, rode o --local e corrija P0/P1".
+- Ponha as **causas que mais voltam** nos achados no arquivo de padrões de código que o revisor lê (`revisor.contexto`): cada
+  regra vira conferência automática em todo PR. As nossas, de 155 achados: chave de cache completa, gravação atômica,
+  geometria degenerada, validador que reprova na ausência de entrada, teste que prova, sem caminho absoluto versionado,
+  documentação no mesmo commit e gerador conferindo a especificação.

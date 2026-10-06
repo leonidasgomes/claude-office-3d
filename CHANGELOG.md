@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0
+- **`revisor_ia.py --local <worktree> [--base origin/main]`**: o mesmo revisor do PR sobre o diff da worktree contra a base,
+  **antes** de abrir o PR, sem comentar no GitHub nem gravar estado (base padrão: o branch padrão do origin). Achado resolvido
+  aí não vira mais uma rodada de PR.
+- **Revisor mais robusto**: resposta do modelo com JSON mal formado ganha uma nova tentativa em vez de derrubar a revisão.
+- **Sugestões**: sugestão **encaminhada** de PR já fechado também é arquivada; antes ficava para sempre contando como
+  "segura o merge".
+- **Guia de time enxuto** (`modelos/GUIA-TIME-ENXUTO.md`): seções novas "documento de design não é changelog" (o que
+  medimos no nosso GDD e o que resolveu) e "revisar antes de abrir o PR" (o `--local` e as causas que mais voltam como regras
+  do arquivo de padrões que o revisor lê).
+
 ## 1.6.0
 - **`vigia_lider.py`** (novo, sem tokens): roda na ferramenta Monitor do líder e só o acorda quando `sugestoes_bot.py
   --pendentes` ou os comandos extras do bloco novo `vigia` do `config.json` têm saída nova (sem repetir a mesma). Substitui o
