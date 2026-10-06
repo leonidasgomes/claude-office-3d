@@ -18,6 +18,7 @@ Uso:  python sugestoes_bot.py [--coletar]          coleta (padrão) e imprime um
       python sugestoes_bot.py --listar [--todas]   itens abertos (ou todos)
       python sugestoes_bot.py --sem-triagem        (com --coletar) não chama o modelo nesta rodada
       python sugestoes_bot.py --recoletar          (com --coletar) relê a janela inteira (janela_dias), uma vez; sem duplicar
+      python sugestoes_bot.py --pronto <n>         OK, ou o que ainda segura o merge do PR n (sugestões, bots atrasados)
 
 Estado em dados/sugestoes/estado.json e caixa em dados/sugestoes/caixa.jsonl (fora do git).
 Situação de cada item: nova -> triada -> encaminhada | ignorada | discutir -> resolvida (arquivada = PR já fechado).
@@ -38,6 +39,7 @@ RAIZ = Path(__file__).resolve().parent
 import configuracao as _pacote  # noqa: E402  (configuracao.py, da mesma pasta)
 
 PASTA = RAIZ / "dados" / "sugestoes"
+GLOSSARIO = RAIZ / "glossario_triagem.md"   # contexto do projeto para a triagem (editável)
 
 
 def config_base():
@@ -53,6 +55,8 @@ def config_base():
 SITUACOES = ("nova", "triada", "encaminhada", "ignorada", "discutir", "resolvida", "arquivada")
 ABERTAS = ("nova", "triada", "discutir")      # aparecem no painel do escritório
 PENDENTES = ("nova", "triada")                # o que o líder ainda precisa decidir
+SEGURAM_MERGE = ("nova", "triada", "encaminhada")   # sem decisão ou mandada ao colega e ainda não corrigida
+ESPERA_BOTS_MIN = 15                          # PR novo sem revisão de bot: espera esse tempo antes do "pronto"
 ACOES_TRATAR = {"encaminhada": "encaminhada", "ignorada": "ignorada", "discutir": "discutir", "resolvida": "resolvida"}
 PRIORIDADES = ("P0", "P1", "P2", "P3", "?")
 MAX_TEXTO = 1200
@@ -94,6 +98,14 @@ def configuracao():
 # ---------------------------------------------------------------- arquivos (estado, caixa, trava)
 def _agora():
     return datetime.now(timezone.utc)
+
+
+def _ler_iso(texto):
+    """datetime de um ISO do GitHub ("2026-10-06T01:51:53Z"), ou None."""
+    try:
+        return datetime.fromisoformat(str(texto).replace("Z", "+00:00")) if texto else None
+    except ValueError:
+        return None
 
 
 def _iso(dt):
@@ -461,6 +473,27 @@ PROMPT_TRIAGEM = (
     "\"time_sugerido\": \"<um dos times permitidos; use o time_do_pr quando houver>\"}.")
 
 
+MAX_APRENDIDAS = 20
+
+
+def contexto_triagem(cfg):
+    """Glossário do projeto + as últimas sugestões ignoradas COM motivo: o que o líder já decidiu ensina a próxima
+    triagem (caso real: "regera" -> "regenera" foi triado como corrigir, e "regerar" era o termo do projeto)."""
+    partes = []
+    try:
+        g = GLOSSARIO.read_text(encoding="utf-8").strip()
+        if g:
+            partes.append("Contexto do projeto (use para separar falso positivo de problema real):\n" + g[:2500])
+    except OSError:
+        pass
+    ignoradas = [x for x in ler_caixa(cfg) if x.get("situacao") == "ignorada" and (x.get("nota") or "").strip()]
+    ignoradas.sort(key=lambda x: x.get("tratada_em") or x.get("criado") or "")
+    if ignoradas:
+        linhas = [f"- {x['titulo'][:90]} — motivo: {x['nota'][:120]}" for x in ignoradas[-MAX_APRENDIDAS:]]
+        partes.append("Sugestões que o líder já IGNOROU, com o motivo (trate as parecidas do mesmo jeito):\n" + "\n".join(linhas))
+    return "\n\n".join(partes)
+
+
 def _resumo_para_triagem(x):
     return {"id": x["id"], "pr": x["pr"], "branch": x.get("branch", ""), "prioridade": x["prioridade"], "titulo": x["titulo"],
             "arquivo": f"{x['arquivo']}:{x['linha']}" if x.get("arquivo") else "", "texto": x["texto"][:700],
@@ -491,7 +524,8 @@ def triar(cfg, log=None, itens_max=MAX_TRIAGEM):
     if not alvo:
         return 0
     times = ", ".join(cfg["agentes"])
-    entrada = f"Times permitidos: {times}.\nItens:\n" + json.dumps([_resumo_para_triagem(x) for x in alvo], ensure_ascii=False)
+    ctx = contexto_triagem(cfg)
+    entrada = f"Times permitidos: {times}.\n" + (ctx + "\n\n" if ctx else "") + "Itens:\n" + json.dumps([_resumo_para_triagem(x) for x in alvo], ensure_ascii=False)
     cmd = [exe, "-p", "--model", cfg["modelo"], "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
            "--output-format", "json", "--system-prompt", PROMPT_TRIAGEM]
     t0 = time.time()
@@ -617,10 +651,42 @@ def resumo(cfg=None):
         c["total"] += 1
         c[x["prioridade"] if x["prioridade"] in c else "?"] += 1
     campos = ("id", "tipo", "pr", "arquivo", "linha", "prioridade", "titulo", "texto", "link", "criado", "situacao",
-              "acao_sugerida", "motivo", "time_sugerido", "nota")
+              "acao_sugerida", "motivo", "time_sugerido", "nota", "autor")
+    seguram = {}
+    for x in ler_caixa(cfg):
+        if x.get("situacao") in SEGURAM_MERGE:
+            seguram[str(x["pr"])] = seguram.get(str(x["pr"]), 0) + 1
     return {"ativo": bool(cfg["bots"]), "por_pr": por_pr, "itens": [{k: x.get(k) for k in campos} for x in abertas],
+            "seguram_merge": seguram,
             "ultima_coleta": est.get("ultima_coleta", ""), "erro": est.get("erro", ""), "limite_ate": est.get("limite_ate", 0),
             "triagem": (est.get("triagem") or {}).get("ultima"), "intervalo_min": cfg["intervalo_min"]}
+
+
+def pronto(cfg, n):
+    """(ok, motivos) para dizer que o PR n está pronto para o merge, do ponto de vista dos bots: nenhuma sugestão sem
+    decisão ou encaminhada e ainda não corrigida, cada bot que já revisou o PR revisou também o commit atual, e PR novo
+    não passa antes de algum bot revisar (ESPERA_BOTS_MIN). Coleta antes, para não decidir com a caixa velha."""
+    coletar(cfg, triagem=False)
+    motivos = []
+    pend = [x for x in ler_caixa(cfg) if x.get("pr") == n and x.get("situacao") in SEGURAM_MERGE]
+    for x in sorted(pend, key=_ordem):
+        o_que = "encaminhada, ainda não corrigida" if x["situacao"] == "encaminhada" else "sem decisão"
+        motivos.append(f"sugestão {x['prioridade']} {x['id']} ({o_que}): {x['titulo'][:80]}")
+    _, pr, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}")
+    _, revs, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
+    cabeca = (pr or {}).get("head", {}).get("sha", "")
+    por_bot = {}
+    for r in revs if isinstance(revs, list) else []:
+        login = (r.get("user") or {}).get("login", "")
+        if eh_bot(login, cfg["bots"]):
+            por_bot.setdefault(login, set()).add(r.get("commit_id"))
+    for login, commits in sorted(por_bot.items()):
+        if cabeca and cabeca not in commits:
+            motivos.append(f"{login} ainda não revisou o commit atual ({cabeca[:8]}); espere alguns minutos e rode de novo")
+    criado = _ler_iso((pr or {}).get("created_at", ""))
+    if not por_bot and criado and (_agora() - criado).total_seconds() < ESPERA_BOTS_MIN * 60:
+        motivos.append(f"nenhum bot revisou ainda (PR aberto há menos de {ESPERA_BOTS_MIN} min); espere e rode de novo")
+    return not motivos, motivos
 
 
 # ---------------------------------------------------------------- linha de comando
@@ -646,6 +712,15 @@ def main(argv=None):
     if "--pendentes" in args:
         print(texto_pendentes(cfg))
         return 0
+    if "--pronto" in args:
+        try:
+            n = int(_arg(args, "--pronto"))
+        except ValueError:
+            print("uso: sugestoes_bot.py --pronto <número do PR>")
+            return 2
+        ok, motivos = pronto(cfg, n)
+        print("OK" if ok else f"PR #{n} ainda não está pronto para o merge:\n  " + "\n  ".join(motivos))
+        return 0 if ok else 1
     if "--listar" in args:
         print(texto_listar(cfg, "--todas" in args))
         return 0

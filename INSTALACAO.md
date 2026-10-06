@@ -674,6 +674,16 @@ seu bot: `gh api repos/<dono>/<repo>/pulls/comments?per_page=5 --jq '.[].user.lo
 Depois de acrescentar um bot, rode uma vez `python sugestoes_bot.py --coletar --recoletar` para trazer os comentários que ele já
 deixou (relê a janela `janela_dias`, sem duplicar).
 
+### Antes do merge e triagem que aprende
+
+- `python sugestoes_bot.py --pronto <n>` responde `OK` ou lista o que ainda segura o PR n: sugestão sem decisão, sugestão
+  encaminhada e ainda não corrigida, bot que já revisou o PR mas não o commit atual (os bots revisam a cada push e levam
+  alguns minutos) ou PR aberto há menos de 15 min que nenhum bot revisou. O painel PRs usa a mesma regra: um PR aprovado pelo
+  revisor, mas com sugestão pendente, fica em "aguardando" com o motivo.
+- A triagem recebe, além dos itens, o arquivo `glossario_triagem.md` (copie de `glossario_triagem.exemplo.md`; fica fora do
+  git) e as últimas 20 sugestões que o líder ignorou **com motivo** (`--tratar <id> --acao ignorada --nota "<por quê>"`).
+  Assim, o falso positivo que já foi explicado uma vez deixa de voltar como "corrigir".
+
 ### O que é coletado
 
 Só sugestões de **PRs abertos** (as de PR já fechado entram como `arquivada`). De cada comentário do bot: id, PR, arquivo, linha,

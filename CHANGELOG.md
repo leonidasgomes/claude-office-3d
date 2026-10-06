@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.2
+- **Pronto para o merge só com os bots em dia**: `sugestoes_bot.py --pronto <n>` diz OK ou o que ainda segura o PR (sugestão
+  sem decisão, sugestão encaminhada e ainda não corrigida, bot que revisou o PR mas não o commit atual, PR novo que nenhum bot
+  revisou ainda). O painel PRs segue a mesma regra: aprovado pelo revisor mas com sugestão pendente fica em "aguardando".
+- **Triagem que aprende com o projeto**: a triagem (Haiku) recebe o `glossario_triagem.md` do seu projeto (modelo em
+  `glossario_triagem.exemplo.md`; fica fora do git) e as últimas 20 sugestões ignoradas com motivo (`--acao ignorada --nota`).
+  Termo do projeto que o bot insiste em "corrigir" deixa de voltar como "corrigir".
+- Correção: o painel PRs não mostrava qual bot deixou cada sugestão (o resumo não mandava o autor).
+
 ## 1.1.1
 - **Sugestões do Copilot completas**: o Copilot assina a revisão como `copilot-pull-request-reviewer[bot]`, mas os comentários
   em linha como `Copilot`, e por isso eles não eram coletados. Agora `copilot-pull-request-reviewer[bot]` em

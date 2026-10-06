@@ -38,6 +38,8 @@ function situacao(pr) {
   if (pr.rascunho) return { classe: 'espera', rotulo: '📝 rascunho — ainda em trabalho' };
   if (pr.conflito) return { classe: 'bloqueado', rotulo: '⚠️ conflito com a base — precisa de rebase/merge da base' };
   const g = String(pr.revisao || '').toUpperCase();
+  const seguram = ((sugestoes.seguram_merge || {})[String(pr.numero)]) || 0;   // sugestão do bot sem decisão ou sem correção
+  if (g === 'SUCCESS' && seguram) return { classe: 'espera', rotulo: `✅ aprovado por ${REVISOR}, mas 🤖 ${seguram} sugestão(ões) do bot sem resolver — ainda não faça o merge` };
   if (g === 'SUCCESS') return { classe: 'pronto', rotulo: `✅ aprovado por ${REVISOR} — pronto para o seu merge` };
   if (g === 'FAILURE' || g === 'ERROR') return { classe: 'bloqueado', rotulo: `❌ reprovado por ${REVISOR} — volta para o time` };
   return { classe: 'espera', rotulo: `⏳ aguardando ${REVISOR}${LIDER ? ' (' + LIDER.titulo + ')' : ''}` };

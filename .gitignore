@@ -1,6 +1,7 @@
 # gerados na instalação / uso local
 *.bak*
 NOTAS.md
+glossario_triagem.md
 __pycache__/
 config.json
 config.json.bak-*

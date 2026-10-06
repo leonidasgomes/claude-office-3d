@@ -50,7 +50,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "push.py", "cota.py", "sugestoes_bot.py", "sw.js",
-          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "INSTALACAO.md", "README.md", ".gitignore"]
+          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]
