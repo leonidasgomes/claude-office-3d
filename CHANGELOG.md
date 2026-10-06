@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+- Correção: o painel PRs guardava para sempre o veredito do check de revisão de cada commit. Quando a revisão era republicada
+  no mesmo commit (reprovado, corrige o ambiente, aprovado), o painel ficava preso no veredito velho. Agora o veredito final
+  fica em cache por 10 minutos.
+
 ## 1.7.0
 - **`revisor_ia.py --local <worktree> [--base origin/main]`**: o mesmo revisor do PR sobre o diff da worktree contra a base,
   **antes** de abrir o PR, sem comentar no GitHub nem gravar estado (base padrão: o branch padrão do origin). Achado resolvido

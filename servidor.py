@@ -330,7 +330,9 @@ def _checks_do_sha(repo, sha, check, agora):
     """Status do commit (REST /commits/{sha}/status; e, se o check de revisão for um check-run do Actions, /check-runs).
     Só fica em cache por sha quando o veredito do check de revisão já saiu; enquanto não saiu, é consultado de novo."""
     c = _rest["status"].get(sha)
-    if c and c["final"]:
+    # Veredito final fica em cache só por 10 min: a revisão pode ser republicada no MESMO commit (reprovado → corrige o
+    # ambiente → aprovado) e o cache eterno deixava o painel preso no veredito velho.
+    if c and c["final"] and agora - c.get("quando", 0) < 600:
         return c["checks"]
     _, dados, _ = _rest_get(f"repos/{repo}/commits/{sha}/status")
     checks = {s["context"]: str(s.get("state") or "pending").upper() for s in (dados or {}).get("statuses") or []}
