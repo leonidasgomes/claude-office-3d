@@ -1,6 +1,8 @@
 // Claude Office 3D — quadro Kanban do GitHub Projects (lido pelo servidor em /kanban).
 // Módulo separado do escritorio.js: abre por cima da cena no botão "Kanban".
 // Quadro, campo do "time" e mapa time → agente vêm do config.json (chave "github").
+// Com o Kanban ligado, também lê o /kanban em segundo plano e avisa a cena com o evento "kanban" (quadro na parede e aba
+// Cartões da ficha); o servidor responde do cache, então isso não gasta a cota do GitHub.
 import { CONFIG, agenteConfig, temServidor } from './config.js';
 
 const MAX_CONCLUIDO = 15;           // a coluna de concluídos cresce sem parar: mostra só os mais recentes
@@ -20,15 +22,25 @@ function el(tag, cls, texto) {
   if (texto != null) e.textContent = texto;
   return e;
 }
+// valor do campo "time" do cartão → agente do config (pelo mapa github.times ou pelo próprio nome), ou null
+function agenteDoTime(t) {
+  if (!t) return null;
+  const mapa = GH.times || {};
+  const chaveMapa = Object.keys(mapa).find((k) => k.toLowerCase() === String(t).toLowerCase());
+  return agenteConfig(chaveMapa ? mapa[chaveMapa] : t);
+}
 // valor do campo "time" do cartão → agente do escritório (mesma cor da mesa)
 function infoTime(t) {
   if (!t) return { agente: 'Sem time', cor: '#475569' };
-  const mapa = GH.times || {};
-  const chaveMapa = Object.keys(mapa).find((k) => k.toLowerCase() === String(t).toLowerCase());
-  const ag = agenteConfig(chaveMapa ? mapa[chaveMapa] : t);
+  const ag = agenteDoTime(t);
   return ag ? { agente: ag.titulo, cor: ag.cor } : { agente: t, cor: '#64748b' };
 }
 const ehConcluida = (s) => CONCLUIDAS.includes(String(s || '').toLowerCase());
+// ordem das colunas: github.colunas, ou a ordem em que aparecem com as concluídas no fim
+function colunas(cartoes) {
+  if (GH.colunas && GH.colunas.length) return GH.colunas;
+  return [...new Set(cartoes.map((c) => c.status))].sort((a, b) => ehConcluida(a) - ehConcluida(b));
+}
 
 function desenharFiltros() {
   filtrosEl.textContent = '';
@@ -78,8 +90,7 @@ function desenhar() {
   desenharFiltros();
   colunasEl.textContent = '';
   const visiveis = dados.cartoes.filter((c) => !filtro || (c.time || '(sem time)') === filtro);
-  const vistos = [...new Set(dados.cartoes.map((c) => c.status))];
-  const ordem = (GH.colunas && GH.colunas.length) ? GH.colunas : vistos.sort((a, b) => ehConcluida(a) - ehConcluida(b));
+  const ordem = colunas(dados.cartoes);
   const extras = [...new Set(visiveis.map((c) => c.status))].filter((s) => !ordem.includes(s));
   const todas = [...ordem, ...extras];
   colunasEl.style.gridTemplateColumns = `repeat(${Math.max(1, todas.length)}, minmax(200px, 1fr))`;
@@ -115,19 +126,23 @@ async function carregar() {
     dados = dados || { cartoes: [], atualizado: '', projeto: '' };
     dados.erro = 'servidor do escritório fora do ar (abra pelo abrir_escritorio)';
   }
-  desenhar();
+  window.dispatchEvent(new CustomEvent('kanban', { detail: dados }));
+  if (!painel.hidden) desenhar();
 }
 
 function abrir() {
   painel.hidden = false;
   if (!dados) infoEl.textContent = 'carregando o quadro do GitHub…';
+  else desenhar();
   carregar();
-  clearInterval(timer);
-  if (GH.kanban) timer = setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS);
 }
-function fechar() { painel.hidden = true; clearInterval(timer); }
+function fechar() { painel.hidden = true; }
+if (temServidor && GH.kanban) {
+  carregar();
+  timer = setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS);
+}
 
 $('btnKanban').addEventListener('click', () => (painel.hidden ? abrir() : fechar()));
 $('kanbanFechar').addEventListener('click', fechar);
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hidden) fechar(); });
-window.__kanban = { abrir, fechar, carregar };
+window.__kanban = { abrir, fechar, carregar, dados: () => dados, infoTime, agenteDoTime, colunas, ehConcluida, CORES_PRIORIDADE };

@@ -41,6 +41,8 @@ button.ativo { background: #b45309; border-color: #f59e0b; }
 #fichaLista .topo { display: flex; gap: 8px; align-items: baseline; }
 #fichaLista .t { color: #7d8a9a; font-variant-numeric: tabular-nums; font-size: 12px; }
 #fichaLista .resumo { margin-top: 2px; }
+#fichaLista li.cartao a { color: #93c5fd; font-weight: 700; text-decoration: none; }
+#fichaLista li.cartao .prio { color: #fff; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 0 5px; }
 #fichaLista .detalhe { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 Consolas, monospace; color: #c9d4e0; background: #0f1419; border-radius: 4px; padding: 5px 6px; max-height: 220px; overflow: auto; }
 [hidden] { display: none !important; }
 /* Elementos só do celular: ficam escondidos no PC */

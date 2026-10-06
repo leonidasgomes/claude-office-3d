@@ -345,6 +345,9 @@ function desenharBalao(s, texto, icone, cor) {
 const SLOTS = [];
 const V3 = (x, z) => new THREE.Vector3(x, 0, z);
 const PORTA_BANHEIRO = { x: -30, zFrente: 8.4 };
+// Cabines: o boneco para em zFrente, a porta abre (ABRIR s) e só então ele entra; a porta fica aberta enquanto o ocupante
+// está visível na faixa da porta (z0..z1), inclusive ao sair ou ao ser chamado de volta no meio da pausa.
+const CABINE = { zFrente: 14.9, z0: 14.3, z1: 17.4, aberta: 1.35, ABRIR: 0.55 };
 function novoSlot(lugar, x, z, yaw, sentar, entX, rota, baloes) {
   const s = { lugar, pos: V3(x, z), yaw, sentar, entX, rota: rota.map(([a, b]) => V3(a, b)), baloes, ocupante: null };
   SLOTS.push(s);
@@ -533,16 +536,31 @@ bolaPP.visible = false;
   }
   [-32.4, -29.7, -27.0].forEach((x) => caixa(0.08, 2.0, 3.1, mat(0xcfd8e3), x, 1.0, 17.35));
   [[-31.05, 0x4a8fd6, 11.2], [-28.35, 0xf59e0b, 12.8]].forEach(([cx, cor, zPia], i) => {
-    caixa(2.6, 1.7, 0.06, mat(cor), cx, 1.05, 15.8);                                   // porta da cabine
+    const dobradica = new THREE.Group(); dobradica.position.set(cx - 1.3, 0, 15.8); cena.add(dobradica);   // porta da cabine (abre para fora)
+    caixa(2.6, 1.7, 0.06, mat(cor), 1.3, 1.05, 0, dobradica);
     caixa(0.6, 0.4, 0.7, mat(0xf2f4f7), cx, 0.2, 18.4); caixa(0.6, 0.6, 0.25, mat(0xf2f4f7), cx, 0.7, 18.75);
     const s = novoSlot('banheiro', cx, 17.2, Math.PI, false, PORTA_BANHEIRO.x, [[PORTA_BANHEIRO.x, 9.8], [cx, 14.4]], [['🚻', 'banheiro']]);
     s.pia = V3(-32.4, zPia);
+    s.frente = V3(cx, CABINE.zFrente);
+    s.porta = { dobradica, x: cx };
   });
 
   criarPlaquinha('🛋️ Descanso', 0x8b5cf6, CXD, 3.3, 8.7);
   criarPlaquinha('🍽️ Refeitório', 0xf59e0b, CXR, 3.3, 8.7);
 })();
+let tPortas = 0;
+function animarPortasCabine(t) {
+  const dt = Math.min(0.1, Math.max(0, t - tPortas)); tPortas = t;
+  for (const s of SLOTS) {
+    if (!s.porta) continue;
+    const o = s.ocupante;
+    const perto = o && o.fig.dentro.visible && Math.abs(o.pos.x - s.porta.x) < 1.3 && o.pos.z > CABINE.z0 && o.pos.z < CABINE.z1;
+    const r = s.porta.dobradica.rotation, alvo = perto ? CABINE.aberta : 0;
+    r.y += (alvo - r.y) * Math.min(1, dt * 9);
+  }
+}
 function animarAreas(t) {
+  animarPortasCabine(t);
   if (t >= tvProx) trocarCanalTV(t);
   matTV.color.setScalar(0.92 + 0.08 * Math.sin(t * 3.1));
   if (seloAoVivo) seloAoVivo.visible = CANAIS_TV[canalTV].aoVivo && Math.floor(t * 1.6) % 2 === 0;   // "AO VIVO" pisca
@@ -729,6 +747,54 @@ function construirDecoracaoNeutra() {
   for (const x of [-1, 5]) { caixa(2.4, 0.12, 0.7, banco, x, 0.5, 22.5); caixa(0.12, 0.5, 0.6, mat(0x2b313a), x - 1, 0.25, 22.5); caixa(0.12, 0.5, 0.6, mat(0x2b313a), x + 1, 0.25, 22.5); }
 }
 if (TEMA_SP) construirDecoracaoSP(); else construirDecoracaoNeutra();
+
+// ---------------------------------------------------------------- Quadro Kanban na parede (só com "github.kanban")
+// Quadro branco em cima da mureta do fundo, perto da sala de reunião: colunas, contagem e post-its (#n, cor do agente) dos
+// cartões, redesenhado quando o kanban.js lê o /kanban (evento "kanban"). Clique abre o painel Kanban.
+const QUADRO_KB = { x: 8, w: 5.6, h: 2.8, CW: 1024, CH: 512, MAX_COL: 5 };
+const CORES_COL_KB = ['#64748b', '#2563eb', '#9333ea', '#0891b2', '#16a34a'];
+const canvasKB = document.createElement('canvas'); canvasKB.width = QUADRO_KB.CW; canvasKB.height = QUADRO_KB.CH;
+const texKB = new THREE.CanvasTexture(canvasKB); texKB.minFilter = THREE.LinearFilter; texKB.generateMipmaps = false;
+function desenharQuadroKanban(d) {
+  const g = canvasKB.getContext('2d'), W = QUADRO_KB.CW, H = QUADRO_KB.CH, K = window.__kanban;
+  const PRIO = { P0: 0, P1: 1, P2: 2, high: 0, medium: 1, low: 2 };
+  const cartoes = (d && d.cartoes) || [];
+  g.fillStyle = '#f8fafc'; g.fillRect(0, 0, W, H);
+  g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = '#1e293b'; g.font = 'bold 40px "Segoe UI", "Segoe UI Emoji", sans-serif';
+  g.fillText('📋 Kanban', 28, 42);
+  g.textAlign = 'right'; g.fillStyle = '#64748b'; g.font = '24px "Segoe UI", "Segoe UI Emoji", sans-serif';
+  g.fillText(!cartoes.length || !K ? 'sem dados do quadro' : (d.erro ? '⚠️ desatualizado · ' : 'atualizado ') + (d.atualizado || ''), W - 28, 44);
+  if (!cartoes.length || !K) { texKB.needsUpdate = true; return; }
+  const cols = K.colunas(cartoes).slice(0, QUADRO_KB.MAX_COL);
+  const cw = (W - 56) / cols.length, y0 = 84;
+  cols.forEach((status, i) => {
+    const x0 = 28 + i * cw, lista = cartoes.filter((c) => c.status === status), concl = K.ehConcluida(status);
+    const cor = concl ? '#16a34a' : CORES_COL_KB[Math.min(i, CORES_COL_KB.length - 2)];
+    if (i) { g.strokeStyle = '#cbd5e1'; g.lineWidth = 3; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0, H - 20); g.stroke(); }
+    g.textAlign = 'center'; g.fillStyle = '#334155'; g.font = 'bold 28px "Segoe UI", sans-serif'; g.fillText(status, x0 + cw / 2, y0 + 22, cw - 12);
+    g.fillStyle = cor; g.font = 'bold 84px "Segoe UI", sans-serif'; g.fillText(String(lista.length), x0 + cw / 2, y0 + 104);
+    if (concl) return;   // concluídos só contam
+    // post-its: até 6 cartões, mais urgentes primeiro; o 6º vira "+N" quando sobra
+    const ord = lista.slice().sort((a, b) => (PRIO[a.prioridade] ?? 3) - (PRIO[b.prioridade] ?? 3) || (a.numero || 0) - (b.numero || 0));
+    const pw = (cw - 42) / 2, ph = 66;
+    ord.slice(0, 6).forEach((c, k) => {
+      const px = x0 + 14 + (k % 2) * (pw + 14), py = y0 + 168 + Math.floor(k / 2) * (ph + 12);
+      const mais = k === 5 && ord.length > 6, urgente = PRIO[c.prioridade] === 0;
+      g.fillStyle = mais ? '#e2e8f0' : K.infoTime(c.time).cor; g.fillRect(px, py, pw, ph);
+      g.fillStyle = mais ? '#334155' : '#fff'; g.font = 'bold 30px "Segoe UI", sans-serif';
+      g.fillText(mais ? '+' + (ord.length - 5) : (c.numero ? '#' + c.numero : '·') + (urgente ? ' !' : ''), px + pw / 2, py + ph / 2 + 1, pw - 8);
+    });
+  });
+  texKB.needsUpdate = true;
+}
+if (CONFIG.github.kanban) (function construirQuadroKanban() {
+  const { x, w, h } = QUADRO_KB, y = 1.6 + 0.12 + h / 2, z = LIM.z0, aluminio = mat(0xb8c0cc);
+  caixa(w + 0.16, h + 0.16, 0.1, aluminio, x, y, z);                     // moldura apoiada na mureta
+  caixa(w * 0.5, 0.06, 0.18, aluminio, x, y - h / 2 - 0.06, z + 0.1);     // aparador das canetas
+  const tela = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texKB }));
+  tela.position.set(x, y, z + 0.06); tela.userData.kanban = true; cena.add(tela);
+  desenharQuadroKanban(window.__kanban && window.__kanban.dados());
+})();
 
 // ---------------------------------------------------------------- Sala da diretoria (opcional: "sala": "diretoria")
 // Sala fechada pequena: paredes de madeira (parte de baixo) e vidro (em cima, para ver lá dentro), porta na parede oeste,
@@ -1148,18 +1214,23 @@ function planejarPausa(a, s, prefixo, durFixa) {
   const estado = 'em pausa · ' + ROTULO_LUGAR[s.lugar];
   const [d0, d1] = DUR_PAUSA[s.lugar], dur = durFixa || d0 + Math.random() * (d1 - d0);
   const [icone, texto] = s.baloes[Math.floor(Math.random() * s.baloes.length)];
-  const ida = prefixo ? [...prefixo, ...s.rota, s.pos] : [...a.mesa.saida, V3(s.entX, Z_CORREDOR), ...s.rota, s.pos];
+  const destino = s.frente || s.pos;   // cabine: primeiro para na frente da porta
+  const ida = prefixo ? [...prefixo, ...s.rota, destino] : [...a.mesa.saida, V3(s.entX, Z_CORREDOR), ...s.rota, destino];
   const saida = [...s.rota].reverse().concat([V3(s.entX, Z_CORREDOR)]);
-  enfileirar(a, { t: 'caminho', pausa: true, pts: ida, estado, sentarAoFinal: s.sentar, yawFinal: s.yaw, sair: (i) => ida.slice(0, i).reverse() });
+  enfileirar(a, { t: 'caminho', pausa: true, pts: ida, estado, sentarAoFinal: s.sentar, yawFinal: s.frente ? 0 : s.yaw, sair: (i) => ida.slice(0, i).reverse() });
   const item = s.pp ? 'raquete' : itemParaSlot(s, icone);
   if (item) enfileirar(a, { t: 'fn', pausa: true, fn: () => pegarItem(a, item) });
   let volta = saida;
-  if (s.pia) { // banheiro: some na cabine, depois lava as mãos na pia
+  if (s.pia) { // banheiro: espera a porta da cabine abrir, entra e some; ao sair a porta abre de novo; depois lava as mãos
     const porta = [V3(PORTA_BANHEIRO.x, 9.8), V3(PORTA_BANHEIRO.x, Z_CORREDOR)];
+    const deDentro = [s.frente, ...saida];
+    enfileirar(a, { t: 'esperar', pausa: true, dur: CABINE.ABRIR, estado, sair: saida });
+    enfileirar(a, { t: 'caminho', pausa: true, pts: [s.pos], estado, yawFinal: s.yaw, sair: () => deDentro });
     enfileirar(a, { t: 'fn', pausa: true, fn: () => { a.fig.dentro.visible = false; } });
-    enfileirar(a, { t: 'esperar', pausa: true, dur, estado, balao: { texto, icone }, sair: saida });
+    enfileirar(a, { t: 'esperar', pausa: true, dur, estado, balao: { texto, icone }, sair: deDentro });
     enfileirar(a, { t: 'fn', pausa: true, fn: () => { a.fig.dentro.visible = true; } });
-    enfileirar(a, { t: 'caminho', pausa: true, pts: [s.rota[s.rota.length - 1], s.pia], estado, yawFinal: -Math.PI / 2, sair: () => porta });
+    enfileirar(a, { t: 'esperar', pausa: true, dur: CABINE.ABRIR, estado, sair: deDentro });
+    enfileirar(a, { t: 'caminho', pausa: true, pts: [s.frente, s.rota[s.rota.length - 1], s.pia], estado, yawFinal: -Math.PI / 2, sair: () => porta });
     enfileirar(a, { t: 'esperar', pausa: true, dur: 2.5, estado, balao: { texto: 'lavando as mãos', icone: '🧼' }, sair: porta });
     volta = porta;
   } else {
@@ -1532,6 +1603,7 @@ function desenharFicha() {
   document.querySelectorAll('#ficha .abas button').forEach((b) => b.classList.toggle('ativo', b.dataset.aba === abaFicha));
   const lista = $('fichaLista'); lista.textContent = '';
   if (abaFicha === 'xp') { desenharAbaXp(lista, a); return; }
+  if (abaFicha === 'cartoes') { desenharAbaCartoes(lista, a); return; }
   const conversa = (x) => x.ev.tipo === 'fala' || x.ev.tipo === 'reuniao';
   const itens = a.hist.filter((x) => (abaFicha === 'conversas' ? conversa(x) : !conversa(x))).slice().reverse();
   if (!itens.length) lista.append(el('li', 'vazio', abaFicha === 'conversas' ? 'Nenhuma conversa ainda.' : 'Nenhum trabalho registrado ainda.'));
@@ -1587,6 +1659,39 @@ function desenharAbaXp(lista, a) {
   lista.append(el('li', 'xp-linha', (d.skills_autor || []).length ? 'Autoria: ' + d.skills_autor.join(', ') : 'Nenhuma skill de autoria ainda.'));
   lista.append(el('li', 'xp-linha', 'Reusadas por outros agentes: ' + (d.skills_reusadas_por_outros || 0)));
 }
+// Aba "Cartões": os cartões ativos do agente no Kanban (todas as colunas menos a primeira, o backlog, e as concluídas),
+// pelo campo "time" do cartão e o mapa github.times; dados do kanban.js, lidos do /kanban.
+function desenharAbaCartoes(lista, a) {
+  const K = window.__kanban, d = K && K.dados();
+  if (!d || (!(d.cartoes || []).length && d.erro)) {
+    lista.append(el('li', 'vazio', d ? 'Kanban indisponível: ' + d.erro : 'Carregando o quadro…')); return;
+  }
+  const meus = d.cartoes.filter((c) => { const ag = K.agenteDoTime(c.time); return ag && chaveNome(ag.nome) === chaveNome(a.nome); });
+  const ordem = K.colunas(d.cartoes), ativas = ordem.filter((s, i) => !K.ehConcluida(s) && (i > 0 || ordem.length <= 2));
+  const PRIO = { P0: 0, P1: 1, P2: 2, high: 0, medium: 1, low: 2 }, cores = K.CORES_PRIORIDADE || {};
+  for (const status of ativas) {
+    const cs = meus.filter((c) => c.status === status)
+      .sort((x, y) => (PRIO[x.prioridade] ?? 3) - (PRIO[y.prioridade] ?? 3) || (x.numero || 0) - (y.numero || 0));
+    lista.append(el('li', 'xp-secao', `${status} · ${cs.length}`));
+    if (!cs.length) lista.append(el('li', 'vazio', 'Nenhum cartão.'));
+    for (const c of cs) {
+      const li = el('li', 'cartao'), topo = el('div', 'topo');
+      li.style.borderLeftColor = corCss(a.cor);
+      const num = el('a', null, c.numero ? '#' + c.numero : 'rascunho');
+      if (c.url) { num.href = c.url; num.target = '_blank'; num.rel = 'noopener'; }
+      topo.append(num);
+      if (c.prioridade) { const p = el('span', 'prio', c.prioridade); p.style.background = cores[c.prioridade] || '#475569'; topo.append(p); }
+      li.append(topo, el('div', 'resumo', c.titulo));
+      lista.append(li);
+    }
+  }
+  if (d.erro) lista.append(el('li', 'xp-linha dim', '⚠️ quadro de ' + (d.atualizado || '?') + ' (não consegui atualizar)'));
+}
+$('abaCartoes').hidden = !CONFIG.github.kanban;
+window.addEventListener('kanban', (e) => {
+  desenharQuadroKanban(e.detail);
+  if (fichaAberta && abaFicha === 'cartoes') desenharFicha();
+});
 $('fichaFechar').addEventListener('click', fecharFicha);
 document.querySelectorAll('#ficha .abas button').forEach((b) => b.addEventListener('click', () => { abaFicha = b.dataset.aba; desenharFicha(); }));
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharFicha(); });
@@ -1611,7 +1716,9 @@ el3d.addEventListener('pointerup', (e) => {
   const r = el3d.getBoundingClientRect();
   ponteiro.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raio.setFromCamera(ponteiro, camera);
-  let ag = (raio.intersectObjects(cena.children, true).find((i) => i.object.userData.agente) || {}).object;
+  const visivel = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+  const acertos = raio.intersectObjects(cena.children, true).filter((i) => visivel(i.object));   // o raio do three acerta até o invisível
+  let ag = (acertos.find((i) => i.object.userData.agente) || {}).object;
   ag = ag && ag.userData.agente;
   if (!ag && a.toque) {   // dedo gordo: o boneco mais perto do toque (até 40 px), medido na cabeça
     let melhor = 40;
@@ -1623,6 +1730,7 @@ el3d.addEventListener('pointerup', (e) => {
     }
   }
   if (ag) { focarAgente(ag); abrirFicha(ag); }
+  else if (acertos.length && acertos[0].object.userData.kanban && window.__kanban) window.__kanban.abrir();   // quadro da parede
 });
 
 // Foco de câmera

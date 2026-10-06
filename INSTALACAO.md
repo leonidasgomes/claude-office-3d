@@ -265,8 +265,10 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 
 - **Painel de agentes** — estado de cada um (trabalhando, conversando, em reunião, em pausa, ocioso) e a hora do
   último evento. Clique num agente (no painel ou no boneco) para focar a câmera e abrir a **ficha**: abas "O que
-  está fazendo" (comandos, arquivos) e "O que está falando" (mensagens completas).
-- **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub.
+  está fazendo" (comandos, arquivos) e "O que está falando" (mensagens completas); com o Kanban ligado, também
+  "Cartões" (os cartões ativos do agente).
+- **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub. Com o Kanban ligado há
+  também um quadro branco na parede do fundo com as colunas e a contagem; clique nele para abrir o painel.
 - **PRs** — pull requests abertos, ordenados: prontos para o seu merge, aguardando revisão, bloqueados (conflito ou
   reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
 - **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho, auditorias abertas (vermelho)

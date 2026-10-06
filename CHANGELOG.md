@@ -3,6 +3,17 @@
 ## 1.1.0
 XP, níveis e ciclo de vida de skills (opcional, `"xp": {"ativo": true}` no config).
 
+- **Quadro Kanban na parede** (com `github.kanban`): quadro branco em cima da mureta do fundo com as colunas do projeto
+  (`github.colunas` ou a ordem em que aparecem), a contagem de cada uma e até 6 post-its por coluna (#n na cor do agente do
+  cartão, urgentes primeiro, "+N" quando sobra). Clique no quadro abre o painel Kanban.
+- **Aba "Cartões" na ficha do agente** (com `github.kanban`): os cartões ativos dele (todas as colunas menos a primeira,
+  o backlog, e as concluídas), pelo campo "time" e o mapa `github.times`, com prioridade e link para o GitHub.
+- O `kanban.js` lê o `/kanban` em segundo plano a cada minuto (o servidor responde do cache: não gasta a cota do GitHub) e
+  avisa a cena com o evento `kanban`.
+- Banheiro: o boneco para na frente da cabine, a porta abre e só então ele entra; ao sair a porta abre de novo, inclusive
+  quando é chamado de volta no meio da pausa (antes ele atravessava a porta).
+- Clique na cena ignora objetos invisíveis (balões e rótulos ocultos tapavam o boneco ou o quadro).
+
 - **Vigia da cota do GitHub** (`cota.py`): a cada 5 min lê a cota (REST `gh api rate_limit` + a consulta GraphQL `{rateLimit}`,
   que o GitHub não cobra), guarda o histórico em `dados/github_cota.jsonl` (uma linha por leitura, 7 dias) e mostra no
   rodapé do Kanban e dos PRs "GraphQL: 3.200/5.000 (volta 11:25)" (pontos usados na hora / limite; REST só quando baixo).
