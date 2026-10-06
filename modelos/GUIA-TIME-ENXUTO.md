@@ -18,6 +18,13 @@ sozinho: são ajustes no seu projeto e no jeito de abrir o time.
 - **`CLAUDE.md` curto**: a doc recomenda menos de 200 linhas [DOC memory]. Detalhe de configuração (hooks, plugins, env) vai
   para um documento que só quem configura lê.
 
+- **Abra a sessão do time numa worktree sempre na base**, não na bancada de quem roda o motor do jogo. O Claude Code lê
+  `.claude/` (definições de agente, regras por pasta, hooks) e o `CLAUDE.md` **da pasta onde a sessão abre** [DOC agent-teams,
+  memory]. No nosso time a sessão abria no checkout principal, que ficava num branch antigo: os colegas nasceram com
+  definições velhas e as regras por pasta não existiam [MED]. Hoje o lançador põe uma worktree na base a cada partida
+  (`git worktree add --detach … origin/<base>` ou `checkout --detach` nela) e abre a sessão ali, com a bancada no `--add-dir`.
+  Deixe essa worktree fora da pasta do projeto, para não carregar também o `CLAUDE.md` velho da bancada.
+
 ## 2. Carregue só quando precisar
 - **Regras por pasta**: `.claude/rules/<tema>.md` com `paths:` no cabeçalho só entra no contexto quando o agente lê ou edita um
   arquivo que casa com o padrão [DOC memory, "Path-specific rules"]. Bom para regras de motor de jogo, de Blender, de front-end.

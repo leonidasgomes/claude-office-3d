@@ -712,19 +712,21 @@ def resumo(cfg=None):
     for x in ler_caixa(cfg):
         if x.get("situacao") in SEGURAM_MERGE:
             seguram[str(x["pr"])] = seguram.get(str(x["pr"]), 0) + 1
-    return {"ativo": bool(cfg["bots"]), "por_pr": por_pr, "itens": [{k: x.get(k) for k in campos} for x in abertas],
+    return {"ativo": bool(cfg["bots"] or cfg.get("revisor")), "por_pr": por_pr, "itens": [{k: x.get(k) for k in campos} for x in abertas],
             "seguram_merge": seguram,
             "ultima_coleta": est.get("ultima_coleta", ""), "erro": est.get("erro", ""), "limite_ate": est.get("limite_ate", 0),
             "triagem": (est.get("triagem") or {}).get("ultima"), "intervalo_min": cfg["intervalo_min"]}
 
 
-def pronto(cfg, n):
+def pronto(cfg, n, coletar_antes=True, info=None):
     """(ok, motivos) para dizer que o PR n está pronto para o merge, do ponto de vista dos bots: nenhuma sugestão sem
     decisão ou encaminhada e ainda não corrigida, cada bot "por push" que já revisou o PR revisou também o commit atual,
     e PR novo não passa antes de algum bot revisar (ESPERA_BOTS_MIN). Avisos (bot de abertura, bot atrasado além de
     PRAZO_BOT_MIN, cota esgotada) não travam: voltam no fim de motivos com o prefixo "(aviso)".
-    Coleta antes, para não decidir com a caixa velha."""
-    coletar(cfg, triagem=False)
+    Coleta antes, para não decidir com a caixa velha (`coletar_antes=False` quando quem chama acabou de coletar).
+    `info`, se dado, recebe {"sha": commit conferido}."""
+    if coletar_antes:
+        coletar(cfg, triagem=False)
     motivos, avisos = [], []
     pend = [x for x in ler_caixa(cfg) if x.get("pr") == n and x.get("situacao") in SEGURAM_MERGE]
     for x in sorted(pend, key=_ordem):
@@ -733,6 +735,8 @@ def pronto(cfg, n):
     _, pr, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}")
     _, revs, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
     cabeca = (pr or {}).get("head", {}).get("sha", "")
+    if info is not None:
+        info["sha"] = cabeca
     por_bot = {}
     sem_cota = set()
     for r in revs if isinstance(revs, list) else []:

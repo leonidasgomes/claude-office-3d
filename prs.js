@@ -40,7 +40,16 @@ function situacao(pr) {
   const g = String(pr.revisao || '').toUpperCase();
   const seguram = ((sugestoes.seguram_merge || {})[String(pr.numero)]) || 0;   // sugestão do bot sem decisão ou sem correção
   if (g === 'SUCCESS' && seguram) return { classe: 'espera', rotulo: `✅ aprovado por ${REVISOR}, mas 🤖 ${seguram} sugestão(ões) do bot sem resolver — ainda não faça o merge` };
-  if (g === 'SUCCESS') return { classe: 'pronto', rotulo: `✅ aprovado por ${REVISOR} — pronto para o seu merge` };
+  if (g === 'SUCCESS') {
+    // Verde só depois de TODAS as validações: o --pronto (bots e revisor revisaram o commit atual, nenhuma sugestão
+    // pendente) calculado pelo servidor para ESTE commit. Sem bots/revisor configurados, vale só a revisão, como antes.
+    const p = (sugestoes.pronto || {})[String(pr.numero)];
+    if (sugestoes.ativo && (!p || (pr.sha && p.sha && p.sha !== pr.sha)))
+      return { classe: 'espera', rotulo: `⏳ aprovado por ${REVISOR} — conferindo as revisões dos bots no commit atual` };
+    if (p && !p.ok)
+      return { classe: 'espera', rotulo: `⏳ aprovado por ${REVISOR}, mas ainda não: ${(p.motivos[0] || 'revisões pendentes').slice(0, 120)}` };
+    return { classe: 'pronto', rotulo: `✅ aprovado por ${REVISOR} e revisado pelos bots no commit atual — pronto para o seu merge` };
+  }
   if (g === 'FAILURE' || g === 'ERROR') return { classe: 'bloqueado', rotulo: `❌ reprovado por ${REVISOR} — volta para o time` };
   return { classe: 'espera', rotulo: `⏳ aguardando ${REVISOR}${LIDER ? ' (' + LIDER.titulo + ')' : ''}` };
 }

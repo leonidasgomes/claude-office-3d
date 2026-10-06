@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0
+- **Painel PRs: verde só depois de todas as validações.** Antes acendia verde com a revisão aprovada e a caixa de sugestões
+  vazia, mas antes de os bots e o revisor de código revisarem o commit atual; as sugestões chegavam depois. Agora o servidor
+  coleta (sem a triagem paga) e calcula o `--pronto` de cada PR aberto a cada 3 minutos, por commit, e o painel só fica verde
+  com a revisão aprovada **e** o pronto OK para o commit atual; fora disso, mostra o motivo da espera.
+  `sugestoes_bot.pronto(cfg, n, coletar_antes=True, info=None)` aceita não recoletar e devolve o commit conferido.
+- Sugestões contam como ativas também com só o revisor de código (`revisor.ativo`), sem bots do GitHub.
+- **Guia de time enxuto**: abrir a sessão do time numa worktree sempre na base (de onde o Claude Code lê `.claude/` e o
+  `CLAUDE.md`), não na bancada num branch antigo — o que medimos quando não era assim.
+
 ## 1.7.1
 - Correção: o painel PRs guardava para sempre o veredito do check de revisão de cada commit. Quando a revisão era republicada
   no mesmo commit (reprovado, corrige o ambiente, aprovado), o painel ficava preso no veredito velho. Agora o veredito final

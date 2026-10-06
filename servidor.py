@@ -397,7 +397,7 @@ def _ler_prs():
             revisao = _decisao_review(repo, n, sha, pr.get("updated_at", ""))
         prs.append({"numero": n, "titulo": pr["title"], "url": pr["html_url"], "branch": pr["head"]["ref"],
                     "rascunho": bool(pr.get("draft")), "conflito": False if pr.get("draft") else _conflito_do_pr(repo, n, sha, agora),
-                    "revisao": revisao, "checks": checks,
+                    "sha": sha, "revisao": revisao, "checks": checks,
                     "rotulos": [lb["name"] for lb in pr.get("labels") or []],
                     "fecha": sorted({int(x) for x in RE_FECHA.findall(pr.get("body") or "")}),
                     "autor": (pr.get("user") or {}).get("login", ""), "atualizado": pr.get("updated_at", "")})
@@ -506,6 +506,41 @@ def com_cota(dados):
 # ---- Sugestões dos bots de revisão (sugestoes_bot.py): coleta em segundo plano, leitura e tratamento ---------------------
 ACOES_SUGESTAO = ("encaminhada", "ignorada", "discutir", "resolvida", "reabrir")
 _sug_trava = threading.Lock()   # uma coleta por vez
+# "Pronto para o merge" de cada PR aberto (sugestoes_bot.pronto, o mesmo do --pronto), por commit: o painel só acende
+# verde com a revisão aprovada E isto OK para o commit atual (antes ficava verde antes de os bots revisarem).
+PRONTO = {}
+PRONTO_A_CADA_S = 180
+
+
+def atualizar_pronto(c):
+    """Coleta (sem a triagem paga) e calcula o --pronto de cada PR aberto. Coletar antes é obrigatório: revisão de bot
+    que acabou de chegar precisa estar na caixa, senão o PR pareceria pronto cedo demais."""
+    with _sug_trava:
+        sugestoes_bot.coletar(c, triagem=False, log=lambda m: None)
+        _, abertos, _ = sugestoes_bot.gh_api(c, f"repos/{c['repo']}/pulls?state=open&per_page=50")
+        novo = {}
+        for pr in abertos if isinstance(abertos, list) else []:
+            info = {}
+            ok, motivos = sugestoes_bot.pronto(c, pr["number"], coletar_antes=False, info=info)
+            novo[str(pr["number"])] = {"ok": ok, "sha": info.get("sha", ""), "quando": time.time(),
+                                       "motivos": [m for m in motivos if not m.startswith("(aviso)")][:3],
+                                       "avisos": [m[9:] for m in motivos if m.startswith("(aviso)")][:3]}
+        PRONTO.clear()
+        PRONTO.update(novo)
+
+
+def pronto_laco(parar):
+    """Thread: recalcula o pronto de cada PR aberto a cada 3 min (só REST com ETag; sem tokens)."""
+    if parar.wait(40):
+        return
+    while not parar.is_set():
+        try:
+            c = sugestoes_bot.configuracao()
+            if (c["bots"] or c["revisor"]) and c["repo"]:
+                atualizar_pronto(c)
+        except Exception as e:   # nunca derruba o servidor; o painel cai no "aguardando"
+            print(f"[pronto] ERRO: {type(e).__name__}: {str(e)[:150]}", flush=True)
+        parar.wait(PRONTO_A_CADA_S)
 
 
 def revisor_rodada():
@@ -539,6 +574,7 @@ def sugestoes_laco(parar):
 def iniciar_sugestoes():
     parar = threading.Event()
     threading.Thread(target=sugestoes_laco, args=(parar,), daemon=True, name="sugestoes").start()
+    threading.Thread(target=pronto_laco, args=(parar,), daemon=True, name="pronto").start()
     return parar
 
 
@@ -549,7 +585,7 @@ def sugestoes_get():
     except Exception as e:
         return 200, {"ok": True, "ativo": False, "por_pr": {}, "itens": [], "erro": str(e)[:200]}
     aviso = aviso_limite("rate limit") if r.get("limite_ate") and r["limite_ate"] > time.time() else ""
-    return 200, dict(r, ok=True, limite=aviso)
+    return 200, dict(r, ok=True, limite=aviso, pronto=PRONTO)
 
 
 def sugestoes_tratar(dados, ident):
