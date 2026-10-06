@@ -21,6 +21,7 @@ Uso:  python xp.py                 calcula e grava o placar
       python xp.py --liberar N     libera o PR N da auditoria (vermelho; você revisou a mudança) e recalcula
       python xp.py --conferido N   marca o PR N como conferido (o amarelo some da lista) e recalcula
       python xp.py --desfazer N    volta a auditar/conferir o PR N
+      ... --origem TEXTO --motivo TEXTO   (com --liberar/--conferido) quem decidiu e por quê, guardado no banco local
       ... --so-placar              (com qualquer opção acima) só recalcula o placar a partir do cache, sem consultar o
                                    GitHub: é o que os botões do Placar do escritório usam
 """
@@ -37,12 +38,11 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ))
 import configuracao  # noqa: E402
+import banco  # noqa: E402  (decisões do XP no banco local: tabela decisao_xp)
 
 PASTA_XP = RAIZ / "dados" / "xp"
 ESTADO = PASTA_XP / "estado.json"
 PLACAR = PASTA_XP / "placar.json"
-RESOLVIDAS = PASTA_XP / "auditorias_resolvidas.json"  # PRs que o desenvolvedor liberou da auditoria (vermelho)
-CONFERIDOS = PASTA_XP / "conferidos.json"             # PRs amarelos que o desenvolvedor já conferiu
 REGRA_VERSAO = 2   # sobe quando a análise do diff muda: PRs em cache são reanalisados uma vez
 GH = configuracao.localizar_gh()
 
@@ -519,19 +519,20 @@ def novo_agente():
 
 # ---- Principal ------------------------------------------------------------------------------------------------
 def marcar(argv):
-    """--liberar N (vermelho), --conferido N (amarelo), --desfazer N (os dois): mexe nas listas de resolvidos."""
+    """--liberar N (vermelho), --conferido N (amarelo), --desfazer N (os dois): grava a decisão no banco local."""
     flag = next(f for f in ("--liberar", "--conferido", "--desfazer") if f in argv)
     try:
         n = int(argv[argv.index(flag) + 1].lstrip("#"))
     except (IndexError, ValueError):
         print(f"uso: xp.py {flag} <número do PR>")
         return 2
-    for arq, ativo in ((RESOLVIDAS, flag in ("--liberar", "--desfazer")), (CONFERIDOS, flag in ("--conferido", "--desfazer"))):
-        if not ativo:
-            continue
-        lista = set(carregar(arq, []))
-        (lista.discard if flag == "--desfazer" else lista.add)(n)
-        gravar_json(arq, sorted(lista))
+    # banco local (banco.py, tabela decisao_xp): guarda quem decidiu (--origem) e por quê (--motivo)
+    opc = {k: argv[argv.index(k) + 1] for k in ("--origem", "--motivo") if k in argv and argv.index(k) + 1 < len(argv)}
+    if flag == "--desfazer":
+        banco.desfazer(n)
+    else:
+        banco.decidir(n, "liberado" if flag == "--liberar" else "conferido", opc.get("--origem", "linha de comando"),
+                      opc.get("--motivo", ""))
     print({"--liberar": f"PR #{n} liberado da auditoria.", "--conferido": f"PR #{n} marcado como conferido.",
            "--desfazer": f"PR #{n} volta a ser auditado/conferido."}[flag])
     return 0
@@ -615,7 +616,7 @@ def main():
         estado["lista"] = prs   # PRs mergeados (metadados): permite recalcular o placar sem o GitHub (--so-placar)
     gravar_json(ESTADO, estado)
 
-    resolvidas, conferidos = set(carregar(RESOLVIDAS, [])), set(carregar(CONFERIDOS, []))
+    resolvidas, conferidos = banco.decisoes("liberado"), banco.decisoes("conferido")
     agentes = {a: novo_agente() for a in AGENTES_BASE}
     resultados, ignorados = [], 0
     for pr in sorted(prs, key=lambda p: p["mergedAt"]):

@@ -1,8 +1,9 @@
 """Hook do Claude Code que alimenta o Claude Office 3D.
 
 Ligado em PostToolUse / TeammateIdle / Stop / SubagentStop. Lê o JSON do hook no stdin e acrescenta UMA linha
-em dados/eventos.jsonl (pasta ao lado deste script). Nunca bloqueia o agente: qualquer erro sai com código 0 e
-sem saída.
+na tabela evento do banco local (banco.py, dados/escritorio.db, na pasta ao lado deste script). Nunca bloqueia o
+agente: qualquer erro sai com código 0 e sem saída; se o banco estiver ocupado ou quebrado, a linha vai para
+dados/eventos.falha.jsonl.
 
 Só registra sessões cujo diretório de trabalho (cwd) está dentro de uma das pastas de "projetos" do config.json
 (lista vazia = registra todas as sessões).
@@ -23,10 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import configuracao  # noqa: E402  (módulo ao lado deste script)
 
 PASTA = Path(__file__).resolve().parent / "dados"
-EVENTOS = PASTA / "eventos.jsonl"
+FALHA = PASTA / "eventos.falha.jsonl"   # reserva: o banco não aceitou (ocupado > 5 s, disco cheio)
 MAX_TEXTO = 2000      # mensagem entre agentes, completa até aqui
 MAX_DETALHE = 400     # comando/arquivo do trabalho
-LIMITE_BYTES = 4_000_000  # passou disso, guarda o antigo e recomeça (sem crescer para sempre)
 # subagente sem nome: apelido pelo tipo (o escritório mostra nome + função)
 APELIDOS = {"general-purpose": "Assistente", "explore": "Explorador", "plan": "Planejador",
             "claude-code-guide": "Guia_Claude", "statusline-setup": "Configurador"}
@@ -167,10 +167,13 @@ def main():
         if CFG["projetos"] and not configuracao.pasta_dentro(d.get("cwd", ""), CFG["projetos"]):
             sys.exit(0)
         PASTA.mkdir(exist_ok=True)
-        if EVENTOS.exists() and EVENTOS.stat().st_size > LIMITE_BYTES:
-            EVENTOS.replace(PASTA / "eventos.antigo.jsonl")
-        with EVENTOS.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(evento(d), ensure_ascii=False) + "\n")
+        ev = evento(d)
+        try:
+            import banco  # ao lado deste script; importado só depois do filtro de projeto
+            banco.gravar_evento(ev)
+        except Exception:
+            with FALHA.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
     except Exception:
         pass
     sys.exit(0)

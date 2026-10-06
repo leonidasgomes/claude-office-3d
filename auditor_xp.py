@@ -12,7 +12,8 @@ Para cada amarelo ainda não auditado:
 5. suspeita confirmada → issue para o time do autor corrigir o teste (com a evidência), com o rótulo `rotulo_issue` do
    agente (config.json) mais auditor.rotulos; com github.projeto_owner/projeto_numero, entra também no Kanban, com o campo
    github.campo_time = `time_kanban` do agente. O item sai da lista.
-NUNCA libera vermelho (auditoria do xp.py): só mexe nos amarelos. Cada PR é auditado uma vez (dados/xp/auditoria_ia.json).
+NUNCA libera vermelho (auditoria do xp.py): só mexe nos amarelos. Cada PR é auditado uma vez (tabela auditoria_ia do banco
+local, banco.py).
 Com auditor.ativo e xp.ativo, o servidor do escritório roda isto sozinho a cada coleta das sugestões.
 
 Uso: python auditor_xp.py            audita os amarelos pendentes (precisa de xp.ativo e github.repo)
@@ -28,11 +29,10 @@ RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ))
 import configuracao  # noqa: E402
 import sugestoes_bot  # noqa: E402  (gh_api, _achar_claude)
+import banco  # noqa: E402  (decisões do XP e vereditos da auditoria, no banco local)
 
 PASTA_XP = RAIZ / "dados" / "xp"
 PLACAR = PASTA_XP / "placar.json"
-CONFERIDOS = PASTA_XP / "conferidos.json"
-ESTADO = PASTA_XP / "auditoria_ia.json"
 PROMPT = (
     "Você audita, para o placar de XP de um time de agentes de código, se um pull request TRAPACEOU nos testes para "
     "parecer que passa. Não use ferramentas. Recebe o motivo do alerta e o diff. Trapaça é: skip/xfail ou retorno antecipado "
@@ -180,12 +180,12 @@ def abrir_issue(cfg, n, agente, alerta, resp):
 
 def pendentes():
     """Amarelos do placar ainda não conferidos nem auditados: [(pr, agente, motivo, arquivos)]."""
-    placar, conferidos, estado = ler(PLACAR, {}), set(ler(CONFERIDOS, [])), ler(ESTADO, {})
+    placar, conferidos, auditados = ler(PLACAR, {}), banco.decisoes("conferido"), banco.auditados()
     out = []
     for agente, a in (placar.get("agentes") or {}).items():
         for x in (a.get("conferir") or []) if isinstance(a, dict) else []:
             n = x.get("pr")
-            if n and n not in conferidos and str(n) not in estado:
+            if n and n not in conferidos and n not in auditados:
                 out.append((n, agente, x.get("motivo", ""), x.get("arquivos") or []))
     return out
 
@@ -196,7 +196,6 @@ def auditar(seco=False, log=print, cfg=None):
         log("auditor: precisa de xp.ativo e github.repo no config.json")
         return []
     modelo_1, modelo_2 = cfg["auditor"]["modelo"], cfg["auditor"]["modelo_2"]
-    estado = ler(ESTADO, {})
     feitos = []
     for n, agente, motivo, arquivos in pendentes():
         try:
@@ -218,17 +217,14 @@ def auditar(seco=False, log=print, cfg=None):
         if veredito == "suspeito" and not issue:
             log(f"#{n}: não consegui abrir a issue; tenta de novo na próxima rodada")
             continue
-        estado[str(n)] = {"agente": agente, "alerta": motivo, "veredito": veredito, "motivo": texto,
-                          "evidencia": str(resp.get("evidencia") or "")[:200], "modelo": modelo, "cartao": issue,
-                          "custo_usd": custo, "quando": time.strftime("%Y-%m-%d %H:%M")}
+        banco.gravar_auditoria(n, {"agente": agente, "alerta": motivo, "veredito": veredito, "motivo": texto,
+                                   "evidencia": str(resp.get("evidencia") or "")[:200], "modelo": modelo, "cartao": issue,
+                                   "custo_usd": custo, "quando": time.strftime("%Y-%m-%d %H:%M")})
         # legítimo, ou suspeita com issue aberta: sai da lista "para conferir" (a suspeita é tratada pelo time)
-        subprocess.run([sys.executable, str(RAIZ / "xp.py"), "--conferido", str(n), "--so-placar"], capture_output=True)
+        nota = f"{veredito} ({modelo}): {texto}" + (f" · issue #{issue}" if issue else "")
+        subprocess.run([sys.executable, str(RAIZ / "xp.py"), "--conferido", str(n), "--so-placar", "--origem", "auditor_xp",
+                        "--motivo", nota], capture_output=True)
         feitos.append((n, veredito, issue))
-    if not seco and feitos:
-        ESTADO.parent.mkdir(parents=True, exist_ok=True)
-        tmp = ESTADO.with_suffix(".tmp")
-        tmp.write_text(json.dumps(estado, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(ESTADO)
     return feitos
 
 

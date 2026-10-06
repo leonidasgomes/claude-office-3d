@@ -25,7 +25,7 @@ import configuracao  # noqa: E402
 PASTA = RAIZ / "dados" / "skills"
 MODELO = RAIZ / "skills-candidatos" / "MODELO.md"
 PROMOVER = RAIZ / "dados" / "skills-promover"
-EVENTOS = RAIZ / "dados" / "eventos.jsonl"
+EVENTOS_ANTIGO = RAIZ / "dados" / "eventos.antigo.jsonl"   # o que o hook das versões até a 1.9 separou aos 4 MB
 USO_JSON = PASTA / "uso.json"
 ESTADOS = ("candidato", "quarentena", "pronto-ab", "aprovado", "rejeitado", "aposentado")
 DIAS_SEM_USO = 30
@@ -196,23 +196,25 @@ def cmd_usar(a):
 
 
 def eventos_skill():
-    """Itera (ts, agente, nome_da_skill) dos eventos do escritório com ferramenta Skill."""
-    for arq in (EVENTOS.with_name("eventos.antigo.jsonl"), EVENTOS):
-        if not arq.exists():
-            continue
-        with open(arq, "rb") as f:
+    """Itera (ts, agente, nome_da_skill) dos eventos do escritório com ferramenta Skill: a tabela evento do banco local
+    e, antes dela, o dados/eventos.antigo.jsonl das versões antigas, se ainda existir."""
+    import banco
+    antigos = []
+    if EVENTOS_ANTIGO.exists():
+        with open(EVENTOS_ANTIGO, "rb") as f:
             for bruto in f:
                 if b'"Skill"' not in bruto:
                     continue
                 try:
-                    ev = json.loads(bruto.decode("utf-8", errors="replace"))
+                    antigos.append(json.loads(bruto.decode("utf-8", errors="replace")))
                 except ValueError:
                     continue
-                if ev.get("ferramenta") != "Skill":
-                    continue
-                m = re.match(r"\s*skill:\s*([^\s,]+)", ev.get("detalhe", "") or "")
-                if m:
-                    yield ev.get("ts", ""), ev.get("agente", "?"), m.group(1).split(":")[-1].strip()
+    for ev in [*antigos, *banco.eventos_da_ferramenta("Skill")]:
+        if not isinstance(ev, dict) or ev.get("ferramenta") != "Skill":
+            continue
+        m = re.match(r"\s*skill:\s*([^\s,]+)", ev.get("detalhe", "") or "")
+        if m:
+            yield ev.get("ts", ""), ev.get("agente", "?"), m.group(1).split(":")[-1].strip()
 
 
 def cmd_contar_uso(_a):

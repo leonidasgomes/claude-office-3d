@@ -249,19 +249,28 @@ recarregar a página (a porta só muda reiniciando o servidor).
 ## 6. Como funciona
 
 ```
-Claude Code ──hook──> registrar_evento.py ──1 linha JSON──> dados/eventos.jsonl
-                                                                   │
-navegador <──GET /eventos a cada 2 s── servidor.py (127.0.0.1) <───┘
+Claude Code ──hook──> registrar_evento.py ──1 linha──> dados/escritorio.db (SQLite, tabela evento)
+                                                              │
+navegador <──GET /eventos a cada 2 s── servidor.py (127.0.0.1) <──┘
           <──GET /config, /kanban, /prs (gh, em cache)
 ```
 
 1. A cada ferramenta usada (`PostToolUse`), quando um colega fica ocioso (`TeammateIdle`) ou uma sessão/subagente
    termina (`Stop`, `SubagentStop`), o Claude Code chama `registrar_evento.py` com um JSON no stdin.
 2. O hook descobre **quem** gerou o evento (nome do colega, id `nome@time`, metadados do subagente, tipo do
-   subagente; sem nada disso, é a sessão principal = líder), resume o que foi feito e acrescenta uma linha em
-   `dados/eventos.jsonl`. Ele nunca bloqueia o agente: qualquer erro sai em silêncio. Acima de 4 MB o arquivo é
-   guardado como `eventos.antigo.jsonl` e recomeça.
-3. O `servidor.py` serve a página e entrega os eventos novos; a página anima cada um.
+   subagente; sem nada disso, é a sessão principal = líder), resume o que foi feito e acrescenta uma linha na tabela
+   `evento` do banco local `dados/escritorio.db` (`banco.py`, SQLite). Ele nunca bloqueia o agente: qualquer erro sai em
+   silêncio; se o banco estiver ocupado por mais de 5 s ou quebrado, a linha vai para `dados/eventos.falha.jsonl`.
+3. O `servidor.py` serve a página e entrega os eventos novos (consulta pelo id, sem reler o histórico); a página anima
+   cada um.
+
+**Dados locais e migração.** Tudo o que precisa persistir fica em `dados/escritorio.db`: eventos, decisões do XP
+(conferido/liberado), vereditos do auditor e o custo acumulado. Ao atualizar de uma versão antiga, a migração é
+automática e acontece uma vez, na primeira gravação ou consulta: o `dados/eventos.jsonl` vira a tabela `evento` (o id de
+cada evento é o número da linha, então o escritório já aberto continua de onde estava) e fica como
+`eventos.migrado.jsonl`; as listas `dados/xp/conferidos.json`, `auditorias_resolvidas.json` e `auditoria_ia.json` viram
+linhas do banco e ficam como `*.migrado.json`; e o banco da 1.9 (`dados/xp/escritorio.db`) é movido para
+`dados/escritorio.db`. Os `*.migrado.*` podem ser apagados depois de conferir. Reinicie o escritório depois de atualizar.
 
 Tipos de evento: `trabalho` (monitor acende + balão), `fala` (anda até a mesa do destinatário), `reuniao` (sala de
 vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se ele for do time) e `ocioso`.
@@ -365,7 +374,9 @@ python xp.py --conferido 123   # amarelo: PR #123 sai da lista "para conferir"
 python xp.py --desfazer 123    # volta a auditar/conferir
 ```
 
-As listas ficam em `dados/xp/auditorias_resolvidas.json` (liberados) e `dados/xp/conferidos.json` (conferidos). A regra
+As decisões ficam no banco local `dados/escritorio.db` (tabela `decisao_xp`), com quem decidiu e por quê: o botão do
+Placar grava a origem "escritório (pc)" ou "escritório (celular)", o auditor grava "auditor_xp" com o veredito, e na linha
+de comando dá para passar `--origem` e `--motivo` (ex.: `python xp.py --conferido 123 --motivo "skip por SO, ok"`). A regra
 tem versão (`regra` no `dados/xp/estado.json`): quando ela muda, o `xp.py` reanalisa o diff de cada PR em cache uma
 vez, reaproveitando o resto (commits, revisão).
 
@@ -377,7 +388,7 @@ caracteres), pergunta a um modelo barato (`auditor.modelo`, padrão Haiku; `clau
 **só quando ele acha suspeito**, pede a segunda opinião de `auditor.modelo_2` (padrão Sonnet), para alarme falso não virar
 trabalho. Legítimo: o PR é marcado como conferido (o mesmo do botão). Suspeita confirmada: abre uma **issue** no
 `github.repo` para o time do autor corrigir o teste, com o motivo e a evidência, e o item sai da lista. Nunca libera
-vermelho. Cada PR é auditado uma vez (`dados/xp/auditoria_ia.json`, com veredito, modelo e custo).
+vermelho. Cada PR é auditado uma vez (tabela `auditoria_ia` do `dados/escritorio.db`, com veredito, modelo e custo).
 
 ```jsonc
 "auditor": {"ativo": true, "modelo": "claude-haiku-4-5-20251001", "modelo_2": "claude-sonnet-5-5",
@@ -841,7 +852,7 @@ transcrito; só a divisão entre as respostas é estimada (pelos pesos de preço
 rateada por todas as respostas dela (só a parte que caiu na janela conta). A sessão **ainda aberta** não tem esse registro
 (o Claude Code o grava quando ela fecha): o custo dela é estimado pelos tokens, com o preço de cada modelo calibrado nas
 sessões fechadas dos últimos 7 dias. O **acumulado** (tile "acumulado desde" no Placar) fica num banco SQLite local,
-`dados/xp/escritorio.db` (`banco.py`): guarda o custo de cada sessão e de cada revisão já vistas e só cresce, mesmo quando
+`dados/escritorio.db` (`banco.py`): guarda o custo de cada sessão e de cada revisão já vistas e só cresce, mesmo quando
 a janela de 7 dias anda ou o Claude Code apaga transcritos velhos; `python banco.py` mostra o acumulado e a foto de cada dia.
 
 O que um time real mostrou (7 dias, 3 colegas no Opus, US$ 10 por PR mergeado): **78% do custo era reler o contexto**
@@ -916,7 +927,7 @@ como candidata (`skills.py`): só promova depois de usos bons em tarefas reais. 
 | Kanban/PRs: "GitHub CLI (gh) não encontrado" | Instale o gh (https://cli.github.com) e rode `gh auth login`. O resto do escritório funciona sem ele. |
 | Kanban: erro de permissão | `gh auth refresh -s project` (o Projects pede o escopo `project`). Confira `projeto_owner` e `projeto_numero`. |
 | Kanban/PRs: "não configurado" | Preencha a chave `github` do `config.json` ou rode o `instalar.py` de novo. |
-| O hook não registra nada | 1) Reinicie a sessão do Claude Code (hooks são lidos ao abrir). 2) A sessão precisa estar com o diretório de trabalho (`cwd`) dentro de uma das pastas de `projetos` — compare o caminho exato. 3) Rode `/hooks` no Claude Code para ver se os 4 eventos aparecem. 4) Teste à mão: `echo {"hook_event_name":"Stop","cwd":"<sua pasta>"} \| python registrar_evento.py` e veja `dados/eventos.jsonl`. 5) O `python`/`python3` do comando precisa existir no PATH. |
+| O hook não registra nada | 1) Reinicie a sessão do Claude Code (hooks são lidos ao abrir). 2) A sessão precisa estar com o diretório de trabalho (`cwd`) dentro de uma das pastas de `projetos` — compare o caminho exato. 3) Rode `/hooks` no Claude Code para ver se os 4 eventos aparecem. 4) Teste à mão: `echo {"hook_event_name":"Stop","cwd":"<sua pasta>"} \| python registrar_evento.py` e veja o evento novo com `python -c "import banco; print(banco.ler_eventos(ultimos=1))"` (ou, se o banco falhou, `dados/eventos.falha.jsonl`). 5) O `python`/`python3` do comando precisa existir no PATH. |
 | Eventos caem na mesa errada / mesas a mais | Ajuste `nome` e `outros_nomes` dos agentes para os nomes que aparecem no feed. |
 | Página em branco ou "WebGL indisponível" | Use um navegador atual com aceleração de hardware. Sem internet, o three.js do CDN não carrega: rode o `instalar.py` e responda "s" para baixar o three.js para `vendor/` (o servidor passa a usar a cópia local automaticamente). |
 | QR/link não abre no celular (tempo esgotado), mas o celular abre o roteador | Quase sempre é sub-rede diferente, rede do Windows como Pública ou falta de regra de entrada no Firewall. Siga "Não abre no celular? (Firewall e rede)" na seção 9. |
@@ -938,8 +949,8 @@ se quiser remover tudo.
 
 - Tudo é local: o servidor escuta só em `127.0.0.1` e não envia nada para fora (a não ser que você ligue o acesso pelo
   celular, seção 9: aí ele também escuta na rede local, só para IPs privados com sessão pareada).
-- Os eventos ficam em `dados/eventos.jsonl` na pasta instalada (resumos, comandos e trechos de mensagens entre
-  agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
+- Os eventos ficam no banco local `dados/escritorio.db` na pasta instalada (resumos, comandos e trechos de mensagens
+  entre agentes, até alguns KB por evento). Apague a pasta `dados/` quando quiser.
 - O servidor não entrega `config.json`, `dados/` nem os scripts pela web.
 - Sugestões do bot de revisão (seção 11): o texto dos comentários do bot fica em `dados/sugestoes/` no seu computador. Só a
   triagem opcional manda os itens (título e até 700 caracteres de cada comentário) ao modelo configurado, via o seu Claude Code.

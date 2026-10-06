@@ -2,7 +2,7 @@
 
 Serve esta pasta e expõe:
   GET /config                         -> configuração pública (título, tema, agentes, GitHub) para a página
-  GET /eventos?desde=<n>[&ultimos=<k>] -> {"total": N, "eventos": [...]} a partir de dados/eventos.jsonl
+  GET /eventos?desde=<n>[&ultimos=<k>] -> {"total": N, "eventos": [...]} depois do id n (tabela evento do banco local)
   GET /kanban                         -> cartões do GitHub Projects (REST via gh, em cache; traz também o texto da cota do GitHub)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
@@ -27,7 +27,6 @@ import sys
 import threading
 import time
 import webbrowser
-from collections import deque
 from functools import partial
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +34,7 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import alertas  # noqa: E402
+import banco  # noqa: E402  (banco local SQLite: eventos, decisões do XP, custos)
 import cota  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
@@ -42,7 +42,6 @@ import sugestoes_bot  # noqa: E402
 
 HOST = "127.0.0.1"
 PASTA = Path(__file__).resolve().parent
-EVENTOS = PASTA / "dados" / "eventos.jsonl"
 VENDOR = PASTA / "vendor" / "three"
 XP_PLACAR = PASTA / "dados" / "xp" / "placar.json"  # gerado por xp.py
 XP_CUSTOS = PASTA / "dados" / "xp" / "custos.json"  # gerado por custo_time.py (custo por agente, cartão e PR; sem tokens)
@@ -67,7 +66,8 @@ def custos():
         except OSError:
             pass
     return _ler_json(XP_CUSTOS, None)
-XP_PASTA = PASTA / "dados" / "xp"
+
+
 XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
 KANBAN_VALIDADE = 600   # s; o quadro é lido no máximo a cada 10 min (REST; o GraphQL do `gh project` só entra como reserva)
@@ -120,30 +120,12 @@ def three_local():
 
 
 def ler_eventos(desde=0, ultimos=0):
-    """Devolve (total, eventos). Lê o arquivo em streaming, guardando só o que interessa."""
-    if not EVENTOS.exists():
-        return 0, []
-    total = 0
-    coletados = deque(maxlen=ultimos if ultimos > 0 else MAX_POR_RESPOSTA)
+    """Devolve (total, eventos) da tabela evento do banco local (banco.py): consulta pelo id, sem reler o histórico."""
     try:
-        with open(EVENTOS, "rb") as f:
-            for bruto in f:
-                completa = bruto.endswith(b"\n")
-                texto = bruto.decode("utf-8", errors="replace").strip()
-                if not texto:
-                    continue
-                try:
-                    obj = json.loads(texto)
-                except ValueError:
-                    obj = None
-                    if not completa:
-                        break  # linha ainda sendo escrita: ignora por enquanto
-                total += 1
-                if (total > desde or ultimos > 0) and isinstance(obj, dict):
-                    coletados.append(obj)
-    except OSError:
-        return 0, []
-    return total, list(coletados)
+        return banco.ler_eventos(desde, ultimos, MAX_POR_RESPOSTA)
+    except Exception as e:   # banco ocupado ou quebrado: o escritório só fica sem novidades nesta consulta
+        print(f"[eventos] ERRO: {type(e).__name__}: {str(e)[:150]}", flush=True)
+        return desde, []
 
 
 def rodar_gh(args):
@@ -465,19 +447,19 @@ def acao_xp(rota, dados, ident):
     ags = [a for a in placar["agentes"].values() if isinstance(a, dict)]
     abertos = {"--conferido": {x.get("pr") for a in ags for x in a.get("conferir", [])},
                "--liberar": {x.get("pr") for a in ags for x in a.get("auditoria", [])},
-               "--desfazer": set(_ler_json(XP_PASTA / "conferidos.json", [])) | set(_ler_json(XP_PASTA / "auditorias_resolvidas.json", []))}
+               "--desfazer": banco.decisoes("conferido") | banco.decisoes("liberado")}
     if pr not in abertos[flag]:
         return 404, {"ok": False, "erro": f"PR #{pr} não está na lista desta ação"}
     if flag == "--desfazer" and ident.get("permissao") != "pc":   # celular só desfaz o que foi "conferido" (amarelo)
-        liberadas = set(_ler_json(XP_PASTA / "auditorias_resolvidas.json", []))
-        if pr in liberadas or pr not in set(_ler_json(XP_PASTA / "conferidos.json", [])):
+        if pr in banco.decisoes("liberado") or pr not in banco.decisoes("conferido"):
             return 403, {"ok": False, "erro": "o celular só desfaz PRs marcados como conferidos; liberar/desfazer liberação é só no PC"}
     if not XP_PY.is_file():
         return 500, {"ok": False, "erro": "xp.py não encontrado"}
     if not _xp_trava.acquire(blocking=False):
         return 409, {"ok": False, "erro": "outra ação de XP está em andamento"}
     try:
-        r = subprocess.run([sys.executable, str(XP_PY), flag, str(pr), "--so-placar"], capture_output=True, text=True,
+        r = subprocess.run([sys.executable, str(XP_PY), flag, str(pr), "--so-placar", "--origem",
+                            f"escritório ({ident.get('permissao') or 'pc'})"], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=180, cwd=str(PASTA), env=dict(os.environ, PYTHONUTF8="1"))
     except (OSError, subprocess.SubprocessError) as e:
         return 500, {"ok": False, "erro": str(e)[:200]}

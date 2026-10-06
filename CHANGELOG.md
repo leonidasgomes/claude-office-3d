@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.0
+- **Eventos do escritório no banco SQLite local** (`banco.py`, tabela `evento`): o hook (`registrar_evento.py`) grava uma
+  linha no banco em vez de acrescentar ao `dados/eventos.jsonl`, e o `GET /eventos` consulta pelo id; antes o servidor
+  relia o arquivo inteiro a cada consulta (a cada 2 s) e o arquivo era separado aos 4 MB. Se o banco estiver ocupado ou
+  quebrado, o hook grava em `dados/eventos.falha.jsonl` (continua sem bloquear nem imprimir). A contagem de uso das
+  skills (`skills.py`) lê o banco (e o `eventos.antigo.jsonl` antigo, se existir).
+- **Decisões do XP e vereditos do auditor no banco** (tabelas `decisao_xp` e `auditoria_ia`): "conferido" e "liberado"
+  guardam quando, quem decidiu (`--origem`: botão do escritório no PC ou no celular, `auditor_xp`, linha de comando) e por
+  quê (`--motivo`; o auditor grava o veredito e o modelo). Substituem `dados/xp/conferidos.json`,
+  `dados/xp/auditorias_resolvidas.json` e `dados/xp/auditoria_ia.json`.
+- **O banco mudou para `dados/escritorio.db`** (na 1.9 era `dados/xp/escritorio.db`; não é mais só do XP).
+- **Migração automática, uma vez**: o banco da 1.9 é movido (com `-wal`/`-shm`); o `dados/eventos.jsonl` vira a tabela
+  `evento` com id = número da linha (o escritório aberto continua de onde estava) e fica como `eventos.migrado.jsonl`; as
+  listas JSON do XP viram linhas (origem "migrado") e ficam como `*.migrado.json`. Reinicie o escritório depois de
+  atualizar.
+
 ## 1.9.0
 - **Custo da sessão aberta estimado** (`custo_time.py`): o Claude Code só grava o `cost-state` quando a sessão fecha; antes a
   sessão ao vivo ficava de fora e o custo do dia parecia zerar. Agora ela é estimada pelos tokens, com o preço por peso de

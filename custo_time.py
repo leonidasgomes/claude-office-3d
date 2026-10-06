@@ -22,12 +22,12 @@ De onde vem cada número:
   e o custo do dia parecia zerar).
 - O custo de cada sessão é rateado por TODAS as respostas dela e só entra o que caiu na janela (antes o total inteiro ia
   para as respostas da janela e inflava sessões longas que atravessam o corte).
-- Acumulado: o banco local dados/xp/escritorio.db (banco.py, SQLite) guarda o custo de cada sessão e de cada revisão já
+- Acumulado: o banco local dados/escritorio.db (banco.py, SQLite) guarda o custo de cada sessão e de cada revisão já
   vistas e uma foto por dia; só cresce, mesmo quando a janela anda ou o Claude Code apaga transcritos velhos
   (cleanupPeriodDays, 30 dias por padrão).
 
 Uso: python custo_time.py [--dias 7]     relatório no terminal + dados/xp/custos.json (o Placar mostra "US$ por PR" e o
-                                         acumulado) + dados/xp/escritorio.db (acumulado; foto do dia só com --dias 7)
+                                         acumulado) + dados/escritorio.db (acumulado; foto do dia só com --dias 7)
 """
 import json
 import re
@@ -39,7 +39,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ))
 import configuracao  # noqa: E402
-import banco  # noqa: E402  (dados/xp/escritorio.db: acumulado do custo)
+import banco  # noqa: E402  (dados/escritorio.db: acumulado do custo)
 
 PROJETOS = Path.home() / ".claude" / "projects"
 SAIDA = RAIZ / "dados" / "xp" / "custos.json"
@@ -313,7 +313,7 @@ def main():
               f"{rev['achados']} achado(s)")
     if r["sessoes_ao_vivo"]:
         print(f"  inclui {r['sessoes_ao_vivo']} sessão(ões) ainda aberta(s), estimada(s) pelos tokens (sem cost-state ainda)")
-    print(f"Acumulado desde {acum['desde'] or 'hoje'}: US$ {acum['usd']:.2f} (dados/xp/escritorio.db, não zera)")
+    print(f"Acumulado desde {acum['desde'] or 'hoje'}: US$ {acum['usd']:.2f} (dados/escritorio.db, não zera)")
     if dias == 7:   # a foto do dia é sempre da janela padrão, para os dias serem comparáveis
         banco.gravar_dia(r["db"], r["total"], acum["usd"], n_prs)
     r["db"].commit()
