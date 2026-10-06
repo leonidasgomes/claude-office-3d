@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+- **`plugins_projeto.py`** (sem tokens): lista os plugins do Claude Code com o peso de cada um no contexto (tokens das
+  descrições de skills e comandos, nº de skills e de servidores MCP) e desliga/religa plugins **num projeto só**
+  (`--desligar`/`--religar`, grava `enabledPlugins` no `.claude/settings.json` dele). Num time real, plugins sincronizados do
+  claude.ai sem relação com o projeto somavam a maior parte de uma lista de 201 skills (~10 mil tokens por sessão).
+- **INSTALACAO.md §12 "Plugins e skills: o que carregar"**: plugins oficiais que reduzem exploração e medem custo
+  (`pyright-lsp`, `clangd-lsp`, `session-report`), como instalar fora do disco do sistema e limitar os diagnósticos, conferir
+  nomes no catálogo, e o caminho seguro para skills de terceiros (ler, varrer, fixar o commit, quarentena em
+  `skills-candidatos/externo/`).
+
 ## 1.2.0
 - **Custo do time** (`custo_time.py`, sem tokens): lê os transcritos do Claude Code das pastas em `projetos` e mostra o custo
   por agente, por cartão e por PR mergeado, o contexto médio por resposta, as sessões abertas por mais de 12 h e a

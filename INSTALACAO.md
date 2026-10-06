@@ -768,6 +768,36 @@ custou mais de um terço da semana, e subagentes sem `model` caíam no modelo da
 E sessão nova por tarefa (ou `/compact` ao terminar uma), em vez de uma sessão aberta por dias. Depois de uma semana, rode o
 `custo_time.py` de novo e compare o contexto médio e o "US$ por PR".
 
+### Plugins e skills: o que carregar
+
+Cada skill e cada comando de um plugin ativo põe a sua descrição na lista que entra em **toda** sessão e é relida a cada
+resposta. Num time real, a lista tinha 201 skills (~10 mil tokens), a maior parte de plugins sincronizados do claude.ai sem
+relação com o projeto. Veja o peso e desligue o que não serve **só naquele projeto**:
+
+```bash
+python plugins_projeto.py --projeto C:/projetos/meu-app                       # peso de cada plugin (tokens, skills, MCP)
+python plugins_projeto.py --projeto C:/projetos/meu-app --desligar sales@synced,finance@synced
+```
+
+Isso grava `"enabledPlugins": {"sales@synced": false, ...}` no `.claude/settings.json` do projeto (vale na próxima sessão;
+os outros projetos não mudam). `--religar <id>` desfaz.
+
+Plugins oficiais que ajudam a gastar menos (marketplace `claude-plugins-official`, que já vem no Claude Code):
+
+| Plugin | Para quê | Observação |
+|---|---|---|
+| `pyright-lsp` | navegação no Python (definição, referências, símbolos) pelo LSP, em vez de grep | precisa do `pyright-langserver` no PATH; dá para instalar fora do disco do sistema (`npm install --prefix D:/ferramentas/pyright pyright` + um `.cmd` numa pasta que já está no PATH). Com `pyrightconfig.json` limite às pastas de código e considere `"typeCheckingMode": "off"`: os diagnósticos entram no contexto |
+| `clangd-lsp` | o mesmo para C/C++ | precisa do `clangd` e de um `compile_commands.json`; em projetos grandes (ex.: Unreal) a indexação em segundo plano pesa — teste com a máquina livre antes |
+| `session-report` | relatório HTML de tokens, cache, subagentes e skills a partir dos transcritos locais | complementa o `custo_time.py`: mostra as "quebras de cache" (contexto inteiro regravado depois de uma pausa longa) |
+
+Instale no escopo do projeto: `claude plugin install pyright-lsp@claude-plugins-official --scope project`. Confira o nome no
+catálogo antes (`claude plugin list --json --available`): assistentes às vezes citam plugins que não existem.
+
+**Skills de terceiros** (repositórios do GitHub): leia o SKILL.md e as `references/` antes, procure scripts, chamadas de rede,
+downloads e instruções do tipo "ignore as instruções", e fixe o commit. Ponha em `skills-candidatos/externo/<nome>/` e trate
+como candidata (`skills.py`): só promova depois de usos bons em tarefas reais. Prefira as que são só markdown; desconfie de
+"otimizadores" que instalam hooks rodando a cada evento.
+
 ### Nomes, líder, reuniões e subagentes
 
 - **Nomes**: o hook usa o nome que o Claude Code informa (nome do colega no time, `name` do subagente ou o
