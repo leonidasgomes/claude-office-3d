@@ -292,6 +292,11 @@ function desenhar() {
     tl.title = `${usd(c.total_usd)} em ${c.dias} dia(s), ${c.prs_mergeados} PR(s) mergeado(s) · custo_time.py, ${c.gerado}`;
     timeEl.append(tl);
   }
+  if (c && c.revisor && c.revisor.revisoes) {
+    const tr = tile(usd(c.revisor.usd), `revisor de código (${c.dias} d)`, '#0ea5e9');
+    tr.title = `${c.revisor.revisoes} revisão(ões), ${c.revisor.achados} achado(s) · [revisor-ia], já somado ao custo por PR`;
+    timeEl.append(tr);
+  }
   desenharFaixas();
   document.querySelectorAll('#placarOrdem button').forEach((b) => b.classList.toggle('ativo', b.dataset.ordem === ordem));
   const ags = Object.entries(atual.agentes);

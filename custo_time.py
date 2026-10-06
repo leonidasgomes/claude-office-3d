@@ -13,6 +13,7 @@ De onde vem cada número:
 - Cartão: o número no nome do branch da sessão (`feat/31-...`) e o último "#n" de cartão citado nas ferramentas e
   mensagens (`cartão #31`, `kanban ... move 31`, worktree `...-31`). Sem cartão, agrupa pelo branch.
 - Exploração de código: Read/Grep/Glob e grep/cat/sed/find no shell, e quanto texto isso jogou no contexto.
+- Revisor de código (revisor_ia.py): roda fora das sessões; o custo vem de dados/revisor/estado.json e entra no total.
 
 Uso: python custo_time.py [--dias 7]     relatório no terminal + dados/xp/custos.json (o Placar mostra "US$ por PR")
 """
@@ -218,6 +219,19 @@ def prs_mergeados(cfg, dias):
     return sum(1 for p in prs or [] if (p.get("merged_at") or "") >= desde)
 
 
+def custo_revisor(dias):
+    """Revisões do revisor_ia.py no período: o `claude -p` dele roda fora das sessões do time (não aparece nos
+    transcritos), então o custo vem do total_cost_usd que ele grava em dados/revisor/estado.json a cada revisão."""
+    try:
+        hist = json.loads((RAIZ / "dados" / "revisor" / "estado.json").read_text(encoding="utf-8")).get("historico", [])
+    except Exception:
+        return {"usd": 0.0, "revisoes": 0, "achados": 0}
+    corte = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M")
+    hs = [h for h in hist if h.get("quando", "") >= corte]
+    return {"usd": sum(h.get("custo_usd") or 0 for h in hs), "revisoes": len(hs),
+            "achados": sum(h.get("achados") or 0 for h in hs)}
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     dias = int(sys.argv[sys.argv.index("--dias") + 1]) if "--dias" in sys.argv else 7
@@ -226,6 +240,8 @@ def main():
         print('Configure "projetos" no config.json (os caminhos onde o time trabalha) para medir o custo.')
         return 1
     r = coletar(cfg, dias)
+    rev = custo_revisor(dias)
+    r["total"] += rev["usd"]
     try:
         n_prs = prs_mergeados(cfg, dias)
     except Exception:
@@ -233,6 +249,9 @@ def main():
     por_pr = r["total"] / n_prs if n_prs else None
     print(f"Custo do time nos últimos {dias} dia(s): US$ {r['total']:.2f}"
           + (f" · {n_prs} PR(s) mergeado(s) · US$ {por_pr:.2f} por PR" if por_pr else ""))
+    if rev["revisoes"]:
+        print(f"  inclui o revisor de código ([revisor-ia]): US$ {rev['usd']:.2f} em {rev['revisoes']} revisão(ões), "
+              f"{rev['achados']} achado(s)")
     if r["sessoes_sem_custo"]:
         print(f"  ({r['sessoes_sem_custo']} sessão(ões) sem cost-state no transcrito ficaram de fora)")
     print("Por agente:")
@@ -252,6 +271,7 @@ def main():
     SAIDA.write_text(json.dumps({
         "gerado": time.strftime("%Y-%m-%d %H:%M"), "dias": dias, "total_usd": round(r["total"], 2), "prs_mergeados": n_prs,
         "usd_por_pr": round(por_pr, 2) if por_pr else None,
+        "revisor": {"usd": round(rev["usd"], 2), "revisoes": rev["revisoes"], "achados": rev["achados"]},
         "agentes": {k: round(v["usd"], 2) for k, v in r["agentes"].items()},
         "contexto_medio_mil": {k: round(v["ctx"] / max(1, v["n"]) / 1000) for k, v in r["agentes"].items()},
         "cartoes": {k: round(v["usd"], 2) for k, v in r["cartoes"].items()}}, ensure_ascii=False, indent=1), encoding="utf-8")

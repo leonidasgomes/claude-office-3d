@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+- **Custo do revisor de código**: `custo_time.py` soma o custo das revisões do `revisor_ia.py` no período (lido de
+  `dados/revisor/estado.json`, já que o `claude -p` dele não aparece nos transcritos) ao total e ao custo por PR, e grava
+  `revisor` (US$, revisões, achados) em `dados/xp/custos.json`. O Placar mostra um bloco "revisor de código" com esse valor.
+
 ## 1.4.0
 - **Revisor de código próprio** (`revisor_ia.py`, bloco novo `revisor` no `config.json`, desligado por padrão): a cada commit
   novo de PR aberto, uma chamada `claude -p` (padrão Sonnet, sem ferramentas) lê só o diff e os arquivos de contexto do seu
