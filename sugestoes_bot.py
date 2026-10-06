@@ -16,6 +16,8 @@ Uso:  python sugestoes_bot.py [--coletar]          coleta (padrão) e imprime um
       python sugestoes_bot.py --pendentes          NADA, ou resumo compacto para o líder (máx. ~25 linhas)
       python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "..."]
       python sugestoes_bot.py --listar [--todas]   itens abertos (ou todos)
+      python sugestoes_bot.py --pendentes --pr <n> só as do PR n (o dono trata as do próprio PR antes de avisar o líder;
+                                                   vale também com --listar)
       python sugestoes_bot.py --sem-triagem        (com --coletar) não chama o modelo nesta rodada
       python sugestoes_bot.py --recoletar          (com --coletar) relê a janela inteira (janela_dias), uma vez; sem duplicar
       python sugestoes_bot.py --pronto <n>         OK (+ avisos), ou o que ainda segura o merge do PR n (sugestões, bots atrasados)
@@ -653,8 +655,9 @@ def _local(x):
     return f"{x['arquivo']}:{x['linha']}" if x.get("linha") else x["arquivo"]
 
 
-def texto_pendentes(cfg, maximo=25):
-    itens = sorted([x for x in ler_caixa(cfg) if x.get("situacao") in PENDENTES], key=_ordem)
+def texto_pendentes(cfg, maximo=25, pr=None):
+    itens = sorted([x for x in ler_caixa(cfg) if x.get("situacao") in PENDENTES
+                    and (pr is None or str(x.get("pr")) == str(pr))], key=_ordem)
     if not itens:
         return "NADA"
     por_pr = {}
@@ -683,8 +686,9 @@ def texto_pendentes(cfg, maximo=25):
     return "\n".join(linhas[:maximo])
 
 
-def texto_listar(cfg, todas=False):
-    itens = sorted([x for x in ler_caixa(cfg) if todas or x.get("situacao") in ABERTAS], key=_ordem)
+def texto_listar(cfg, todas=False, pr=None):
+    itens = sorted([x for x in ler_caixa(cfg) if (todas or x.get("situacao") in ABERTAS)
+                    and (pr is None or str(x.get("pr")) == str(pr))], key=_ordem)
     if not itens:
         return "Nenhuma sugestão" + ("" if todas else " aberta") + "."
     return "\n".join(f"#{x['pr']} {x['prioridade']} [{x['situacao']}{'/' + x['acao_sugerida'] if x.get('acao_sugerida') and x['situacao'] in ('nova', 'triada') else ''}] "
@@ -790,8 +794,12 @@ def main(argv=None):
     _saida()
     args = list(sys.argv[1:] if argv is None else argv)
     cfg = configuracao()
+    pr = _arg(args, "--pr") if "--pr" in args else None
+    if pr is not None and not str(pr).isdigit():
+        print("uso: --pr <número do PR>")
+        return 2
     if "--pendentes" in args:
-        print(texto_pendentes(cfg))
+        print(texto_pendentes(cfg, pr=pr))
         return 0
     if "--pronto" in args:
         try:
@@ -804,7 +812,7 @@ def main(argv=None):
               else f"PR #{n} ainda não está pronto para o merge:\n  " + "\n  ".join(motivos))
         return 0 if ok else 1
     if "--listar" in args:
-        print(texto_listar(cfg, "--todas" in args))
+        print(texto_listar(cfg, "--todas" in args, pr=pr))
         return 0
     if "--tratar" in args:
         ok, msg = tratar(cfg, _arg(args, "--tratar"), _arg(args, "--acao"), _arg(args, "--nota"))

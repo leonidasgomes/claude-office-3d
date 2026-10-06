@@ -25,7 +25,11 @@ soma esse custo ao do time.
 Re-revisão (commit novo num PR já revisado) converge em vez de recomeçar: o modelo recebe as conversas anteriores do PR
 (achados + respostas: corrigido, falso positivo e o motivo) e não pode repetir achado já respondido; P2/P3 só valem em
 linha adicionada desde o último commit revisado (P0/P1 valem em qualquer lugar). Sem isso, cada commit de correção gera
-uma rodada nova de P2/P3 sobre código que não mudou e o PR nunca fica pronto.
+uma rodada nova de P2/P3 sobre código que não mudou e o PR nunca fica pronto. Teto: a partir da 4ª revisão do mesmo PR,
+só P0/P1 (critério de parada do avaliador-otimizador).
+
+Estado final contra o aceite: o corpo das issues citadas no PR (`Closes #n`/`Parte de #n` no começo da linha, até 2) entra
+na entrada como "# Aceite do cartão"; o modelo verifica primeiro se o diff cumpre o aceite e se há prova (teste) dele.
 """
 import json
 import os
@@ -79,7 +83,39 @@ def prompt():
         "{\"arquivo\": \"caminho/igual/ao/diff\", \"linha\": <número no arquivo novo>, \"prioridade\": \"P0|P1|P2|P3\", "
         "\"titulo\": \"<até 90 caracteres, em português>\", \"texto\": \"<o problema, o efeito concreto e a correção "
         "sugerida, até 600 caracteres, em português>\"}. P0 = quebra o produto/dados ou perde trabalho; P1 = bug provável; "
-        "P2 = defeito em caso de borda ou teste faltando; P3 = melhoria pequena mas real.")
+        "P2 = defeito em caso de borda ou teste faltando; P3 = melhoria pequena mas real. "
+        "Se vier \"# Aceite do cartão\", PRIMEIRO verifique se o diff cumpre esse aceite (estado final, não o processo): se "
+        "não cumpre, ou se não há teste/prova no PR que o demonstre, isso é P1 — ou P2 quando o PR é \"Parte de\" e a parte "
+        "que falta está declarada no corpo do PR.")
+
+
+RE_FECHA = re.compile(r"(?im)^[ \t]*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]*#(\d+)\b")
+RE_PARTE = re.compile(r"(?im)^[ \t]*(?:parte[ \t]+de|part[ \t]+of)[ \t]*:?[ \t]*#(\d+)\b")
+MAX_CARTOES = 2
+TETO_REVISOES = 3            # a partir da 4ª revisão do mesmo PR, só P0/P1 (critério de parada do avaliador)
+
+
+def cartoes_do_corpo(corpo):
+    """[(n, "Closes"|"Parte de")] citados no começo da linha, na ordem, sem repetir, no máximo MAX_CARTOES."""
+    vistos, out = set(), []
+    marcas = [(m.start(), int(m.group(1)), "Closes") for m in RE_FECHA.finditer(corpo or "")]
+    marcas += [(m.start(), int(m.group(1)), "Parte de") for m in RE_PARTE.finditer(corpo or "")]
+    for _, n, tipo in sorted(marcas):
+        if n not in vistos:
+            vistos.add(n)
+            out.append((n, tipo))
+    return out[:MAX_CARTOES]
+
+
+def aceite_dos_cartoes(cfg, repo, corpo):
+    """Texto "# Aceite do cartão #n (tipo)" com o corpo de cada issue citada (1 REST por cartão)."""
+    partes = []
+    for n, tipo in cartoes_do_corpo(corpo):
+        iss = gh(cfg, f"repos/{repo}/issues/{n}") or {}
+        if iss.get("pull_request") or not iss.get("title"):
+            continue
+        partes.append(f"# Aceite do cartão #{n} ({tipo}): {iss['title']}\n{(iss.get('body') or '')[:2000]}")
+    return "\n\n".join(partes)
 
 
 def gh(cfg, caminho):
@@ -295,6 +331,9 @@ def revisar(n, forcar=False, seco=False, log=print):
         else:
             cab = (f"#{n} {pr.get('title', '')}\nBranch {pr['head']['ref']} -> {pr['base']['ref']}\n"
                    f"Corpo do PR:\n{(pr.get('body') or '')[:3000]}")
+            aceite = aceite_dos_cartoes(cfg, repo, pr.get("body") or "")
+            if aceite:
+                cab += "\n\n" + aceite
             anteriores = conversas_anteriores(cfg, repo, n) if antes else ""
             achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
         em_linha, no_corpo = [], []
@@ -306,8 +345,9 @@ def revisar(n, forcar=False, seco=False, log=print):
                 linha = int(a.get("linha"))
             except (TypeError, ValueError):
                 linha = None
-            if mudou is not None and a["prioridade"] in ("P2", "P3") and linha not in mudou.get(a.get("arquivo"), set()):
-                descartados += 1     # re-revisão: P2/P3 fora do que mudou não reabre o PR
+            if a["prioridade"] in ("P2", "P3") and (len(antes) >= TETO_REVISOES or (
+                    mudou is not None and linha not in mudou.get(a.get("arquivo"), set()))):
+                descartados += 1     # re-revisão: P2/P3 fora do que mudou (ou depois do teto) não reabre o PR
                 continue
             if a.get("arquivo") in validas and linha in validas[a["arquivo"]]:
                 em_linha.append({"path": a["arquivo"], "line": linha, "side": "RIGHT", "body": corpo_comentario(a, modelo)})
@@ -315,7 +355,10 @@ def revisar(n, forcar=False, seco=False, log=print):
                 no_corpo.append(a)
         resumo = [f"{MARCA} {'Re-revisão' if mudou is not None else 'Revisão'} automática do commit `{cabeca[:8]}` ({modelo}): "
                   + (f"{len(em_linha) + len(no_corpo)} achado(s)." if (em_linha or no_corpo) else "nenhum problema encontrado.")]
-        if mudou is not None:
+        if len(antes) >= TETO_REVISOES:
+            resumo.append(f"\n<sub>{len(antes) + 1}ª revisão deste PR: só P0/P1 a partir da {TETO_REVISOES + 1}ª"
+                          + (f" ({descartados} P2/P3 descartado(s))" if descartados else "") + ".</sub>")
+        elif mudou is not None:
             resumo.append(f"\n<sub>Re-revisão: P2/P3 só no que mudou desde `{antes[-1][:8]}`"
                           + (f" ({descartados} fora disso descartado(s))" if descartados else "") + ".</sub>")
         for a in no_corpo:
