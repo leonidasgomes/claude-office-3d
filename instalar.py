@@ -2,16 +2,19 @@
 
     python instalar.py                                   instalação guiada, passo a passo
     python instalar.py --sem-perguntas --config X.json   instalação silenciosa (para automatizar)
-    python instalar.py --desinstalar                     remove os hooks deste escritório (com backup)
+    python instalar.py --desinstalar                     remove os hooks (e a statusline) deste escritório (com backup)
 
 Opções:
     --settings-usuario CAMINHO   usa outro settings.json no lugar de ~/.claude/settings.json
     --destino PASTA              pasta de instalação (padrão: esta pasta)
     --hook usuario|projeto|nenhum   escopo do hook no modo silencioso (padrão: usuario)
+    --statusline                 liga a statusline de uso do plano no settings.json do usuário (modo silencioso;
+                                 nunca substitui uma statusline que já exista)
     --sem-abrir                  não pergunta / não abre o escritório no final
 
 No modo silencioso, o arquivo de --config tem o formato do config.json e pode trazer um bloco extra
-"instalacao": {"destino": "...", "hook": "usuario|projeto|nenhum", "three_offline": false, "abrir": false}.
+"instalacao": {"destino": "...", "hook": "usuario|projeto|nenhum", "statusline": false, "three_offline": false,
+"abrir": false}.
 """
 import argparse
 import copy
@@ -49,7 +52,7 @@ EVENTOS_HOOK = ("PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
-          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "push.py", "cota.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
+          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "push.py", "cota.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
           "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
@@ -366,6 +369,58 @@ def desinstalar_hook(arq, pasta):
     return copia, n
 
 
+# ---------------------------------------------------------------- statusline (uso do plano, opcional)
+def comando_statusline(pasta):
+    return f'{PYTHON_CMD} "{(Path(pasta) / "statusline_uso.py").as_posix()}"'
+
+
+def bloco_statusline(pasta):
+    return {"statusLine": {"type": "command", "command": comando_statusline(pasta)}}
+
+
+def eh_nossa_statusline(sl, pasta):
+    """StatusLine deste escritório: o comando aponta para o statusline_uso.py desta pasta."""
+    return isinstance(sl, dict) and _norm((Path(pasta) / "statusline_uso.py").as_posix()) in _norm(sl.get("command", ""))
+
+
+def como_encadear(pasta):
+    """Texto para quem já tem statusline: chamar a nossa com --so-gravar (grava e não imprime), com o mesmo stdin."""
+    return ("  Para ter o uso do plano no Placar sem trocar a sua, chame a do escritório no SEU script, com o mesmo stdin:\n"
+            f"    entrada=$(cat); printf '%s' \"$entrada\" | {comando_statusline(pasta)} --so-gravar\n"
+            "    (depois continue usando \"$entrada\" no seu script; detalhes no INSTALACAO.md, seção Uso do plano)")
+
+
+def instalar_statusline(arq, pasta):
+    """Liga a statusline no settings.json. Nunca substitui uma statusline alheia.
+    Devolve (situação, backup): "instalada", "ja" (já era a nossa) ou "alheia" (existe outra: nada muda)."""
+    arq = Path(arq)
+    atual = ler_settings(arq)
+    sl = atual.get("statusLine")
+    if sl is not None and not eh_nossa_statusline(sl, pasta):
+        return "alheia", None
+    novo = copy.deepcopy(atual)
+    novo.update(bloco_statusline(pasta))
+    if novo == atual:
+        return "ja", None
+    copia = backup(arq)
+    gravar_settings(arq, novo)
+    return "instalada", copia
+
+
+def desinstalar_statusline(arq, pasta):
+    """Tira a statusline só se for a deste escritório. Devolve (backup, removeu)."""
+    arq = Path(arq)
+    if not arq.exists():
+        return None, False
+    atual = ler_settings(arq)
+    if not eh_nossa_statusline(atual.get("statusLine"), pasta):
+        return None, False
+    novo = {k: v for k, v in atual.items() if k != "statusLine"}
+    copia = backup(arq)
+    gravar_settings(arq, novo)
+    return copia, True
+
+
 def settings_usuario(args):
     return Path(args.settings_usuario).expanduser() if args.settings_usuario else Path.home() / ".claude" / "settings.json"
 
@@ -518,6 +573,16 @@ def aplicar(plano, args, log=print):
             log(f"  hook instalado em {arq} ({n} evento(s) novo(s))" + (f"; backup: {copia.name}" if copia else ""))
         else:
             log(f"  hook já estava instalado em {arq} (nada mudou)")
+    if plano.get("statusline"):
+        arq = settings_usuario(args)
+        situacao, copia = instalar_statusline(arq, destino)
+        if situacao == "instalada":
+            log(f"  statusline de uso do plano ligada em {arq}" + (f"; backup: {copia.name}" if copia else ""))
+        elif situacao == "ja":
+            log(f"  statusline de uso do plano já estava ligada em {arq} (nada mudou)")
+        else:
+            log(f"  statusline NÃO instalada: {arq} já tem outra statusline (ela foi mantida).")
+            log(como_encadear(destino))
     return destino, cfg
 
 
@@ -627,7 +692,7 @@ def assistente(args):
     rede_https = sim_nao("  Usar HTTPS (recomendado)? (CA local gerada no seu PC; precisa instalar o certificado no celular uma vez)", True) if rede_local else True
     three_offline = sim_nao(f"  Baixar o three.js {configuracao.VERSAO_THREE} para vendor/ (funciona sem internet)?", False)
 
-    titulo_passo(7, "Hook do Claude Code")
+    titulo_passo(7, "Hook (e statusline opcional) do Claude Code")
     print("  O hook chama o registrar_evento.py a cada ferramenta usada e quando um agente fica ocioso.")
     e = escolher("  Onde instalar o hook?", [
         f"usuário — {settings_usuario(args)} (vale para todas as sessões; o filtro de pastas do passo 3 se aplica)",
@@ -637,6 +702,19 @@ def assistente(args):
     if hook != "nenhum":
         print("  Bloco que será ACRESCENTADO (os hooks que você já tem são mantidos; antes é feito um backup):")
         print("    " + json.dumps(bloco_hooks(destino), ensure_ascii=False, indent=2).replace("\n", "\n    "))
+    print()
+    print("  Opcional: statusline de uso do plano. Mostra na barra do Claude Code o uso da janela de 5 h e da semana e")
+    print("  grava as leituras para o Placar (só planos de assinatura Pro/Max; com API key não aparece nada).")
+    try:
+        sl_atual = ler_settings(settings_usuario(args)).get("statusLine")
+    except (OSError, ValueError):
+        sl_atual = None
+    statusline = False
+    if sl_atual is not None and not eh_nossa_statusline(sl_atual, destino):
+        print(f"  Você já tem uma statusline em {settings_usuario(args)}: ela será mantida (o instalador não a substitui).")
+        print(como_encadear(destino))
+    else:
+        statusline = sim_nao(f"  Ligar a statusline de uso do plano em {settings_usuario(args)}?", sl_atual is not None)
 
     config = {"porta": porta, "titulo": titulo, "projetos": projetos, "agentes": agentes, "github": github,
               "tema": tema, "apelidos": apelidos, "rede_local": rede_local, "rede_https": rede_https,
@@ -657,10 +735,12 @@ def assistente(args):
     print("  Alertas:    ligados (botão 🔔 Alertas; Web Push no celular: veja a seção Alertas no celular do INSTALACAO.md)")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
+    print(f"  Statusline: {'uso do plano em ' + str(settings_usuario(args)) if statusline else 'não instalar'}")
     if not sim_nao("  Gravar tudo isso agora?", True):
         raise Cancelado()
     print()
-    destino, cfg = aplicar({"destino": destino, "config": config, "hook": hook, "three_offline": three_offline}, args)
+    destino, cfg = aplicar({"destino": destino, "config": config, "hook": hook, "statusline": statusline,
+                            "three_offline": three_offline}, args)
     print()
     print("  Instalação concluída!")
     print(f"  Para abrir depois: {'abrir_escritorio.bat (duplo clique)' if WINDOWS else './abrir_escritorio.sh'}"
@@ -675,8 +755,8 @@ def assistente(args):
                   f" -Protocol TCP -LocalPort {portas} -Profile Private -Action Allow")
             print("  (confira também: celular e PC na mesma sub-rede e a rede do Windows como Privada; detalhes no INSTALACAO.md,"
                   " seção Acesso pelo celular > Não abre no celular?)")
-    if hook != "nenhum":
-        print("  Sessões do Claude Code já abertas precisam ser reiniciadas para carregar o hook.")
+    if hook != "nenhum" or statusline:
+        print("  Sessões do Claude Code já abertas precisam ser reiniciadas para carregar o hook e a statusline.")
     if not args.sem_abrir and sim_nao("  Abrir o escritório agora?", True):
         abrir_escritorio(destino)
 
@@ -692,6 +772,7 @@ def silencioso(args):
         "destino": args.destino or inst.get("destino") or str(PASTA),
         "config": dados,
         "hook": args.hook or inst.get("hook") or "usuario",
+        "statusline": bool(args.statusline or inst.get("statusline")),
         "three_offline": bool(inst.get("three_offline")),
     }
     if plano["hook"] not in ("usuario", "projeto", "nenhum"):
@@ -713,7 +794,8 @@ def desinstalar(args):
     cfg = configuracao.carregar(destino / "config.json")
     alvos = [settings_usuario(args)] + [Path(p) / ".claude" / "settings.local.json" for p in cfg["projetos"]]
     print("Claude Office 3D — desinstalação dos hooks")
-    print(f"  Remove só os hooks que chamam {(destino / 'registrar_evento.py').as_posix()} de:")
+    print(f"  Remove só os hooks que chamam {(destino / 'registrar_evento.py').as_posix()} (e a statusline, se for a"
+          " do escritório) de:")
     for a in alvos:
         print(f"    {a}{'' if a.exists() else '  (não existe)'}")
     if not args.sem_perguntas and not sim_nao("  Continuar?", True):
@@ -724,6 +806,9 @@ def desinstalar(args):
         total += n
         if n:
             print(f"  {n} hook(s) removido(s) de {a} (backup: {copia.name})")
+    copia, removeu = desinstalar_statusline(settings_usuario(args), destino)
+    if removeu:
+        print(f"  statusline do escritório removida de {settings_usuario(args)} (backup: {copia.name})")
     if not total:
         print("  Nenhum hook deste escritório encontrado.")
     print("  config.json, dados/ e os arquivos do escritório foram mantidos (apague a pasta se quiser remover tudo).")
@@ -738,6 +823,8 @@ def main():
     ap.add_argument("--settings-usuario", help="settings.json do usuário a usar (padrão ~/.claude/settings.json)")
     ap.add_argument("--destino", help="pasta de instalação")
     ap.add_argument("--hook", choices=["usuario", "projeto", "nenhum"], help="escopo do hook (modo silencioso)")
+    ap.add_argument("--statusline", action="store_true",
+                    help="liga a statusline de uso do plano no settings.json do usuário (modo silencioso)")
     ap.add_argument("--sem-abrir", action="store_true", help="não abre o escritório no final")
     args = ap.parse_args()
     try:

@@ -275,7 +275,49 @@ function desenharFaixas() {
   if (res.length) faixasEl.append(listaResolvidos(res));
   if (hist.length) faixasEl.append(listaHistorico(hist));
 }
-let custos = null;
+let custos = null, uso = null;
+const DIAS_SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+function quando(epoch) {
+  if (!epoch) return '';
+  const d = new Date(epoch * 1000), hoje = new Date();
+  const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === hoje.toDateString() ? hm : `${DIAS_SEM[d.getDay()]} ${hm}`;
+}
+// Uso do plano (rate_limits do Claude Code, gravado pela statusline): 5 h, semana, consumo de hoje e projeção no reset.
+function tilesUso(u) {
+  const out = [];
+  if (!u) return out;
+  const nivel = (p) => (p >= 90 ? true : p >= 70 ? 'amarelo' : false);
+  if (u.five_pct != null) {
+    const t = tile(Math.round(u.five_pct) + '%', `uso em 5 h · reinicia ${quando(u.five_reset)}`, '#ec4899', nivel(u.five_pct));
+    t.title = 'Janela de 5 horas do plano (rate_limits.five_hour do Claude Code)';
+    out.push(t);
+  }
+  if (u.seven_pct != null) {
+    const t = tile(Math.round(u.seven_pct) + '%', `uso na semana · reinicia ${quando(u.seven_reset)}`, '#ec4899', nivel(u.seven_pct));
+    t.title = 'Limite semanal do plano (rate_limits.seven_day do Claude Code)';
+    out.push(t);
+  }
+  const dias = u.por_dia || [];
+  if (dias.length) {
+    const n = new Date(), hoje = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+    const h = dias.find((d) => d.dia === hoje);   // data local, como o banco.py agrupa
+    const t = tile((h ? h.pontos : 0).toFixed(1).replace('.', ',') + ' pts', 'da semana gastos hoje', '#ec4899');
+    const NL = String.fromCharCode(10);
+    t.title = 'Pontos percentuais do limite semanal gastos por dia:' + NL
+      + dias.map((d) => `${d.dia.split('-').reverse().slice(0, 2).join('/')}: ${d.pontos.toFixed(1).replace('.', ',')}`).join(NL)
+      + (u.ritmo_dia != null ? `${NL}Ritmo das últimas 24 h: ${u.ritmo_dia.toFixed(1).replace('.', ',')} pts/dia` : '');
+    out.push(t);
+  }
+  if (u.projecao_reset != null) {
+    const p = u.projecao_reset;
+    const t = tile('~' + Math.round(p) + '%', 'no reset, no ritmo atual', '#ec4899', p >= 100 ? true : p >= 85 ? 'amarelo' : false);
+    t.title = p >= 100 ? 'No ritmo das últimas 24 h o limite semanal acaba antes do reset: reduza (modelo menor nos subagentes, menos releitura de contexto).'
+      : 'Projeção do limite semanal no momento do reset, no ritmo das últimas 24 h.';
+    out.push(t);
+  }
+  return out;
+}
 const usd = (v) => 'US$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 function desenhar() {
   const o = office(); if (!atual) return;
@@ -286,6 +328,7 @@ function desenhar() {
   timeEl.append(tile(String(t.xp_total ?? 0), 'XP total do time', '#f59e0b'), tile(pct(t.aprovacao_primeira), 'aprovado de primeira', '#22c55e'),
     tile(pct(t.retrabalho_14d), 'retrabalho em 14 dias', '#3b82f6'), tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0),
     tile(String(conf), 'para conferir', '#22c55e', conf > 0 ? 'amarelo' : false));
+  if (fonte === 'real') timeEl.append(...tilesUso(uso));
   const c = fonte === 'real' && custos;
   if (c && c.usd_por_pr != null) {
     const tl = tile(usd(c.usd_por_pr), `por PR mergeado (${c.dias} d)`, '#a855f7');
@@ -359,6 +402,7 @@ async function buscar() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     custos = j.custos || null;   // custo_time.py: US$ por agente e por PR (só com dados reais)
+    uso = j.uso || null;         // statusline_uso.py: % do plano na janela de 5 h e na semana, consumo por dia
     normalizar(j);
     real = j;
   } catch (e) { real = null; }

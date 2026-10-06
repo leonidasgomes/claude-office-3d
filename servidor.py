@@ -713,6 +713,10 @@ class Handler(rede.HandlerSeguro):
             try:
                 corpo = json.loads(XP_PLACAR.read_bytes())
                 corpo["custos"] = custos()
+                try:   # limites do plano (5 h e semana) gravados pela statusline_uso.py
+                    corpo["uso"] = banco.uso_resumo()
+                except Exception:
+                    corpo["uso"] = None
             except (OSError, ValueError) as e:
                 corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
             return self.responder(corpo)

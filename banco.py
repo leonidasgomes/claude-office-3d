@@ -15,6 +15,8 @@ Tabelas:
   decidiu (botão do escritório, auditor_xp, linha de comando) e por quê. Antes: dados/xp/conferidos.json e
   dados/xp/auditorias_resolvidas.json, só a lista de números.
 - auditoria_ia(pr, ...): o veredito do auditor_xp.py para cada amarelo (antes dados/xp/auditoria_ia.json).
+- uso_plano(ts, five_pct, five_reset, seven_pct, seven_reset): limites do plano (janela de 5 h e semanal) que o Claude
+  Code passa à statusline em `rate_limits` (statusline_uso.py); uma linha por mudança, no máximo uma por minuto.
 - meta(chave, valor): marcas de migração.
 As migrações dos arquivos antigos são automáticas e acontecem uma vez; os originais ficam como *.migrado.json(l).
 
@@ -40,6 +42,8 @@ CREATE TABLE IF NOT EXISTS custo_diario (dia TEXT PRIMARY KEY, janela_usd REAL, 
 CREATE TABLE IF NOT EXISTS evento (id INTEGER PRIMARY KEY, ts TEXT, agente TEXT, ferramenta TEXT, dados TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS evento_ferramenta ON evento (ferramenta);
 CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT);
+CREATE TABLE IF NOT EXISTS uso_plano (ts INTEGER PRIMARY KEY, five_pct REAL, five_reset INTEGER, seven_pct REAL,
+                                      seven_reset INTEGER);
 CREATE TABLE IF NOT EXISTS decisao_xp (pr INTEGER NOT NULL, tipo TEXT NOT NULL, quando TEXT, origem TEXT, motivo TEXT,
                                        PRIMARY KEY (pr, tipo));
 CREATE TABLE IF NOT EXISTS auditoria_ia (pr INTEGER PRIMARY KEY, agente TEXT, alerta TEXT, veredito TEXT, motivo TEXT,
@@ -295,6 +299,66 @@ def gravar_auditoria(pr, d):
                       (pr, *[d.get(k) for k in COLUNAS_AUDITORIA]))
     finally:
         c.close()
+
+
+# ---- uso do plano (rate_limits da statusline) ----------------------------------------------------------------------
+def gravar_uso(five_pct, five_reset, seven_pct, seven_reset, agora=None):
+    """Grava uma leitura; ignora se nada mudou ou se a última tem menos de 60 s (a statusline roda a cada mensagem)."""
+    agora = int(agora or time.time())
+    c = conectar(timeout=3)
+    try:
+        u = c.execute("SELECT ts, five_pct, five_reset, seven_pct, seven_reset FROM uso_plano ORDER BY ts DESC LIMIT 1").fetchone()
+        if u and (agora - u[0] < 60 or tuple(u[1:]) == (five_pct, five_reset, seven_pct, seven_reset)):
+            return False
+        with c:
+            c.execute("INSERT OR REPLACE INTO uso_plano VALUES (?,?,?,?,?)", (agora, five_pct, five_reset, seven_pct, seven_reset))
+        return True
+    finally:
+        c.close()
+
+
+def _consumo_por_dia(linhas):
+    """{dia: pontos percentuais do semanal gastos naquele dia}: soma das subidas entre leituras; queda = reset (ignora)."""
+    por_dia, ant = {}, None
+    for ts, _, _, pct, _ in linhas:
+        if pct is None:
+            continue
+        if ant is not None and pct >= ant:
+            dia = time.strftime("%Y-%m-%d", time.localtime(ts))
+            por_dia[dia] = por_dia.get(dia, 0.0) + (pct - ant)
+        ant = pct
+    return por_dia
+
+
+def uso_resumo(agora=None):
+    """Para o Placar: última leitura (5 h e semana), consumo do semanal por dia (8 dias) e projeção até o reset.
+    None se a statusline ainda não gravou nada."""
+    agora = int(agora or time.time())
+    c = conectar()
+    try:
+        linhas = c.execute("SELECT ts, five_pct, five_reset, seven_pct, seven_reset FROM uso_plano WHERE ts >= ? ORDER BY ts",
+                           (agora - 8 * 86400,)).fetchall()
+    finally:
+        c.close()
+    if not linhas:
+        return None
+    ts, five, five_r, seven, seven_r = linhas[-1]
+    if five_r and five_r < agora:
+        five = None                     # a janela de 5 h já reiniciou desde a última leitura
+    if seven_r and seven_r < agora:
+        seven = None
+    por_dia = _consumo_por_dia(linhas)
+    # ritmo: pontos do semanal nas últimas 24 h (sem reset no meio) -> projeção no momento do reset
+    dia = [l for l in linhas if l[0] >= agora - 86400 and l[3] is not None]
+    ritmo = None
+    if seven is not None and len(dia) >= 2 and dia[-1][3] >= dia[0][3] and dia[-1][0] > dia[0][0]:
+        ritmo = (dia[-1][3] - dia[0][3]) / ((dia[-1][0] - dia[0][0]) / 86400)
+    projecao = None
+    if ritmo is not None and seven_r:
+        projecao = round(seven + ritmo * max(0, seven_r - agora) / 86400, 1)
+    return {"lido_em": ts, "five_pct": five, "five_reset": five_r, "seven_pct": seven, "seven_reset": seven_r,
+            "ritmo_dia": round(ritmo, 1) if ritmo is not None else None, "projecao_reset": projecao,
+            "por_dia": [{"dia": d, "pontos": round(v, 1)} for d, v in sorted(por_dia.items())[-8:]]}
 
 
 def main():

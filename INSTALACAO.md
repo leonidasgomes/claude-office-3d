@@ -146,12 +146,13 @@ O arquivo tem o formato do `config.json` e pode trazer um bloco extra `instalaca
 {
   "projetos": ["/home/voce/projetos/loja"],
   "tema": "neutro",
-  "instalacao": {"destino": "/home/voce/ferramentas/claude-office-3d", "hook": "usuario", "three_offline": false, "abrir": false}
+  "instalacao": {"destino": "/home/voce/ferramentas/claude-office-3d", "hook": "usuario", "statusline": false, "three_offline": false, "abrir": false}
 }
 ```
 
 Opções úteis: `--hook usuario|projeto|nenhum`, `--destino PASTA`, `--settings-usuario CAMINHO` (usa outro
-`settings.json` no lugar de `~/.claude/settings.json` — bom para testar), `--sem-abrir`.
+`settings.json` no lugar de `~/.claude/settings.json` — bom para testar), `--sem-abrir`, `--statusline` (liga a
+statusline de uso do plano; veja a seção 12, **Uso do plano**).
 
 ## 4. Instalação manual
 
@@ -171,7 +172,8 @@ Opções úteis: `--hook usuario|projeto|nenhum`, `--destino PASTA`, `--settings
 ```
 
    Se já houver uma chave `"hooks"`, acrescente os itens dentro das listas existentes — não substitua.
-3. Reinicie as sessões do Claude Code e abra o escritório com `python servidor.py` (ou o atalho `abrir_escritorio`).
+3. (Opcional) Statusline de uso do plano: veja a seção 12, **Uso do plano**.
+4. Reinicie as sessões do Claude Code e abra o escritório com `python servidor.py` (ou o atalho `abrir_escritorio`).
 
 ## 5. Configuração (`config.json`)
 
@@ -873,6 +875,45 @@ por agente: colegas e subagentes ficam no de 5 min por padrão e o reescrevem a 
 (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` muda isso). Depois de uma semana, rode o `custo_time.py` de novo e compare o
 contexto médio, o cache e o "US$ por PR". Mais ajustes, com a fonte de cada um: `modelos/GUIA-TIME-ENXUTO.md`.
 
+### Uso do plano (statusline): janela de 5 h e semana no Placar
+
+Em plano de assinatura (Pro/Max), o limite que importa não é o dólar e sim o **uso do plano**: a janela de 5 horas e o
+limite semanal. O Claude Code passa à statusline, pelo stdin, um JSON com `rate_limits.five_hour` e
+`rate_limits.seven_day` (`used_percentage` e `resets_at`, em segundos desde 1970), depois da primeira resposta da API.
+O `statusline_uso.py` mostra uma linha curta na barra do Claude Code (`Opus · 5h 42% ↻18:30 · semana 61% ↻qui 09:00`)
+e grava a leitura no `dados/escritorio.db` (tabela `uso_plano`; no máximo uma linha por minuto e só quando muda).
+
+O **Placar** mostra então, ao lado dos tiles do time: o uso da janela de 5 h e da semana (com a hora do reinício;
+amarelo a partir de 70%, vermelho a partir de 90%), os **pontos da semana gastos hoje** (passe o mouse para ver os
+últimos 8 dias e o ritmo das últimas 24 h) e a **projeção no reset** no ritmo atual (amarelo a partir de 85%, vermelho
+a partir de 100%: nesse ritmo o limite acaba antes do reinício).
+
+Limites, para não surpreender:
+- **Só planos de assinatura.** Com API key, Bedrock ou Vertex não há `rate_limits`: a statusline mostra só o modelo e
+  nada é gravado (os tiles não aparecem).
+- **O campo ainda não está na documentação pública** do Claude Code (visto na versão 2.1.292). Se o formato mudar, a
+  statusline continua funcionando (nunca quebra a sessão) e apenas para de gravar.
+- A leitura só acontece com o Claude Code aberto (a statusline roda a cada mensagem); o consumo por dia soma as subidas
+  entre leituras, e uma queda é tratada como reinício.
+
+**Ligar:** o assistente pergunta no passo 7 (ou use `--statusline` na instalação silenciosa). Ele grava no
+`~/.claude/settings.json`, com backup:
+
+```json
+"statusLine": {"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/statusline_uso.py\""}
+```
+
+**Já tem uma statusline?** O instalador **não a substitui**: avisa e mostra como encadear. Chame a do escritório com
+`--so-gravar` (grava e não imprime nada) dentro do seu script, passando o mesmo stdin, e continue imprimindo a sua:
+
+```bash
+entrada=$(cat)
+printf '%s' "$entrada" | python "C:/ferramentas/claude-office-3d/statusline_uso.py" --so-gravar
+printf '%s' "$entrada" | seu_comando_de_statusline
+```
+
+O `--desinstalar` remove a statusline só se ela for a do escritório.
+
 ### Plugins e skills: o que carregar
 
 Cada skill e cada comando de um plugin ativo põe a sua descrição na lista que entra em **toda** sessão e é relida a cada
@@ -942,7 +983,8 @@ python instalar.py --desinstalar
 
 Remove **só** os hooks que chamam o `registrar_evento.py` desta pasta, do `~/.claude/settings.json` (ou o de
 `--settings-usuario`) e dos `.claude/settings.local.json` dos projetos do config, sempre com backup
-(`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. Depois disso, apague a pasta do escritório
+(`settings.json.bak-AAAAMMDD-HHMMSS`). Os outros hooks ficam intactos. A `statusLine` do `~/.claude/settings.json` sai
+só se for a do escritório (`statusline_uso.py` desta pasta); uma statusline sua fica. Depois disso, apague a pasta do escritório
 se quiser remover tudo.
 
 ## 15. Privacidade

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.11.0
+- **Uso do plano no Placar** (`statusline_uso.py`, novo): o Claude Code passa à statusline, pelo stdin, os limites do plano
+  (`rate_limits.five_hour` e `rate_limits.seven_day`: percentual usado e hora do reinício). A statusline mostra uma linha
+  curta (`5h 42% ↻18:30 · semana 61% ↻qui 09:00`) e grava a leitura no banco local (tabela `uso_plano` do
+  `dados/escritorio.db`; no máximo uma por minuto, só quando muda). Só planos de assinatura; com API key não grava nada.
+  O campo ainda não está na documentação pública do Claude Code (visto na 2.1.292).
+- **Placar**: tiles do uso na janela de 5 h e na semana (amarelo a partir de 70%, vermelho a partir de 90%), pontos da
+  semana gastos hoje (dica com os últimos 8 dias e o ritmo das últimas 24 h) e projeção no reinício semanal no ritmo
+  atual (amarelo a partir de 85%, vermelho a partir de 100%). `GET /xp` ganha o bloco `uso` (`banco.uso_resumo()`).
+- **Instalador**: passo opcional que liga a statusline no `~/.claude/settings.json` (assistente, passo 7, ou
+  `--statusline` / `"instalacao": {"statusline": true}` no modo silencioso). Nunca substitui uma statusline que já
+  exista: avisa e mostra como encadear com `statusline_uso.py --so-gravar`. O `--desinstalar` só a remove se for a do
+  escritório. O `ferramentas/testar_instalacao.py` cobre os dois casos.
+
 ## 1.10.0
 - **Eventos do escritório no banco SQLite local** (`banco.py`, tabela `evento`): o hook (`registrar_evento.py`) grava uma
   linha no banco em vez de acrescentar ao `dados/eventos.jsonl`, e o `GET /eventos` consulta pelo id; antes o servidor
