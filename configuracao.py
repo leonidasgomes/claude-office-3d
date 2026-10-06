@@ -101,6 +101,9 @@ PADRAO = {
                 "modelo": REVISOR_MODELO,
                 "max_diff": REVISOR_MAX_DIFF,
                 "contexto": []},                         # arquivos de padrões/lições/glossário (absolutos ou relativos a "projetos")
+    "vigia": {"intervalo_min": 15,                     # vigia_lider.py: de quanto em quanto tempo roda os comandos
+              "sugestoes": True,                      # inclui `sugestoes_bot.py --pendentes` (com bots configurados)
+              "comandos": []},                        # extras: [{"rotulo", "comando" (texto, roda no shell), "acao"}]
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
                 "contato": "", "escalonamentos": "", "agentes_pergunta": []},
     "tema": "neutro",
@@ -243,6 +246,24 @@ def normalizar_sugestoes(bruto):
     return s
 
 
+def normalizar_vigia(bruto):
+    """Bloco "vigia" do config (vigia_lider.py): intervalo em minutos (5 a 240), sugestões ligadas por padrão e comandos
+    extras do projeto, cada um com rótulo, comando de shell e a ação que o líder faz quando o comando tiver saída."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    v = copy.deepcopy(PADRAO["vigia"])
+    try:
+        v["intervalo_min"] = max(5, min(240, int(bruto["intervalo_min"]))) if "intervalo_min" in bruto else v["intervalo_min"]
+    except (TypeError, ValueError):
+        pass
+    v["sugestoes"] = bruto.get("sugestoes") is not False
+    for i, c in enumerate(bruto.get("comandos") or []):
+        if isinstance(c, dict) and isinstance(c.get("comando"), str) and c["comando"].strip():
+            v["comandos"].append({"rotulo": str(c.get("rotulo") or f"comando{i + 1}").strip()[:30],
+                                  "comando": c["comando"].strip()[:500],
+                                  "acao": str(c.get("acao") or "veja a saída").strip()[:200]})
+    return v
+
+
 def normalizar_revisor(bruto):
     """Bloco "revisor" do config: ligado só com true explícito, modelo (vazio = padrão), limite do diff e lista de
     arquivos de contexto (texto; caminho absoluto ou relativo a cada pasta de "projetos")."""
@@ -332,6 +353,7 @@ def normalizar(cfg):
     base["alertas"] = normalizar_alertas(cfg.get("alertas"))
     base["sugestoes"] = normalizar_sugestoes(cfg.get("sugestoes"))
     base["revisor"] = normalizar_revisor(cfg.get("revisor"))
+    base["vigia"] = normalizar_vigia(cfg.get("vigia"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

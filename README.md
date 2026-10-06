@@ -40,7 +40,10 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 - **Sugestões do bot de revisão** (opcional): junta os comentários dos bots de revisão (Codex, CodeRabbit, Copilot...) dos PRs
   abertos numa caixa local, com triagem barata opcional (Haiku, sem ferramentas), selo "🤖 3 (1 P1)" no painel PRs, botões
   Encaminhar/Ignorar/Resolvido no PC e entrega ao líder do time. Só REST com ETag (resposta 304 não gasta a cota do GitHub).
-  Veja a seção 11 do [INSTALACAO.md](INSTALACAO.md) e `modelos/sugestoes_lider.md`.
+  Veja a seção 11 do [INSTALACAO.md](INSTALACAO.md) e `modelos/sugestoes_lider.md`. O `vigia_lider.py` (na ferramenta Monitor)
+  acorda o líder só quando há novidade.
+- **Time de agentes enxuto**: `modelos/GUIA-TIME-ENXUTO.md` reúne o que a documentação do Claude Code confirma para gastar
+  menos com um time de agentes (leitura em dobro, regras por pasta, skills, cache dos colegas, uma tarefa por colega).
 - **Responsivo no celular**: gaveta inferior arrastável com a lista de agentes, menu ☰, painéis em tela cheia, Kanban por colunas
   com "snap", toque para abrir a ficha do boneco; o painel 📱 Celular ajuda a resolver "não abre no celular" (Firewall e rede).
 - Temas: `neutro` (escritório genérico) ou `sao-paulo` (maquete de SP, placas de rua, orelhão, ipês, coxinha…).

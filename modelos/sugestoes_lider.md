@@ -1,28 +1,37 @@
-# Sugestões do bot de revisão — trecho de prompt do líder (modelo genérico)
+---
+name: time-sugestoes
+description: Líder do time: tratar as sugestões dos bots de revisão (Copilot, [revisor-ia]) com o sugestoes_bot.py do Claude Office 3D — quem trata, ignorar com motivo, --pronto antes do merge. Use quando o vigia avisar [vigia sugestoes] ou antes de dizer que um PR está pronto.
+user-invocable: false
+---
 
-> Cole este trecho no prompt do **líder** do time (a sessão principal do Claude Code) e troque o que está entre `<...>`.
-> Pré-requisito: `github.repo` e `github.bots_revisao` preenchidos no `config.json` (veja a seção "Sugestões do bot de revisão"
-> do INSTALACAO.md). O servidor do escritório coleta sozinho a cada 15 min; o job abaixo só **lê** a caixa local (sem custo
-> de API do GitHub) e fica em silêncio quando não há nada.
+# Sugestões dos bots de revisão (modelo de skill do líder)
 
-## Sugestões do bot de revisão
-O bot de revisão comenta nos PRs. O `sugestoes_bot.py` junta tudo numa caixa; o painel PRs mostra o selo "🤖 3 (1 P1)" e a
-triagem barata (modelo pequeno) já sugere corrigir, ignorar ou discutir. A sugestão da triagem é um palpite: quem decide é você.
+> **Como usar este modelo:** copie para `<seu projeto>/.claude/skills/time-sugestoes/SKILL.md` e troque o que está entre
+> `<...>`. Como skill, só a `description` acima fica no contexto do líder; o texto abaixo só carrega quando ele precisa (doc
+> skills). Pré-requisito: `github.repo` e `github.bots_revisao` (ou o bloco `revisor`) no `config.json`. O servidor do
+> escritório coleta sozinho; o líder só lê a caixa local.
 
-- **Logo depois de criar o time**, agende com CronCreate (recorrente, a cada 15 minutos) um job com este prompt exato e confirme o
-  ID ao desenvolvedor (o job vale enquanto a sessão estiver aberta; ao reabrir o time, agende de novo):
+## Gatilho: o vigia, não um agendamento
+No prompt do líder, troque o antigo CronCreate de 15 min por: "Logo depois de criar o time, inicie com a ferramenta **Monitor**
+`python <pasta do escritório>/vigia_lider.py`. Cada linha `[vigia sugestoes] ...` é um gatilho; sem linha, nada a fazer."
+O vigia roda `sugestoes_bot.py --pendentes` sem tokens e só acorda o líder quando aparece coisa nova (um cron manda o contexto
+inteiro do líder a cada disparo, mesmo para responder "ok"). Sem Monitor, use o CronCreate com
+"Rode python <pasta>/vigia_lider.py --uma; sem saída, responda só 'ok' e pare; com saída, siga cada linha."
 
-  "Sugestões do bot: rode python <pasta do escritório>/sugestoes_bot.py --pendentes. Se a saída for NADA, responda só 'ok' e
-  pare. Se houver itens: para cada um decida (corrigir → mande ao colega dono do PR por SendMessage com o link e o pedido curto,
-  e marque --tratar <id> --acao encaminhada; ignorar → --acao ignorada --nota <motivo>; discutir → leve ao desenvolvedor em
-  1 linha). Relate em até 3 linhas."
+## Quem trata
+- **O colega dono do PR trata as do próprio PR** antes de avisar o líder: `sugestoes_bot.py --pendentes --pr <n>`, corrige no
+  mesmo PR, responde na conversa do comentário e marca `--tratar <id> --acao resolvida` (ou `--acao ignorada --nota "<por quê>"`
+  para falso positivo); só "discutir" vai ao líder. Ponha esta linha no prompt (ou na definição de agente) de cada colega.
+- **O líder** trata só os "discutir" (decide ou leva ao desenvolvedor em 1 linha), os PRs de dono ausente e uma amostra das
+  ignoradas (falso positivo mal justificado volta ao dono).
+- A triagem barata (modelo pequeno) só sugere corrigir, ignorar ou discutir: é palpite, não decisão.
+- **Ignorar sempre com motivo**: as últimas ignoradas com motivo e o `glossario_triagem.md` entram na triagem seguinte.
 
-- Marcar: `python <pasta do escritório>/sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resolvida [--nota "..."]`
-  (`--listar` mostra tudo; `--acao reabrir` desfaz). Sugestão de PR já fechado é arquivada sozinha.
-- O dono do PR aparece no cabeçalho de cada grupo (`PR #310 [Dev] branch`), pelo rótulo do PR e o mapa `github.times`.
-- Não responda ao bot no GitHub: o colega só corrige no mesmo PR e cita o título da sugestão no corpo ou no commit.
-- "limite da API do GitHub atingido" no painel: espere a hora indicada e não rode `gh` em laço.
+## Antes de dizer "pronto para o merge"
+`python <pasta do escritório>/sugestoes_bot.py --pronto <n>`: só com `OK` (nenhuma sugestão sem decisão ou encaminhada sem
+correção, e os bots já revisaram o commit atual; cota esgotada vira aviso). O painel PRs do escritório segue a mesma regra.
 
-## Trecho para os colegas (dev, designer...)
-- Sugestão do bot de revisão encaminhada pelo líder se corrige no mesmo PR. Não responda ao bot no GitHub: só corrija e cite o
-  título da sugestão no corpo do PR ou no commit.
+## Comandos
+`--pendentes [--pr <n>]` · `--listar [--pr <n>] [--todas]` · `--tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "..."]` · `--pronto <n>`.
+Sugestão de PR já fechado é arquivada sozinha. "limite da API do GitHub atingido" no painel: espere a hora indicada e não rode
+`gh` em laço.

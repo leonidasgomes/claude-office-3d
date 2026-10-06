@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0
+- **`vigia_lider.py`** (novo, sem tokens): roda na ferramenta Monitor do líder e só o acorda quando `sugestoes_bot.py
+  --pendentes` ou os comandos extras do bloco novo `vigia` do `config.json` têm saída nova (sem repetir a mesma). Substitui o
+  `CronCreate` de 15 min, que mandava o contexto inteiro do líder a cada disparo só para responder "ok" (doc costs).
+- **`custo_time.py`**: cache escrito de 1 h × 5 min por agente no relatório e em `dados/xp/custos.json`
+  (`cache_escrito_mil`), para medir o efeito de `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` nos colegas.
+- **`modelos/sugestoes_lider.md`** agora é um modelo de **skill** do líder (só a descrição fica no contexto até o uso), com o
+  vigia no lugar do cron e o dono do PR tratando as sugestões do próprio PR (`--pendentes --pr <n>`).
+- **`modelos/GUIA-TIME-ENXUTO.md`** (novo): o que medimos num time de 5 agentes e o que a documentação do Claude Code confirma
+  — não reler o `CLAUDE.md`, papel do colega só na definição do agente, `--append-system-prompt-file` para o líder, regras por
+  pasta (`.claude/rules/` com `paths:`), procedimentos raros como skills, uma tarefa por vida de colega, cache de 1 h para
+  colegas, `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` para a lista de tarefas no Sonnet/Opus 5.x, hooks de time sem `additionalContext`.
+
 ## 1.5.0
 - **Revisor de código confere o aceite do cartão**: o `revisor_ia.py` lê os cartões citados no corpo do PR (`Closes #n` /
   `Parte de #n`, no começo da linha) e põe o corpo de cada issue na revisão; o prompt manda verificar primeiro se o diff

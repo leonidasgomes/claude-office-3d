@@ -1,0 +1,82 @@
+# -*- coding: utf-8 -*-
+"""Vigia do líder (sem tokens): acorda o líder do time só quando há o que fazer.
+
+Por quê: um agendamento (CronCreate) dispara mesmo quando nada mudou e manda o contexto inteiro do líder a cada vez (doc
+costs, "Why usage climbs"): dezenas de turnos por dia só para responder "ok". Este laço roda comandos sem LLM e imprime UMA
+linha só quando a saída deles tem conteúdo novo. Rode dentro da ferramenta Monitor do líder: cada linha impressa vira uma
+notificação para ele; sem linha, ele não acorda.
+
+O que roda (bloco "vigia" do config.json):
+  - `sugestoes_bot.py --pendentes` (se "sugestoes" não for false e houver bots configurados);
+  - os "comandos" extras do seu projeto: cada um com "rotulo", "comando" (texto, roda no shell, na 1ª pasta de "projetos")
+    e "acao" (o que o líder faz quando o comando tiver saída). Saída vazia ou só "NADA" = nada a avisar.
+A mesma saída não é avisada duas vezes seguidas.
+
+Uso: python vigia_lider.py              laço (intervalo do config, padrão 15 min)
+     python vigia_lider.py --uma        uma rodada só (teste): imprime o que acordaria o líder, ou nada
+No prompt do líder: "Inicie com a ferramenta Monitor: python <pasta>/vigia_lider.py. Cada linha [vigia ...] é um gatilho."
+"""
+import hashlib
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent
+sys.path.insert(0, str(RAIZ))
+import configuracao  # noqa: E402
+
+
+def passos(cfg):
+    v = cfg.get("vigia") or {}
+    lista = []
+    if v.get("sugestoes", True) and ((cfg.get("github") or {}).get("bots_revisao") or (cfg.get("revisor") or {}).get("ativo")):
+        lista.append(("sugestoes", [sys.executable, str(RAIZ / "sugestoes_bot.py"), "--pendentes"], False,
+                      "trate as sugestões dos bots (dono do PR com --pr; --pronto antes do merge)"))
+    for c in v.get("comandos") or []:
+        lista.append((c["rotulo"], c["comando"], True, c["acao"]))
+    return lista
+
+
+def rodar(cmd, shell, cwd):
+    try:
+        r = subprocess.run(cmd, shell=shell, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=600, cwd=cwd)
+        return (r.stdout or "").strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"(falhou: {e!r})"
+
+
+def rodada(cfg, ultimos):
+    """Uma linha por passo com novidade; `ultimos` guarda o hash da última saída avisada (não repete a mesma)."""
+    projetos = cfg.get("projetos") or []
+    cwd = str(projetos[0]) if projetos and Path(str(projetos[0])).is_dir() else str(RAIZ)
+    linhas = []
+    for rotulo, cmd, shell, acao in passos(cfg):
+        saida = rodar(cmd, shell, str(RAIZ) if not shell else cwd)
+        if not saida or saida == "NADA":
+            ultimos.pop(rotulo, None)
+            continue
+        h = hashlib.sha1(saida.encode("utf-8")).hexdigest()
+        if ultimos.get(rotulo) == h:
+            continue
+        ultimos[rotulo] = h
+        resumo = " | ".join(l.strip() for l in saida.splitlines() if l.strip())[:300]
+        linhas.append(f"[vigia {rotulo}] {acao}: {resumo}")
+    return linhas
+
+
+def main():
+    sys.stdout.reconfigure(encoding="utf-8")
+    ultimos = {}
+    while True:
+        cfg = configuracao.carregar()                 # relê a cada rodada: mudar o config não exige reiniciar o vigia
+        for l in rodada(cfg, ultimos):
+            print(l, flush=True)
+        if "--uma" in sys.argv:
+            return 0
+        time.sleep(max(5, int((cfg.get("vigia") or {}).get("intervalo_min") or 15)) * 60)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

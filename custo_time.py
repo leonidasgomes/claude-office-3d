@@ -6,6 +6,8 @@ De onde vem cada número:
   costUSD) e já inclui os colegas (agent teams) e os subagentes.
 - A divisão desse custo entre as respostas usa os pesos relativos de preço da API (entrada 1, escrita no cache 1,25,
   leitura do cache 0,1, saída 5): o total de cada modelo bate com o cobrado; só a divisão interna é estimada.
+- Cache escrito por TTL (ephemeral_1h/5m_input_tokens de cada resposta): mostra se colegas e subagentes estão no cache de
+  5 min (recomeça a cada pausa maior) ou no de 1 h (CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h, doc prompt-caching).
 - Quais sessões: as pastas de ~/.claude/projects dos caminhos em "projetos" do config.json (o nome da pasta é o caminho
   com todo caractere que não é letra/número trocado por "-"), e as dos worktrees dentro deles (".claude/worktrees").
 - Agente: o nome da sessão/colega no transcrito, casado com "nome"/"outros_nomes" do config (sufixo "_123" sai);
@@ -149,7 +151,9 @@ def _ler(arquivo, agente, desde, usar_branch, expl):
         vistos.add(rid)
         rotulo = cartao if cartao else ("branch " + ramo if ramo and ramo not in ("main", "master", "develop", "HEAD") else None)
         ctx = (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
-        saida.append((msg.get("model") or "?", _peso(u), rotulo, ts, agente, ctx))
+        cc = u.get("cache_creation") or {}                    # escrita no cache por TTL (1 h custa 2x, 5 min 1,25x)
+        cw = (cc.get("ephemeral_1h_input_tokens") or 0, cc.get("ephemeral_5m_input_tokens") or 0)
+        saida.append((msg.get("model") or "?", _peso(u), rotulo, ts, agente, ctx, cw))
     return saida
 
 
@@ -188,13 +192,16 @@ def coletar(cfg, dias):
             soma = {}
             for m, p, *_ in resp:
                 soma[m] = soma.get(m, 0.0) + p
-            for m, p, cartao, ts, ag, ctx in resp:
+            for m, p, cartao, ts, ag, ctx, cw in resp:
                 usd = por_modelo.get(m, 0.0) * p / soma[m] if soma.get(m) else 0.0
                 total += usd
-                a = agentes.setdefault(ag, {"usd": 0.0, "modelos": {}, "ctx": 0, "n": 0, "explora": 0, "explora_chars": 0})
+                a = agentes.setdefault(ag, {"usd": 0.0, "modelos": {}, "ctx": 0, "n": 0, "explora": 0, "explora_chars": 0,
+                                                "cw1h": 0, "cw5m": 0})
                 a["usd"] += usd
                 a["modelos"][m] = a["modelos"].get(m, 0.0) + usd
                 a["ctx"] += ctx
+                a["cw1h"] += cw[0]
+                a["cw5m"] += cw[1]
                 a["n"] += 1
                 chave = str(cartao) if cartao else "sem cartão nem branch"
                 c = cartoes.setdefault(chave, {"usd": 0.0, "agentes": {}})
@@ -258,6 +265,7 @@ def main():
     for ag, a in sorted(r["agentes"].items(), key=lambda x: -x[1]["usd"]):
         mods = ", ".join(f"{m.replace('claude-', '')} {v:.2f}" for m, v in sorted(a["modelos"].items(), key=lambda x: -x[1]) if v >= 0.01)
         print(f"  {ag:<16} US$ {a['usd']:7.2f}  contexto médio {a['ctx'] / max(1, a['n']) / 1000:4.0f} mil  "
+              f"cache 1h/5m escrito: {a['cw1h'] / 1e6:.2f}/{a['cw5m'] / 1e6:.2f} M  "
               f"exploração de código {a['explora']:>5} chamadas  ({mods})")
     if r["longas"]:
         print(f"Sessões abertas mais de {HORAS_LONGA} h (reler contexto longo é o maior custo; prefira sessão nova por tarefa):")
@@ -274,6 +282,7 @@ def main():
         "revisor": {"usd": round(rev["usd"], 2), "revisoes": rev["revisoes"], "achados": rev["achados"]},
         "agentes": {k: round(v["usd"], 2) for k, v in r["agentes"].items()},
         "contexto_medio_mil": {k: round(v["ctx"] / max(1, v["n"]) / 1000) for k, v in r["agentes"].items()},
+        "cache_escrito_mil": {k: {"1h": round(v["cw1h"] / 1000), "5m": round(v["cw5m"] / 1000)} for k, v in r["agentes"].items()},
         "cartoes": {k: round(v["usd"], 2) for k, v in r["cartoes"].items()}}, ensure_ascii=False, indent=1), encoding="utf-8")
     return 0
 

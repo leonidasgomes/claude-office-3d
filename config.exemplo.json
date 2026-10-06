@@ -60,6 +60,11 @@
     "max_diff": 90000,
     "contexto": ["docs/PADROES-DE-CODIGO.md", "docs/LICOES-APRENDIDAS.md"]
   },
+  "vigia": {
+    "intervalo_min": 15,
+    "sugestoes": true,
+    "comandos": []
+  },
   "rede_local": false,
   "rede_https": true,
   "rede_tailscale": false,

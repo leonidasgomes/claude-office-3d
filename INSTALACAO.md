@@ -731,11 +731,18 @@ usou cerca de 2 mil tokens de entrada e 2 mil de saída (aprox. 0,014 USD; o gas
 
 ### Como o líder recebe
 
-O líder agenda com `CronCreate` um job a cada 15 minutos que roda `python sugestoes_bot.py --pendentes`: a saída é **NADA** (o
-job responde "ok" e para, sem gastar nada) ou um resumo compacto (no máximo ~25 linhas: por PR, prioridade, título,
-`arquivo:linha`, ação sugerida e link). Para cada item o líder decide: corrigir (manda o pedido ao colega dono do PR, com o
-link, e marca `encaminhada`), ignorar (marca `ignorada` com uma nota) ou discutir (leva a você em 1 linha). O prompt pronto do
-job e o trecho para os colegas estão em `modelos/sugestoes_lider.md`.
+O líder inicia o **`vigia_lider.py`** na ferramenta Monitor do Claude Code: o vigia roda `sugestoes_bot.py --pendentes` (e os
+comandos extras do bloco `vigia` do `config.json`) sem gastar tokens e só imprime uma linha — o que acorda o líder — quando
+aparece coisa nova; a saída **NADA** não acorda ninguém. (Um `CronCreate` de 15 min mandava o contexto inteiro do líder a cada
+disparo só para responder "ok".) O **dono do PR** trata as sugestões do próprio PR (`--pendentes --pr <n>`) antes de avisar o
+líder; ao líder ficam os "discutir", os PRs de dono ausente e uma amostra das ignoradas. O modelo pronto, já no formato de
+skill do líder, está em `modelos/sugestoes_lider.md`; o guia completo de time enxuto, em `modelos/GUIA-TIME-ENXUTO.md`.
+
+```json
+"vigia": {"intervalo_min": 15, "sugestoes": true,
+          "comandos": [{"rotulo": "ciclo", "comando": "python scripts/o_que_mudou.py", "acao": "rode o ciclo do líder"}]}
+```
+`python vigia_lider.py --uma` faz uma rodada só (para testar o que acordaria o líder).
 
 ### Linha de comando
 
@@ -813,12 +820,15 @@ custou mais de um terço da semana, e subagentes sem `model` caíam no modelo da
 ```jsonc
 "env": {
   "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",        // subagente sem modelo explícito vai no Sonnet (o explícito continua valendo)
-  "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "300000"    // compacta perto de 300 mil tokens em vez de perto de 1 milhão
+  "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000"    // compacta perto de 200 mil tokens em vez de perto de 1 milhão
 }
 ```
 
-E sessão nova por tarefa (ou `/compact` ao terminar uma), em vez de uma sessão aberta por dias. Depois de uma semana, rode o
-`custo_time.py` de novo e compare o contexto médio e o "US$ por PR".
+E sessão nova por tarefa (ou `/compact` ao terminar uma), em vez de uma sessão aberta por dias; colega de time não roda
+`/compact`, então o líder o encerra e cria de novo a cada tarefa. O relatório mostra também o **cache escrito de 1 h × 5 min**
+por agente: colegas e subagentes ficam no de 5 min por padrão e o reescrevem a cada pausa longa
+(`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` muda isso). Depois de uma semana, rode o `custo_time.py` de novo e compare o
+contexto médio, o cache e o "US$ por PR". Mais ajustes, com a fonte de cada um: `modelos/GUIA-TIME-ENXUTO.md`.
 
 ### Plugins e skills: o que carregar
 
