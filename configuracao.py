@@ -75,6 +75,11 @@ SUGESTOES_MODELO = "claude-haiku-4-5-20251001"   # triagem barata (uma chamada d
 REVISOR_MODELO = "claude-sonnet-5-5"
 REVISOR_MAX_DIFF = 90_000   # caracteres de diff por revisão (o resto é listado como não revisado)
 
+# Auditor do "para conferir" (auditor_xp.py): o modelo barato julga cada amarelo do Placar; só o suspeito vai ao segundo
+AUDITOR_MODELO = "claude-haiku-4-5-20251001"
+AUDITOR_MODELO_2 = "claude-sonnet-5-5"
+AUDITOR_MAX_DIFF = 40_000
+
 PADRAO = {
     "porta": 8765,
     "titulo": "Claude Office 3D",
@@ -101,6 +106,11 @@ PADRAO = {
                 "modelo": REVISOR_MODELO,
                 "max_diff": REVISOR_MAX_DIFF,
                 "contexto": []},                         # arquivos de padrões/lições/glossário (absolutos ou relativos a "projetos")
+    "auditor": {"ativo": False,                          # True (e xp.ativo): o servidor audita os amarelos a cada coleta
+                "modelo": AUDITOR_MODELO,                # primeira opinião (barata)
+                "modelo_2": AUDITOR_MODELO_2,            # segunda opinião, só quando o primeiro acha suspeito
+                "max_diff": AUDITOR_MAX_DIFF,
+                "rotulos": []},                          # rótulos extras da issue aberta na suspeita (ex.: ["P2"])
     "vigia": {"intervalo_min": 15,                     # vigia_lider.py: de quanto em quanto tempo roda os comandos
               "sugestoes": True,                      # inclui `sugestoes_bot.py --pendentes` (com bots configurados)
               "comandos": []},                        # extras: [{"rotulo", "comando" (texto, roda no shell), "acao"}]
@@ -156,6 +166,8 @@ def normalizar_agente(ag, i):
         "lider": bool(ag.get("lider")),        # sessão principal; convoca reuniões
         "auxiliar": bool(ag.get("auxiliar")),  # não vai às reuniões
         "sala": "diretoria" if str(ag.get("sala") or "").strip().lower() == "diretoria" else "",   # "diretoria": sala fechada própria
+        "rotulo_issue": str(ag.get("rotulo_issue") or "").strip(),   # rótulo das issues abertas para este agente (auditor_xp.py)
+        "time_kanban": str(ag.get("time_kanban") or "").strip(),     # valor do github.campo_time do cartão deste agente
     }
 
 
@@ -284,6 +296,27 @@ def normalizar_revisor(bruto):
     return r
 
 
+def normalizar_auditor(bruto):
+    """Bloco "auditor" do config (auditor_xp.py): ligado só com true explícito, modelos (vazio = padrão), limite do diff
+    e rótulos extras da issue de suspeita."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    a = copy.deepcopy(PADRAO["auditor"])
+    a["ativo"] = bruto.get("ativo") is True
+    for k in ("modelo", "modelo_2"):
+        if isinstance(bruto.get(k), str) and bruto[k].strip():
+            a[k] = bruto[k].strip()[:80]
+    try:
+        a["max_diff"] = max(5_000, min(400_000, int(bruto["max_diff"]))) if "max_diff" in bruto else a["max_diff"]
+    except (TypeError, ValueError):
+        pass
+    rotulos = bruto.get("rotulos") or []
+    if isinstance(rotulos, str):
+        rotulos = [rotulos]
+    if isinstance(rotulos, list):
+        a["rotulos"] = [str(x).strip()[:50] for x in rotulos if isinstance(x, str) and x.strip()]
+    return a
+
+
 def normalizar_alertas(bruto):
     """Bloco "alertas" do config: tipos corrigidos e padrões sensatos (a validação final é do alertas.py)."""
     bruto = bruto if isinstance(bruto, dict) else {}
@@ -353,6 +386,7 @@ def normalizar(cfg):
     base["alertas"] = normalizar_alertas(cfg.get("alertas"))
     base["sugestoes"] = normalizar_sugestoes(cfg.get("sugestoes"))
     base["revisor"] = normalizar_revisor(cfg.get("revisor"))
+    base["auditor"] = normalizar_auditor(cfg.get("auditor"))
     base["vigia"] = normalizar_vigia(cfg.get("vigia"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"

@@ -7,9 +7,9 @@
      "apelido_br": "Lia", "apelido_cinema": "Morpheus", "mesa": "lider", "lider": true,
      "outros_nomes": ["main", "lead", "team-lead"]},
     {"nome": "Dev", "titulo": "Dev", "funcao": "Back-end e testes", "cor": "#3b82f6",
-     "apelido_br": "João", "apelido_cinema": "Neo", "mesa": "dev"},
+     "apelido_br": "João", "apelido_cinema": "Neo", "mesa": "dev", "rotulo_issue": "team:dev", "time_kanban": "Time Dev"},
     {"nome": "Designer", "titulo": "Designer", "funcao": "Interface", "cor": "#f59e0b",
-     "apelido_br": "Maria", "apelido_cinema": "Trinity", "mesa": "design"},
+     "apelido_br": "Maria", "apelido_cinema": "Trinity", "mesa": "design", "time_kanban": "Time Design"},
     {"nome": "Pesquisa", "titulo": "Pesquisa", "funcao": "Documentação e busca", "cor": "#22c55e",
      "apelido_br": "Aquiles", "apelido_cinema": "Indiana", "mesa": "pesquisa", "auxiliar": false},
     {"nome": "Diretor", "titulo": "Diretor", "funcao": "Prioriza e resolve casos difíceis", "cor": "#a855f7",
@@ -59,6 +59,13 @@
     "modelo": "claude-sonnet-5-5",
     "max_diff": 90000,
     "contexto": ["docs/PADROES-DE-CODIGO.md", "docs/LICOES-APRENDIDAS.md"]
+  },
+  "auditor": {
+    "ativo": false,
+    "modelo": "claude-haiku-4-5-20251001",
+    "modelo_2": "claude-sonnet-5-5",
+    "max_diff": 40000,
+    "rotulos": ["P2"]
   },
   "vigia": {
     "intervalo_min": 15,

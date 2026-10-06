@@ -201,7 +201,9 @@ recarregar a página (a porta só muda reiniciando o servidor).
       "lider": true,                  // sessão principal do Claude Code; convoca reuniões (padrão: o 1º da lista)
       "auxiliar": false,              // true = não vai às reuniões
       "sala": "diretoria",            // opcional: sala fechada própria com a mesa grande (veja abaixo); omita nos demais
-      "outros_nomes": ["main", "lead", "team-lead"]  // outros nomes que significam este agente
+      "outros_nomes": ["main", "lead", "team-lead"], // outros nomes que significam este agente
+      "rotulo_issue": "team:lider",   // opcional: rótulo das issues abertas para este agente (auditor, seção 8)
+      "time_kanban": "Time Líder"     // opcional: valor do github.campo_time dos cartões deste agente (auditor, seção 8)
     }
   ],
   "github": {                         // opcional — precisa do gh instalado e logado
@@ -231,6 +233,8 @@ recarregar a página (a porta só muda reiniciando o servidor).
   "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
   "sugestoes": {"triagem_modelo": "claude-haiku-4-5-20251001", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
   "revisor": {"ativo": false, "modelo": "claude-sonnet-5-5", "max_diff": 90000, "contexto": []},   // revisor-ia (seção 11)
+  "auditor": {"ativo": false, "modelo": "claude-haiku-4-5-20251001", "modelo_2": "claude-sonnet-5-5",
+              "max_diff": 40000, "rotulos": []},   // auditor do "para conferir" (seção 8)
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
@@ -364,6 +368,29 @@ python xp.py --desfazer 123    # volta a auditar/conferir
 As listas ficam em `dados/xp/auditorias_resolvidas.json` (liberados) e `dados/xp/conferidos.json` (conferidos). A regra
 tem versão (`regra` no `dados/xp/estado.json`): quando ela muda, o `xp.py` reanalisa o diff de cada PR em cache uma
 vez, reaproveitando o resto (commits, revisão).
+
+### Auditor automático do "para conferir" (opcional)
+
+A maioria dos amarelos é legítima (skip por ambiente com motivo, refatoração que move asserções). O `auditor_xp.py`
+confere cada um por você: lê só o diff dos arquivos marcados (na amostra aleatória, o do PR inteiro, até `max_diff`
+caracteres), pergunta a um modelo barato (`auditor.modelo`, padrão Haiku; `claude -p` sem ferramentas) se houve trapaça e,
+**só quando ele acha suspeito**, pede a segunda opinião de `auditor.modelo_2` (padrão Sonnet), para alarme falso não virar
+trabalho. Legítimo: o PR é marcado como conferido (o mesmo do botão). Suspeita confirmada: abre uma **issue** no
+`github.repo` para o time do autor corrigir o teste, com o motivo e a evidência, e o item sai da lista. Nunca libera
+vermelho. Cada PR é auditado uma vez (`dados/xp/auditoria_ia.json`, com veredito, modelo e custo).
+
+```jsonc
+"auditor": {"ativo": true, "modelo": "claude-haiku-4-5-20251001", "modelo_2": "claude-sonnet-5-5",
+            "max_diff": 40000, "rotulos": ["P2"]},     // rótulos extras de toda issue de suspeita
+"agentes": [{"nome": "Dev", "rotulo_issue": "team:dev", "time_kanban": "Time Dev"}, ...]
+```
+
+- `rotulo_issue` do agente: rótulo da issue aberta para ele. `time_kanban`: com `github.projeto_owner`/`projeto_numero`,
+  a issue entra no Kanban com o campo `github.campo_time` (de seleção única) igual a esse valor (o `gh` precisa do escopo
+  `project`: `gh auth refresh -s project`). Agente sem nenhum dos dois usa os do líder; sem nada, a issue sai sem rótulo.
+- Com `auditor.ativo` e `xp.ativo`, o servidor roda o auditor a cada coleta das sugestões (`sugestoes.intervalo_min`).
+  Na mão: `python auditor_xp.py` (audita os pendentes) ou `python auditor_xp.py --seco` (só mostra os vereditos, sem marcar
+  nem abrir issue; ainda chama o modelo, então custa).
 
 ### Ciclo de vida das skills
 
@@ -810,7 +837,12 @@ de comentar no repositório. **Limites**: é uma camada de código, não substit
 agente, por cartão e por PR mergeado, o **contexto médio** por resposta, as sessões abertas por mais de 12 h e quanto cada
 agente explorou o código na mão (Read/Grep e grep/cat no shell). O Placar mostra o "US$ por PR" e o custo de cada agente
 (o servidor regenera `dados/xp/custos.json` de hora em hora). O custo de cada sessão é o que o próprio Claude Code grava no
-transcrito; só a divisão entre as respostas é estimada (pelos pesos de preço de entrada, cache e saída).
+transcrito; só a divisão entre as respostas é estimada (pelos pesos de preço de entrada, cache e saída), e cada sessão é
+rateada por todas as respostas dela (só a parte que caiu na janela conta). A sessão **ainda aberta** não tem esse registro
+(o Claude Code o grava quando ela fecha): o custo dela é estimado pelos tokens, com o preço de cada modelo calibrado nas
+sessões fechadas dos últimos 7 dias. O **acumulado** (tile "acumulado desde" no Placar) fica num banco SQLite local,
+`dados/xp/escritorio.db` (`banco.py`): guarda o custo de cada sessão e de cada revisão já vistas e só cresce, mesmo quando
+a janela de 7 dias anda ou o Claude Code apaga transcritos velhos; `python banco.py` mostra o acumulado e a foto de cada dia.
 
 O que um time real mostrou (7 dias, 3 colegas no Opus, US$ 10 por PR mergeado): **78% do custo era reler o contexto**
 (leitura de cache), os colegas trabalhavam com 270 a 380 mil tokens de contexto por resposta, uma sessão aberta por 53 h

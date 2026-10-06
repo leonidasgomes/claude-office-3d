@@ -292,6 +292,13 @@ function desenhar() {
     tl.title = `${usd(c.total_usd)} em ${c.dias} dia(s), ${c.prs_mergeados} PR(s) mergeado(s) · custo_time.py, ${c.gerado}`;
     timeEl.append(tl);
   }
+  if (c && c.acumulado_usd != null) {
+    // A janela de 7 dias anda (o custo "cai" quando sessões velhas saem); o acumulado vem do banco local e só cresce.
+    const ta = tile(usd(c.acumulado_usd), `acumulado desde ${(c.acumulado_desde || '').split('-').reverse().join('/')}`, '#a855f7');
+    ta.title = `${usd(c.total_usd)} nos últimos ${c.dias} dia(s)` + (c.sessoes_ao_vivo ? ` · inclui ${c.sessoes_ao_vivo} sessão(ões) aberta(s), estimada(s) pelos tokens` : '')
+      + ' · dados/xp/escritorio.db (SQLite), não zera';
+    timeEl.append(ta);
+  }
   if (c && c.revisor && c.revisor.revisoes) {
     const tr = tile(usd(c.revisor.usd), `revisor de código (${c.dias} d)`, '#0ea5e9');
     tr.title = `${c.revisor.revisoes} revisão(ões), ${c.revisor.achados} achado(s) · [revisor-ia], já somado ao custo por PR`;

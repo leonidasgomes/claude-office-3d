@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.0
+- **Custo da sessão aberta estimado** (`custo_time.py`): o Claude Code só grava o `cost-state` quando a sessão fecha; antes a
+  sessão ao vivo ficava de fora e o custo do dia parecia zerar. Agora ela é estimada pelos tokens, com o preço por peso de
+  cada modelo calibrado nas sessões fechadas (lê ao menos 7 dias de sessões para isso, com qualquer `--dias`). A saída
+  troca `sessoes_sem_custo` por `sessoes_ao_vivo`.
+- **Correção do rateio**: o custo de cada sessão é dividido por **todas** as respostas dela e só entra a parte que caiu na
+  janela; antes o total inteiro ia para as respostas da janela e inflava sessões longas que atravessam o corte.
+- **Acumulado no banco SQLite local** (`banco.py`, novo; `dados/xp/escritorio.db`): o custo de cada sessão e de cada revisão
+  do revisor de código fica guardado e o acumulado só cresce, mesmo quando a janela anda ou o Claude Code apaga transcritos
+  velhos; uma foto por dia (com `--dias 7`). `dados/xp/custos.json` ganha `acumulado_usd` e `acumulado_desde`, e o
+  **Placar** um tile "acumulado desde". `python banco.py` mostra o acumulado e os últimos dias.
+- Nome de colega com sufixo `-3` (segundo colega do mesmo time, ex.: `Dev-3`) agora conta para o agente `Dev`, como `_3`.
+- **`auditor_xp.py`** (novo, opcional, bloco `auditor` do `config.json`): confere sozinho a lista "para conferir" do Placar.
+  Um modelo barato (padrão Haiku) julga o diff de cada amarelo; só o que ele achar suspeito vai à segunda opinião (padrão
+  Sonnet). Legítimo é marcado como conferido; suspeita confirmada vira issue para o time do autor (campos opcionais
+  `rotulo_issue` e `time_kanban` de cada agente; com o Kanban configurado, entra no quadro). Nunca libera vermelho. Com
+  `auditor.ativo` e `xp.ativo`, o servidor roda o auditor a cada coleta das sugestões.
+
 ## 1.8.0
 - **Painel PRs: verde só depois de todas as validações.** Antes acendia verde com a revisão aprovada e a caixa de sugestões
   vazia, mas antes de os bots e o revisor de código revisarem o commit atual; as sugestões chegavam depois. Agora o servidor

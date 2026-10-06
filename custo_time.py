@@ -10,14 +10,24 @@ De onde vem cada número:
   5 min (recomeça a cada pausa maior) ou no de 1 h (CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h, doc prompt-caching).
 - Quais sessões: as pastas de ~/.claude/projects dos caminhos em "projetos" do config.json (o nome da pasta é o caminho
   com todo caractere que não é letra/número trocado por "-"), e as dos worktrees dentro deles (".claude/worktrees").
-- Agente: o nome da sessão/colega no transcrito, casado com "nome"/"outros_nomes" do config (sufixo "_123" sai);
+- Agente: o nome da sessão/colega no transcrito, casado com "nome"/"outros_nomes" do config (sufixo "_123" ou "-3",
+  segundo colega do mesmo time, sai);
   a sessão principal sem nome é do líder.
 - Cartão: o número no nome do branch da sessão (`feat/31-...`) e o último "#n" de cartão citado nas ferramentas e
   mensagens (`cartão #31`, `kanban ... move 31`, worktree `...-31`). Sem cartão, agrupa pelo branch.
 - Exploração de código: Read/Grep/Glob e grep/cat/sed/find no shell, e quanto texto isso jogou no contexto.
 - Revisor de código (revisor_ia.py): roda fora das sessões; o custo vem de dados/revisor/estado.json e entra no total.
+- Sessão ainda aberta (o time ao vivo): o Claude Code só grava o `cost-state` quando a sessão fecha; até lá o custo é
+  estimado pelos tokens, com o preço por peso de cada modelo calibrado nas sessões já fechadas (antes ela ficava de fora
+  e o custo do dia parecia zerar).
+- O custo de cada sessão é rateado por TODAS as respostas dela e só entra o que caiu na janela (antes o total inteiro ia
+  para as respostas da janela e inflava sessões longas que atravessam o corte).
+- Acumulado: o banco local dados/xp/escritorio.db (banco.py, SQLite) guarda o custo de cada sessão e de cada revisão já
+  vistas e uma foto por dia; só cresce, mesmo quando a janela anda ou o Claude Code apaga transcritos velhos
+  (cleanupPeriodDays, 30 dias por padrão).
 
-Uso: python custo_time.py [--dias 7]     relatório no terminal + dados/xp/custos.json (o Placar mostra "US$ por PR")
+Uso: python custo_time.py [--dias 7]     relatório no terminal + dados/xp/custos.json (o Placar mostra "US$ por PR" e o
+                                         acumulado) + dados/xp/escritorio.db (acumulado; foto do dia só com --dias 7)
 """
 import json
 import re
@@ -29,9 +39,11 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ))
 import configuracao  # noqa: E402
+import banco  # noqa: E402  (dados/xp/escritorio.db: acumulado do custo)
 
 PROJETOS = Path.home() / ".claude" / "projects"
 SAIDA = RAIZ / "dados" / "xp" / "custos.json"
+INICIO = datetime(2000, 1, 1, tzinfo=timezone.utc)
 PESO = {"in": 1.0, "cw": 1.25, "cr": 0.1, "out": 5.0}
 HORAS_LONGA = 12          # sessão aberta mais que isso: reler o contexto longo é o que mais custa
 RE_CARTAO = [re.compile(p, re.I) for p in (
@@ -41,6 +53,7 @@ RE_CARTAO = [re.compile(p, re.I) for p in (
     r"(?:cart[ãa]o|card|issue)\s*#(\d{1,5})\b",
 )]
 RE_EXPLORA = re.compile(r"\b(grep|rg|find|sed -n|cat|head|tail|Select-String|Get-Content|ls)\b")
+RE_SUFIXO = re.compile(r"[_-]\d+[a-z]?$")   # "Dev_235" / "Dev-3" (segundo colega do mesmo time) -> "Dev"
 
 
 def _nome_pasta(caminho):
@@ -85,12 +98,12 @@ class Agentes:
 
     @staticmethod
     def chave(n):
-        return re.sub(r"[-\s]", "_", re.sub(r"_\d+[a-z]?$", "", str(n or "").strip())).lower()
+        return re.sub(r"[-\s]", "_", RE_SUFIXO.sub("", str(n or "").strip())).lower()
 
     def de(self, nome, principal=False):
         if not nome:
             return self.lider if principal else "subagente"
-        return self.mapa.get(self.chave(nome), re.sub(r"_\d+[a-z]?$", "", str(nome)))
+        return self.mapa.get(self.chave(nome), RE_SUFIXO.sub("", str(nome)))
 
 
 def _nome_sessao(arquivo):
@@ -160,10 +173,15 @@ def _ler(arquivo, agente, desde, usar_branch, expl):
 def coletar(cfg, dias):
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     nomes = Agentes(cfg)
-    agentes, cartoes, longas, sem_custo, total = {}, {}, [], 0, 0.0
+    db = banco.conectar()
+    fechadas = banco.sessoes_fechadas(db)
+    # lê ao menos 7 dias de sessões: o preço da sessão aberta é calibrado nelas, igual em qualquer --dias
+    calibra = min(desde, datetime.now(timezone.utc) - timedelta(days=7))
+    agentes, cartoes, longas, total, sessoes = {}, {}, [], 0.0, []
     for proj in pastas(cfg):
         for principal in proj.glob("*.jsonl"):
-            if principal.stat().st_mtime < desde.timestamp():
+            # fora da janela de calibração e já no banco como fechada: nada a recalcular
+            if principal.stat().st_mtime < calibra.timestamp() and principal.stem in fechadas:
                 continue
             custo = None
             for linha in principal.open(encoding="utf-8", errors="replace"):
@@ -174,45 +192,78 @@ def coletar(cfg, dias):
                         pass
             dono = nomes.de(_nome_sessao(principal), principal=True)
             expl_por = {}
-            resp = _ler(principal, dono, desde, True, expl_por.setdefault(dono, {"n": 0, "chars": 0}))
+            # a sessão inteira (desde INICIO): o rateio usa todas as respostas; a janela é filtrada depois
+            resp = _ler(principal, dono, INICIO, True, expl_por.setdefault(dono, {"n": 0, "chars": 0}))
             sub = principal.with_suffix("") / "subagents"
             for s in sub.glob("*.jsonl") if sub.is_dir() else []:
                 ag = nomes.de(_nome_subagente(s))
-                resp += _ler(s, ag, desde, False, expl_por.setdefault(ag, {"n": 0, "chars": 0}))
-            if not resp:
-                continue
-            if not custo:
-                sem_custo += 1
-                continue
-            datas = [x[3] for x in resp if x[3]]
-            horas = (max(datas) - min(datas)).total_seconds() / 3600 if datas else 0
-            if horas > HORAS_LONGA:
-                longas.append((custo.get("totalCostUSD") or 0, horas, dono))
+                resp += _ler(s, ag, INICIO, False, expl_por.setdefault(ag, {"n": 0, "chars": 0}))
+            if resp:
+                sessoes.append((principal.stem, custo, resp, expl_por))
+    # preço por peso de cada modelo, das sessões fechadas: estima a sessão aberta, que ainda não tem cost-state
+    preco = {}
+    for _, custo, resp, _ in sessoes:
+        if not custo:
+            continue
+        peso = {}
+        for m, pw, *_ in resp:
+            peso[m] = peso.get(m, 0.0) + pw
+        for m, v in (custo.get("modelUsage") or {}).items():
+            if peso.get(m) and v.get("costUSD"):
+                c, w = preco.get(m, (0.0, 0.0))
+                preco[m] = (c + v["costUSD"], w + peso[m])
+    ao_vivo = 0
+    for sid, custo, resp, expl_por in sessoes:
+        soma = {}
+        for m, pw, *_ in resp:
+            soma[m] = soma.get(m, 0.0) + pw
+        if custo:
             por_modelo = {m: (v.get("costUSD") or 0.0) for m, v in (custo.get("modelUsage") or {}).items()}
-            soma = {}
-            for m, p, *_ in resp:
-                soma[m] = soma.get(m, 0.0) + p
-            for m, p, cartao, ts, ag, ctx, cw in resp:
-                usd = por_modelo.get(m, 0.0) * p / soma[m] if soma.get(m) else 0.0
-                total += usd
-                a = agentes.setdefault(ag, {"usd": 0.0, "modelos": {}, "ctx": 0, "n": 0, "explora": 0, "explora_chars": 0,
-                                                "cw1h": 0, "cw5m": 0})
-                a["usd"] += usd
-                a["modelos"][m] = a["modelos"].get(m, 0.0) + usd
-                a["ctx"] += ctx
-                a["cw1h"] += cw[0]
-                a["cw5m"] += cw[1]
-                a["n"] += 1
-                chave = str(cartao) if cartao else "sem cartão nem branch"
-                c = cartoes.setdefault(chave, {"usd": 0.0, "agentes": {}})
-                c["usd"] += usd
-                c["agentes"][ag] = c["agentes"].get(ag, 0.0) + usd
-            for ag, e in expl_por.items():
-                if ag in agentes:
-                    agentes[ag]["explora"] += e["n"]
-                    agentes[ag]["explora_chars"] += e["chars"]
-    return {"agentes": agentes, "cartoes": cartoes, "total": total, "sessoes_sem_custo": sem_custo,
-            "longas": sorted(longas, reverse=True)}
+        else:
+            ao_vivo += 1
+            por_modelo = {m: w * preco[m][0] / preco[m][1] for m, w in soma.items() if m in preco}
+        banco.gravar_sessao(db, sid, round(sum(por_modelo.values()), 4), not custo,
+                            max((str(x[3]) for x in resp if x[3]), default="")[:16])
+        janela = [x for x in resp if not x[3] or x[3] >= desde]
+        if not janela:
+            continue
+        datas = [x[3] for x in janela if x[3]]
+        horas = (max(datas) - min(datas)).total_seconds() / 3600 if datas else 0
+        if horas > HORAS_LONGA:
+            longas.append((sum(por_modelo.values()), horas, janela[0][4]))
+        for m, pw, cartao, ts, ag, ctx, cw in janela:
+            usd = por_modelo.get(m, 0.0) * pw / soma[m] if soma.get(m) else 0.0
+            total += usd
+            a = agentes.setdefault(ag, {"usd": 0.0, "modelos": {}, "ctx": 0, "n": 0, "explora": 0, "explora_chars": 0,
+                                        "cw1h": 0, "cw5m": 0})
+            a["usd"] += usd
+            a["modelos"][m] = a["modelos"].get(m, 0.0) + usd
+            a["ctx"] += ctx
+            a["cw1h"] += cw[0]
+            a["cw5m"] += cw[1]
+            a["n"] += 1
+            chave = str(cartao) if cartao else "sem cartão nem branch"
+            c = cartoes.setdefault(chave, {"usd": 0.0, "agentes": {}})
+            c["usd"] += usd
+            c["agentes"][ag] = c["agentes"].get(ag, 0.0) + usd
+        for ag, e in expl_por.items():
+            if ag in agentes:
+                agentes[ag]["explora"] += e["n"]
+                agentes[ag]["explora_chars"] += e["chars"]
+    return {"agentes": agentes, "cartoes": cartoes, "total": total, "sessoes_ao_vivo": ao_vivo,
+            "longas": sorted(longas, reverse=True), "db": db}
+
+
+def acumulado(db):
+    """Grava as revisões do revisor_ia no banco e devolve o acumulado (só cresce): {"usd", "desde"}."""
+    try:
+        revs = json.loads((RAIZ / "dados" / "revisor" / "estado.json").read_text(encoding="utf-8")).get("historico", [])
+    except Exception:
+        revs = []
+    for h in revs:
+        banco.gravar_revisao(db, h.get("pr"), h.get("commit"), h.get("quando"), h.get("custo_usd") or 0)
+    usd, desde = banco.acumulado(db)
+    return {"usd": usd, "desde": desde}
 
 
 def prs_mergeados(cfg, dias):
@@ -249,6 +300,7 @@ def main():
     r = coletar(cfg, dias)
     rev = custo_revisor(dias)
     r["total"] += rev["usd"]
+    acum = acumulado(r["db"])
     try:
         n_prs = prs_mergeados(cfg, dias)
     except Exception:
@@ -259,8 +311,13 @@ def main():
     if rev["revisoes"]:
         print(f"  inclui o revisor de código ([revisor-ia]): US$ {rev['usd']:.2f} em {rev['revisoes']} revisão(ões), "
               f"{rev['achados']} achado(s)")
-    if r["sessoes_sem_custo"]:
-        print(f"  ({r['sessoes_sem_custo']} sessão(ões) sem cost-state no transcrito ficaram de fora)")
+    if r["sessoes_ao_vivo"]:
+        print(f"  inclui {r['sessoes_ao_vivo']} sessão(ões) ainda aberta(s), estimada(s) pelos tokens (sem cost-state ainda)")
+    print(f"Acumulado desde {acum['desde'] or 'hoje'}: US$ {acum['usd']:.2f} (dados/xp/escritorio.db, não zera)")
+    if dias == 7:   # a foto do dia é sempre da janela padrão, para os dias serem comparáveis
+        banco.gravar_dia(r["db"], r["total"], acum["usd"], n_prs)
+    r["db"].commit()
+    r["db"].close()
     print("Por agente:")
     for ag, a in sorted(r["agentes"].items(), key=lambda x: -x[1]["usd"]):
         mods = ", ".join(f"{m.replace('claude-', '')} {v:.2f}" for m, v in sorted(a["modelos"].items(), key=lambda x: -x[1]) if v >= 0.01)
@@ -277,7 +334,9 @@ def main():
         print(f"  {('#' + c) if c.isdigit() else c:<14} US$ {v['usd']:7.2f}  ({quem})")
     SAIDA.parent.mkdir(parents=True, exist_ok=True)
     SAIDA.write_text(json.dumps({
-        "gerado": time.strftime("%Y-%m-%d %H:%M"), "dias": dias, "total_usd": round(r["total"], 2), "prs_mergeados": n_prs,
+        "gerado": time.strftime("%Y-%m-%d %H:%M"), "dias": dias, "total_usd": round(r["total"], 2),
+        "acumulado_usd": round(acum["usd"], 2), "acumulado_desde": acum["desde"], "sessoes_ao_vivo": r["sessoes_ao_vivo"],
+        "prs_mergeados": n_prs,
         "usd_por_pr": round(por_pr, 2) if por_pr else None,
         "revisor": {"usd": round(rev["usd"], 2), "revisoes": rev["revisoes"], "achados": rev["achados"]},
         "agentes": {k: round(v["usd"], 2) for k, v in r["agentes"].items()},

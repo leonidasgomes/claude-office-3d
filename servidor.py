@@ -568,6 +568,14 @@ def sugestoes_laco(parar):
             if res["erro"] or res["novas"]:
                 print(f"[sugestoes] {res['novas']} nova(s), {res['triadas']} triada(s), {res['chamadas']} chamada(s)"
                       + (f"; ERRO: {res['erro'][:120]}" if res["erro"] else ""), flush=True)
+        try:   # auditor dos amarelos do Placar (modelo barato; o segundo só no suspeito): só com auditor.ativo e xp.ativo
+            import auditor_xp
+            ca = auditor_xp.configuracao_auditor()
+            if auditor_xp.ativo(ca):
+                for n, veredito, issue in auditor_xp.auditar(log=lambda m: print(f"[auditor] {m}", flush=True), cfg=ca):
+                    print(f"[auditor] #{n}: {veredito}" + (f" → issue #{issue}" if issue else ""), flush=True)
+        except Exception as e:  # o auditor nunca derruba a coleta
+            print(f"[auditor] ERRO: {type(e).__name__}: {str(e)[:150]}", flush=True)
         parar.wait(c["intervalo_min"] * 60)
 
 
