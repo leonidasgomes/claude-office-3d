@@ -71,6 +71,10 @@ ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "con
 # Sugestões do bot de revisão (sugestoes_bot.py): só funciona com github.repo e github.bots_revisao preenchidos
 SUGESTOES_MODELO = "claude-haiku-4-5-20251001"   # triagem barata (uma chamada de `claude -p` por coleta com itens novos)
 
+# Revisor de código próprio (revisor_ia.py): uma chamada de `claude -p` por commit novo de PR; comenta com a marca [revisor-ia]
+REVISOR_MODELO = "claude-sonnet-5-5"
+REVISOR_MAX_DIFF = 90_000   # caracteres de diff por revisão (o resto é listado como não revisado)
+
 PADRAO = {
     "porta": 8765,
     "titulo": "Claude Office 3D",
@@ -93,6 +97,10 @@ PADRAO = {
     "sugestoes": {"triagem_modelo": SUGESTOES_MODELO,   # "" desliga a triagem (o líder tria sozinho)
                   "intervalo_min": 15,                   # de quanto em quanto tempo o servidor coleta
                   "janela_dias": 3},                     # na 1ª coleta, quanto do passado olhar
+    "revisor": {"ativo": False,                          # True: o servidor revisa os PRs pendentes antes de cada coleta
+                "modelo": REVISOR_MODELO,
+                "max_diff": REVISOR_MAX_DIFF,
+                "contexto": []},                         # arquivos de padrões/lições/glossário (absolutos ou relativos a "projetos")
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
                 "contato": "", "escalonamentos": "", "agentes_pergunta": []},
     "tema": "neutro",
@@ -235,6 +243,26 @@ def normalizar_sugestoes(bruto):
     return s
 
 
+def normalizar_revisor(bruto):
+    """Bloco "revisor" do config: ligado só com true explícito, modelo (vazio = padrão), limite do diff e lista de
+    arquivos de contexto (texto; caminho absoluto ou relativo a cada pasta de "projetos")."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    r = copy.deepcopy(PADRAO["revisor"])
+    r["ativo"] = bruto.get("ativo") is True
+    if isinstance(bruto.get("modelo"), str) and bruto["modelo"].strip():
+        r["modelo"] = bruto["modelo"].strip()[:80]
+    try:
+        r["max_diff"] = max(5_000, min(400_000, int(bruto["max_diff"]))) if "max_diff" in bruto else r["max_diff"]
+    except (TypeError, ValueError):
+        pass
+    contexto = bruto.get("contexto") or []
+    if isinstance(contexto, str):
+        contexto = [contexto]
+    if isinstance(contexto, list):
+        r["contexto"] = [str(x).strip() for x in contexto if isinstance(x, str) and x.strip()]
+    return r
+
+
 def normalizar_alertas(bruto):
     """Bloco "alertas" do config: tipos corrigidos e padrões sensatos (a validação final é do alertas.py)."""
     bruto = bruto if isinstance(bruto, dict) else {}
@@ -303,6 +331,7 @@ def normalizar(cfg):
     base["xp"] = normalizar_xp(cfg.get("xp"), base["agentes"])
     base["alertas"] = normalizar_alertas(cfg.get("alertas"))
     base["sugestoes"] = normalizar_sugestoes(cfg.get("sugestoes"))
+    base["revisor"] = normalizar_revisor(cfg.get("revisor"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

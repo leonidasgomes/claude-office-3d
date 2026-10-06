@@ -990,7 +990,10 @@ function normalizarNome(n) {
   const conhecido = ALIAS[chaveNome(s)];   // nome do config ou um dos "outros_nomes" (main/lead = líder)
   if (conhecido) return conhecido;
   // id interno de subagente (ex.: a9e249cd8979806e3) não vira mesa própria
-  return s === 'Subagente' || /^a[0-9a-f]{12,}$/i.test(s) ? 'Assistente' : s;
+  if (s === 'Subagente' || /^a[0-9a-f]{12,}$/i.test(s)) return 'Assistente';
+  // subagente numerado (Dev_235, Dev_66b: um por tarefa) cai na mesa do agente (mesma regra do registrar_evento.py)
+  const semNumero = s.replace(/[_-]\d+[a-z]?$/i, '');
+  return ALIAS[chaveNome(semNumero)] || semNumero || s;
 }
 function corDoAgente(nome) {
   const k = nome.toLowerCase();

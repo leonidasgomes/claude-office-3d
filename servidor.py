@@ -506,13 +506,26 @@ ACOES_SUGESTAO = ("encaminhada", "ignorada", "discutir", "resolvida", "reabrir")
 _sug_trava = threading.Lock()   # uma coleta por vez
 
 
+def revisor_rodada():
+    """Revisor de código próprio (revisor_ia.py, revisor.ativo no config.json): revisa os PRs abertos cujo commit atual
+    ainda não foi revisado, antes da coleta, para os achados entrarem na mesma rodada. Nunca derruba o laço."""
+    try:
+        import revisor_ia
+        for linha in revisor_ia.pendentes(log=lambda m: print(f"[revisor] {m}", flush=True)):
+            print(f"[revisor] {linha}", flush=True)
+    except Exception as e:   # sem `claude`, sem rede, etc.: as sugestões seguem sem o revisor
+        print(f"[revisor] ERRO {type(e).__name__}: {str(e)[:200]}", flush=True)
+
+
 def sugestoes_laco(parar):
     """Thread: coleta as sugestões dos bots a cada sugestoes.intervalo_min (padrão 15). Sem github.bots_revisao, não faz nada."""
     if parar.wait(25):
         return
     while not parar.is_set():
         c = sugestoes_bot.configuracao()
-        if c["bots"] and c["repo"]:
+        if c["revisor"] and c["repo"]:
+            revisor_rodada()
+        if (c["bots"] or c["revisor"]) and c["repo"]:
             with _sug_trava:
                 res = sugestoes_bot.coletar(c, log=lambda m: print(f"[sugestoes] {m}", flush=True))
             if res["erro"] or res["novas"]:
@@ -759,6 +772,9 @@ def main():
     print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
           + ("triagem " + cfg_sug["modelo"] if cfg_sug["modelo"] else "sem triagem") + ")" if cfg_sug["bots"] and cfg_sug["repo"]
           else "desligadas (github.bots_revisao vazio no config.json)"))
+    if cfg_sug["revisor"]:
+        print("Revisor de código próprio (revisor_ia.py): ligado — revisa cada commit novo de PR antes da coleta"
+              + ("" if cfg_sug["repo"] else " (SEM github.repo: não vai rodar)"))
     push_ok, push_motivo = alertas_obj.push.disponivel()
     print("Alertas: " + ("desligados (alertas.ativo no config.json)" if not alertas_obj.opcoes["ativo"] else
                          "ligados (notificação com a página aberta" + (", Web Push disponível)" if push_ok else

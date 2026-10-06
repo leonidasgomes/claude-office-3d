@@ -230,6 +230,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
   },
   "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
   "sugestoes": {"triagem_modelo": "claude-haiku-4-5-20251001", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
+  "revisor": {"ativo": false, "modelo": "claude-sonnet-5-5", "max_diff": 90000, "contexto": []},   // revisor-ia (seção 11)
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
   "palavras_reuniao": ["reunião", "alinhamento", "daily", "stand-up", "meeting", "retrospectiva"]
@@ -677,9 +678,18 @@ deixou (relê a janela `janela_dias`, sem duplicar).
 ### Antes do merge e triagem que aprende
 
 - `python sugestoes_bot.py --pronto <n>` responde `OK` ou lista o que ainda segura o PR n: sugestão sem decisão, sugestão
-  encaminhada e ainda não corrigida, bot que já revisou o PR mas não o commit atual (os bots revisam a cada push e levam
-  alguns minutos) ou PR aberto há menos de 15 min que nenhum bot revisou. O painel PRs usa a mesma regra: um PR aprovado pelo
-  revisor, mas com sugestão pendente, fica em "aguardando" com o motivo.
+  encaminhada e ainda não corrigida, bot "por push" que já revisou o PR mas não o commit atual (leva alguns minutos) ou PR
+  aberto há menos de 15 min que nenhum bot revisou. O painel PRs usa a mesma regra: um PR aprovado pelo revisor, mas com
+  sugestão pendente, fica em "aguardando" com o motivo.
+- **Bot de abertura × bot por push.** Nem todo bot revisa cada push: o Copilot revisa a cada push (alguns minutos depois); o
+  Codex só revisa na abertura do PR (ou quando alguém comenta `@codex review`). O `--pronto` decide pelo histórico do próprio
+  PR: bot que revisou **um** commit só é "de abertura" e não trava o merge nos pushes seguintes (vira aviso, sugerindo comentar
+  no PR o comando de nova revisão do bot); bot que revisou dois ou mais commits é "por push" e trava até revisar o commit atual
+  — mas, passados **30 min** do push sem revisão (fila ou cota do bot), vira aviso em vez de travar.
+- **Cota esgotada.** Quando o GitHub posta "Copilot was unable to review this pull request because ... quota", essa revisão não
+  vira sugestão; no `--pronto` ela vira aviso ("cota de revisão esgotada ... confira à mão") e o bot deixa de travar o PR.
+- **Avisos não travam.** Com avisos, o `--pronto` imprime `OK` seguido das linhas `(aviso) ...` (código de saída 0); quando há
+  motivo de verdade, os avisos aparecem junto, no fim da lista.
 - A triagem recebe, além dos itens, o arquivo `glossario_triagem.md` (copie de `glossario_triagem.exemplo.md`; fica fora do
   git) e as últimas 20 sugestões que o líder ignorou **com motivo** (`--tratar <id> --acao ignorada --nota "<por quê>"`).
   Assim, o falso positivo que já foi explicado uma vez deixa de voltar como "corrigir".
@@ -690,14 +700,18 @@ Só sugestões de **PRs abertos** (as de PR já fechado entram como `arquivada`)
 prioridade (do selo `P0` a `P3`; no Copilot, da gravidade no índice da revisão: Critical/High/Medium/Low = P0/P1/P2/P3;
 sem nenhum dos dois = `?`), título (o negrito da primeira linha), texto (sem o selo e sem o rodapé, até
 1200 caracteres) e o link. Respostas de conversa são ignoradas. Das revisões `COMMENTED`, só as que têm texto próprio (a casca
-padrão "Codex Review" e o índice "Copilot review overview" não viram item). Cada item tem uma **situação**: `nova` -> `triada` -> `encaminhada`, `ignorada`, `discutir` ou
+padrão "Codex Review" e o índice "Copilot review overview" não viram item). Exceção do índice do Copilot: os achados da seção
+**"Previously missed"** só existem ali (não ganham comentário em linha), então cada um vira um item próprio (id
+`r<revisão>m<k>`, com `arquivo:linha` e a prioridade pela gravidade). Comentários e revisões com a marca `[revisor-ia]` (o
+revisor próprio, abaixo) entram como os de um bot. Cada item tem uma **situação**: `nova` -> `triada` -> `encaminhada`, `ignorada`, `discutir` ou
 `resolvida`. Estado e caixa ficam em `dados/sugestoes/` (fora do git).
 
 ### Custo de API do GitHub (mínimo, só REST)
 
 Cada coleta faz: 1 chamada a `/pulls/comments?since=<último>` (traz os comentários de **todos** os PRs de uma vez; o `ETag` é
 guardado e a resposta `304 Not Modified` **não conta** no limite), 1 a `/pulls?state=open` (também com `ETag`) e as reviews
-(`/pulls/{n}/reviews`) só dos PRs abertos que tiveram comentário novo do bot. Sem novidade, são 0 chamadas contadas.
+(`/pulls/{n}/reviews`) de **cada PR aberto** (1 chamada por PR: os achados "Previously missed" do Copilot não geram comentário
+em linha, então olhar só os PRs com comentário novo os deixava de fora).
 Quando o GitHub responde "rate limit", a coleta apenas registra o erro e tenta de novo na próxima rodada.
 
 O mesmo vale para o resto do escritório: o painel PRs usa REST (lista com `ETag`, status do commit e `mergeable` em cache por
@@ -731,6 +745,7 @@ python sugestoes_bot.py --sem-triagem   # coleta sem chamar o modelo
 python sugestoes_bot.py --pendentes     # NADA, ou o resumo compacto para o líder
 python sugestoes_bot.py --listar [--todas]
 python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "texto"]
+python sugestoes_bot.py --pronto <n>    # OK (+ avisos), ou o que ainda segura o merge do PR n
 ```
 
 ### No escritório
@@ -742,6 +757,43 @@ python sugestoes_bot.py --tratar <id> --acao encaminhada|ignorada|discutir|resol
 - **Alerta** "Sugestão P0/P1 do bot de revisão" (seção 10), ligado por padrão: só para sugestões novas de prioridade P0 ou P1,
   sem repetir, e o corpo do push não leva o texto do bot (só o PR e a prioridade).
 - O servidor coleta sozinho a cada `sugestoes.intervalo_min` minutos enquanto está de pé (primeira coleta ~25 s depois de abrir).
+
+### Revisor de código próprio (revisor-ia)
+
+Os bots de terceiros revisam sem conhecer as regras do seu projeto (parte das sugestões é falso positivo) e a cota deles acaba.
+O `revisor_ia.py` é um revisor seu: para cada commit novo de PR aberto (não rascunho), lê **só o diff** do PR mais os arquivos de
+contexto que você indicar (padrões de código, lições aprendidas, glossário) e faz **uma** chamada `claude -p` sem ferramentas
+(padrão Sonnet). Ele procura bug, regressão, caso de borda, cache/chave incremental incompleta, passo que sobrescreve outro,
+contagem incoerente, erro de I/O/concorrência, teste faltando, documentação que ficou errada e violação das regras do projeto
+descritas no contexto — percorrendo cada função alterada com seis perguntas fixas — e é proibido de apontar estilo.
+
+Os achados viram uma revisão `COMMENT` no PR, **pela sua conta do `gh`**, com a marca `[revisor-ia]` (comentário em linha quando
+a linha existe no diff; senão, no corpo da revisão). O `sugestoes_bot.py` reconhece a marca: os achados entram na caixa, na
+triagem, no painel e no `--pronto` (o revisor conta como bot "por push"), como os de qualquer bot.
+
+```jsonc
+"revisor": {
+  "ativo": false,                     // true: o servidor revisa os PRs pendentes antes de cada coleta das sugestões
+  "modelo": "claude-sonnet-5-5",
+  "max_diff": 90000,                  // caracteres de diff por revisão; o que passar é listado como "não revisado"
+  "contexto": ["docs/PADROES.md", "docs/LICOES-APRENDIDAS.md"]   // absolutos ou relativos a cada pasta de "projetos"
+}
+```
+
+O `glossario_triagem.md` do pacote (se existir) entra no contexto também. O repositório vem de `github.repo`; o estado (commits já
+revisados, custo e tokens de cada revisão) fica em `dados/revisor/estado.json`. Linha de comando:
+
+```bash
+python revisor_ia.py --pr <n>            # revisa o commit atual do PR n (se ainda não revisado)
+python revisor_ia.py --pendentes         # todo PR aberto cujo commit atual ainda não foi revisado
+python revisor_ia.py --pr <n> --forcar   # revisa de novo o mesmo commit
+python revisor_ia.py --pr <n> --seco     # só mostra os achados, sem comentar no PR
+```
+
+**Custo medido**: cerca de **US$ 0,18 por revisão** de um diff de ~35–40 mil caracteres no Sonnet (uma revisão por commit novo;
+quem faz muitos pushes pequenos paga mais vezes). Precisa do Claude Code (`claude`) no PATH e do `gh` autenticado com permissão
+de comentar no repositório. **Limites**: é uma camada de código, não substitui a revisão humana nem um portão de arquitetura
+(quem decide se a mudança cabe no desenho do sistema); os achados são sugestões e passam pela mesma decisão do líder.
 
 ## 12. Times de agentes do Claude Code — dicas
 

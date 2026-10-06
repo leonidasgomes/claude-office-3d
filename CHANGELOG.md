@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0
+- **Revisor de código próprio** (`revisor_ia.py`, bloco novo `revisor` no `config.json`, desligado por padrão): a cada commit
+  novo de PR aberto, uma chamada `claude -p` (padrão Sonnet, sem ferramentas) lê só o diff e os arquivos de contexto do seu
+  projeto (`revisor.contexto` + `glossario_triagem.md`) e comenta no PR pela sua conta do `gh`, com a marca `[revisor-ia]`.
+  Procura bug, regressão, caso de borda, cache incompleto, teste faltando, documentação errada e violação das regras do
+  projeto; não aponta estilo. Custo medido: ~US$ 0,18 por revisão de ~35–40 mil caracteres de diff. Com `revisor.ativo`, o
+  servidor roda `revisor_ia.pendentes()` antes de cada coleta das sugestões. Estado em `dados/revisor/`.
+- **Sugestões**: os achados "Previously missed" do índice do Copilot (sem comentário em linha) viram itens (`r<revisão>m<k>`);
+  as revisões de **todo** PR aberto são lidas em cada coleta; a revisão "unable to review ... quota" não vira item; a marca
+  `[revisor-ia]` é reconhecida (prioridade do título, rodapé limpo, resumo sem achado ignorado).
+- **`--pronto` com avisos**: bot que revisou só um commit no PR é "de abertura" (o Codex, por exemplo) e não trava — vira aviso
+  sugerindo comentar o comando de nova revisão; bot "por push" sem revisar o commit atual há mais de 30 min vira aviso; cota
+  esgotada vira aviso. Com só avisos, imprime `OK` e as linhas `(aviso) ...`.
+- **Escritório**: subagente numerado (`Dev_235`, `Dev_66b`) cai na mesa do agente, no hook e na página (antes, o sufixo com
+  letra criava uma mesa nova). Nomes do config e `outros_nomes` continuam valendo exatamente como escritos.
+
 ## 1.3.1
 - Correção: `plugins_projeto.py --projeto <pasta>` mostrava se o plugin estava ligado na pasta atual, não no projeto pedido.
   Agora a lista do `claude plugin list --json` é feita dentro da pasta do projeto.

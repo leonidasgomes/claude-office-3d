@@ -54,6 +54,12 @@
     "intervalo_min": 15,
     "janela_dias": 3
   },
+  "revisor": {
+    "ativo": false,
+    "modelo": "claude-sonnet-5-5",
+    "max_diff": 90000,
+    "contexto": ["docs/PADROES-DE-CODIGO.md", "docs/LICOES-APRENDIDAS.md"]
+  },
   "rede_local": false,
   "rede_https": true,
   "rede_tailscale": false,

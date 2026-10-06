@@ -18,7 +18,7 @@ Uso:  python sugestoes_bot.py [--coletar]          coleta (padrão) e imprime um
       python sugestoes_bot.py --listar [--todas]   itens abertos (ou todos)
       python sugestoes_bot.py --sem-triagem        (com --coletar) não chama o modelo nesta rodada
       python sugestoes_bot.py --recoletar          (com --coletar) relê a janela inteira (janela_dias), uma vez; sem duplicar
-      python sugestoes_bot.py --pronto <n>         OK, ou o que ainda segura o merge do PR n (sugestões, bots atrasados)
+      python sugestoes_bot.py --pronto <n>         OK (+ avisos), ou o que ainda segura o merge do PR n (sugestões, bots atrasados)
 
 Estado em dados/sugestoes/estado.json e caixa em dados/sugestoes/caixa.jsonl (fora do git).
 Situação de cada item: nova -> triada -> encaminhada | ignorada | discutir -> resolvida (arquivada = PR já fechado).
@@ -48,6 +48,7 @@ def config_base():
     c = _pacote.carregar()
     g, s = c["github"], c["sugestoes"]
     return {"repo": g["repo"], "bots": list(g["bots_revisao"]), "modelo": s["triagem_modelo"],
+            "revisor": bool((c.get("revisor") or {}).get("ativo")),
             "intervalo_min": s["intervalo_min"], "janela_dias": s["janela_dias"], "times": dict(g["times"]),
             "agentes": [a["nome"] for a in c["agentes"]], "gh": _pacote.localizar_gh() or "gh", "pasta": PASTA}
 # ---- fim da configuração -------------------------------------------------------------------------------------------------
@@ -57,6 +58,7 @@ ABERTAS = ("nova", "triada", "discutir")      # aparecem no painel do escritóri
 PENDENTES = ("nova", "triada")                # o que o líder ainda precisa decidir
 SEGURAM_MERGE = ("nova", "triada", "encaminhada")   # sem decisão ou mandada ao colega e ainda não corrigida
 ESPERA_BOTS_MIN = 15                          # PR novo sem revisão de bot: espera esse tempo antes do "pronto"
+PRAZO_BOT_MIN = 30                            # bot "por push" sem revisar o commit atual depois disso vira aviso, não trava
 ACOES_TRATAR = {"encaminhada": "encaminhada", "ignorada": "ignorada", "discutir": "discutir", "resolvida": "resolvida"}
 PRIORIDADES = ("P0", "P1", "P2", "P3", "?")
 MAX_TEXTO = 1200
@@ -247,6 +249,10 @@ def extrair(corpo):
     b = limpar_texto(corpo)
     m = RE_BADGE.search(b[:400])
     prio = m.group(1).upper() if m else "?"
+    m2 = RE_PRIO_REVISOR.match(b)              # revisor_ia.py: "**P2 — Título**"
+    if m2:
+        prio, b = m2.group(1), "**" + b[m2.end():]
+    b = re.sub(r"\n*<sub>\[revisor-ia\].*?</sub>\s*$", "", b, flags=re.S)
     primeira, _, resto = b.partition("\n")
     titulo, texto = "", b
     if primeira.lstrip().startswith("**"):
@@ -263,6 +269,8 @@ def extrair(corpo):
 
 def _eh_resumo_vazio(corpo):
     """Revisão só com a casca do bot (sem achado próprio): não vira item."""
+    if MARCA_REVISOR + " Revisão automática" in (corpo or "") and "\n- **" not in (corpo or ""):
+        return True   # resumo do revisor_ia.py sem achado no corpo
     t = RE_TAGS.sub("", RE_IMG.sub("", limpar_texto(corpo)))
     t = re.sub(r"[#*_`>\-\s]+", " ", t).strip().lower()
     t = re.sub(r"[^\w\s]", " ", t)
@@ -344,17 +352,57 @@ def _baixar_comentarios(cfg, est):
     return todos, chamadas
 
 
+MARCA_REVISOR = "[revisor-ia]"   # revisor de código próprio (revisor_ia.py): comenta pela conta do usuário com esta marca
+RE_PRIO_REVISOR = re.compile(r"^\*\*(P[0-3])\s*—\s*")
+RE_SEM_COTA = re.compile(r"unable to review this pull request because .{0,80}quota", re.I | re.S)
+RE_ACHADO_INDICE = re.compile(r"<details>\s*<summary>(.*?)</summary>\s*`([^`]+)`\s*(.*?)</details>", re.S)
+RE_ALT_GRAVIDADE = re.compile(r'alt="(critical|high|medium|low) severity"', re.I)
+
+
+def _achados_do_indice(corpo):
+    """[(arquivo:linha, título, texto, prioridade)] da seção "Previously missed" do índice do Copilot (achados sem
+    comentário em linha). Formato: <details><summary><picture alt="Low severity"> Título</summary> `arq:linha` texto."""
+    corpo = (corpo or "").replace("\u200b", "")
+    i = corpo.find("Previously missed")
+    if i < 0:
+        return []
+    saida = []
+    for resumo, local, texto in RE_ACHADO_INDICE.findall(corpo[i:]):
+        g = RE_ALT_GRAVIDADE.search(resumo)
+        titulo = re.sub(r"<[^>]+>", "", re.sub(r"<picture>.*?</picture>", "", resumo, flags=re.S)).strip()
+        if texto.strip():
+            saida.append((local.strip(), titulo, re.sub(r"\s+", " ", texto).strip(),
+                          PRIO_GRAVIDADE[g.group(1).lower()] if g else "P3"))
+    return saida
+
+
 def _revisoes(cfg, n, prs, existentes):
     """(itens, gravidades) do PR n: itens de revisão (COMMENTED, com texto próprio) dos bots e, do índice do Copilot,
     {id do comentário em linha: prioridade} pela gravidade (Critical/High/Medium/Low -> P0..P3)."""
     status, dados, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
     saida, gravidades = [], {}
     for r in dados if isinstance(dados, list) else []:
-        if not eh_bot((r.get("user") or {}).get("login"), cfg["bots"]) or r.get("state") != "COMMENTED":
+        if not (eh_bot((r.get("user") or {}).get("login"), cfg["bots"]) or MARCA_REVISOR in (r.get("body") or "")) \
+                or r.get("state") != "COMMENTED":
             continue
-        if RE_COPILOT_INDICE.search(r.get("body") or ""):   # índice: não vira item, só dá a gravidade
+        if RE_SEM_COTA.search(r.get("body") or ""):         # aviso do GitHub (cota do bot esgotada): não é sugestão
+            continue
+        if RE_COPILOT_INDICE.search(r.get("body") or ""):   # índice: dá a gravidade dos comentários em linha...
             for g, cid in RE_COPILOT_GRAVIDADE.findall(r["body"]):
                 gravidades[cid] = PRIO_GRAVIDADE[g.lower()]
+            # ...e traz os achados "Previously missed", que só existem aqui (sem comentário em linha); ignorar o índice
+            # deixava esses achados passarem pelo --pronto.
+            for k, (local, titulo, texto, prio) in enumerate(_achados_do_indice(r["body"])):
+                iid = f"r{r['id']}m{k}"
+                if iid in existentes:
+                    continue
+                arq, _, lin = local.partition(":")
+                c = {"id": f"{r['id']}m{k}", "body": f"**{titulo}**\n{texto}", "path": arq,
+                     "line": int(lin) if lin.isdigit() else None, "pull_request_url": f"x/{n}",
+                     "html_url": r.get("html_url") or "", "submitted_at": r.get("submitted_at"), "user": r.get("user")}
+                item = _item(cfg, c, prs, "revisao", "r")
+                item["prioridade"] = prio
+                saida.append(item)
             continue
         if not (r.get("body") or "").strip() or f"r{r['id']}" in existentes or _eh_resumo_vazio(r["body"]):
             continue
@@ -369,7 +417,7 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
     cfg = cfg or configuracao()
     log = log or (lambda m: None)
     res = {"novas": 0, "chamadas": 0, "erro": "", "limite": 0, "triadas": 0}
-    if not cfg["bots"]:
+    if not cfg["bots"] and not cfg.get("revisor"):
         res["erro"] = "desligado (nenhum bot de revisão configurado)"
         return res
     if not cfg["repo"]:
@@ -385,7 +433,8 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
         comentarios, ch = _baixar_comentarios(cfg, est)
         res["chamadas"] += ch
         prs = est.get("prs", {})
-        do_bot = [c for c in comentarios if eh_bot((c.get("user") or {}).get("login"), cfg["bots"])
+        do_bot = [c for c in comentarios if (eh_bot((c.get("user") or {}).get("login"), cfg["bots"])
+                                             or MARCA_REVISOR in (c.get("body") or ""))
                   and not c.get("in_reply_to_id") and (c.get("body") or "").strip()]
         with trava(cfg["pasta"]):
             caixa = ler_caixa(cfg)
@@ -395,7 +444,9 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
                 if str(c["id"]) not in ids:
                     novos.append(_item(cfg, c, prs))
                     ids.add(str(c["id"]))
-        abertos_com_novo = sorted({x["pr"] for x in novos if x["situacao"] == "nova"})
+        # Revisões de TODO PR aberto (1 chamada REST por PR): achado só no índice do Copilot ("Previously missed") não
+        # gera comentário em linha, então olhar só os PRs com comentário novo deixava esses achados de fora.
+        abertos_com_novo = sorted({int(k) for k in prs} | {x["pr"] for x in novos if x["situacao"] == "nova"})
         for n in abertos_com_novo:
             try:
                 extra, gravidades = _revisoes(cfg, n, prs, ids)
@@ -664,10 +715,12 @@ def resumo(cfg=None):
 
 def pronto(cfg, n):
     """(ok, motivos) para dizer que o PR n está pronto para o merge, do ponto de vista dos bots: nenhuma sugestão sem
-    decisão ou encaminhada e ainda não corrigida, cada bot que já revisou o PR revisou também o commit atual, e PR novo
-    não passa antes de algum bot revisar (ESPERA_BOTS_MIN). Coleta antes, para não decidir com a caixa velha."""
+    decisão ou encaminhada e ainda não corrigida, cada bot "por push" que já revisou o PR revisou também o commit atual,
+    e PR novo não passa antes de algum bot revisar (ESPERA_BOTS_MIN). Avisos (bot de abertura, bot atrasado além de
+    PRAZO_BOT_MIN, cota esgotada) não travam: voltam no fim de motivos com o prefixo "(aviso)".
+    Coleta antes, para não decidir com a caixa velha."""
     coletar(cfg, triagem=False)
-    motivos = []
+    motivos, avisos = [], []
     pend = [x for x in ler_caixa(cfg) if x.get("pr") == n and x.get("situacao") in SEGURAM_MERGE]
     for x in sorted(pend, key=_ordem):
         o_que = "encaminhada, ainda não corrigida" if x["situacao"] == "encaminhada" else "sem decisão"
@@ -676,17 +729,45 @@ def pronto(cfg, n):
     _, revs, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
     cabeca = (pr or {}).get("head", {}).get("sha", "")
     por_bot = {}
+    sem_cota = set()
     for r in revs if isinstance(revs, list) else []:
         login = (r.get("user") or {}).get("login", "")
+        if MARCA_REVISOR in (r.get("body") or ""):
+            login = "revisor-ia"                 # o revisor próprio revisa cada commit (revisor_ia.py): conta como bot por push
+            por_bot.setdefault(login, set()).update({r.get("commit_id"), "push"})
+            continue
         if eh_bot(login, cfg["bots"]):
+            if RE_SEM_COTA.search(r.get("body") or ""):
+                sem_cota.add(login)      # o GitHub avisou que a cota do bot acabou: ele não vai revisar o push novo
+                continue
             por_bot.setdefault(login, set()).add(r.get("commit_id"))
+    for login in sorted(sem_cota):
+        avisos.append(f"{login}: cota de revisão esgotada (aviso do GitHub); não vai revisar os pushes novos até renovar — confira à mão")
+        por_bot.pop(login, None)
+    # Há bots que revisam cada push (o Copilot, alguns minutos depois) e bots que só revisam na abertura do PR (o Codex,
+    # ou quando alguém comenta "@codex review"). Bot que, neste PR, revisou um commit só é "de abertura" e não segura o
+    # merge nos pushes seguintes; bot que revisou 2+ commits é "por push" e segura, até PRAZO_BOT_MIN depois do push.
+    data_cabeca = None
+    if cabeca:
+        try:
+            _, c, _ = gh_api(cfg, f"repos/{cfg['repo']}/commits/{cabeca}")
+            data_cabeca = _ler_iso(((c or {}).get("commit") or {}).get("committer", {}).get("date", ""))
+        except ErroApi:
+            data_cabeca = None
     for login, commits in sorted(por_bot.items()):
-        if cabeca and cabeca not in commits:
+        if not cabeca or cabeca in commits:
+            continue
+        if len(commits) < 2:
+            avisos.append(f"{login} revisa só na abertura do PR e não viu o commit atual; comente no PR o comando de nova "
+                          f"revisão do bot (ex.: \"@codex review\") se quiser outra rodada")
+        elif data_cabeca and (_agora() - data_cabeca).total_seconds() > PRAZO_BOT_MIN * 60:
+            avisos.append(f"{login} não revisou o commit atual ({cabeca[:8]}) em {PRAZO_BOT_MIN} min (fila ou cota do bot); confira à mão")
+        else:
             motivos.append(f"{login} ainda não revisou o commit atual ({cabeca[:8]}); espere alguns minutos e rode de novo")
     criado = _ler_iso((pr or {}).get("created_at", ""))
     if not por_bot and criado and (_agora() - criado).total_seconds() < ESPERA_BOTS_MIN * 60:
         motivos.append(f"nenhum bot revisou ainda (PR aberto há menos de {ESPERA_BOTS_MIN} min); espere e rode de novo")
-    return not motivos, motivos
+    return not motivos, motivos + [f"(aviso) {a}" for a in avisos]
 
 
 # ---------------------------------------------------------------- linha de comando
@@ -719,7 +800,8 @@ def main(argv=None):
             print("uso: sugestoes_bot.py --pronto <número do PR>")
             return 2
         ok, motivos = pronto(cfg, n)
-        print("OK" if ok else f"PR #{n} ainda não está pronto para o merge:\n  " + "\n  ".join(motivos))
+        print(("OK" + "".join(f"\n  {m}" for m in motivos)) if ok
+              else f"PR #{n} ainda não está pronto para o merge:\n  " + "\n  ".join(motivos))
         return 0 if ok else 1
     if "--listar" in args:
         print(texto_listar(cfg, "--todas" in args))

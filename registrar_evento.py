@@ -42,6 +42,7 @@ for _ag in CFG["agentes"]:
 for _o in ("main", "lead", "leader", "team_lead"):
     NOMES.setdefault(_o, LIDER)
 CONHECIDOS = {a["nome"] for a in CFG["agentes"]}
+SUFIXO_NUMERO = re.compile(r"[_-]\d+[a-z]?$", re.I)   # Dev_235, Dev_66b: um por tarefa (mesma regra do escritorio.js)
 
 
 def normalizar(nome):
@@ -51,12 +52,17 @@ def normalizar(nome):
         return "Outra_Sessao"
     if re.fullmatch(r"a[0-9a-f]{12,}", n.lower()):
         return "Assistente"  # id interno de subagente
+    if not n:
+        return ""
+    if configuracao.chave(n) in NOMES:   # nome do config ou um dos "outros_nomes", exatamente
+        return NOMES[configuracao.chave(n)]
+    n = SUFIXO_NUMERO.sub("", n)         # subagente numerado (Dev_235, Dev_66b) cai na mesa do agente
     return NOMES.get(configuracao.chave(n), n) if n else ""
 
 
 def nome_do_meta(d, agente_id):
     """Lê <projeto>/<sessão>/subagents/agent-<id>.meta.json e devolve o nome dado pelo líder.
-    "Dev_235" (um por tarefa) vira "Dev"; sem nome, tenta o começo da descrição."""
+    "Dev_235" ou "Dev_66b" (um por tarefa) vira "Dev"; sem nome, tenta o começo da descrição."""
     if not agente_id or not d.get("transcript_path") or not d.get("session_id"):
         return ""
     try:
@@ -65,10 +71,10 @@ def nome_do_meta(d, agente_id):
     except (OSError, ValueError):
         return ""
     for texto in (meta.get("name"), str(meta.get("description") or "").split(" ")[0]):
-        n = re.sub(r"[_-]\d+$", "", str(texto or "").strip())
+        n = SUFIXO_NUMERO.sub("", str(texto or "").strip())
         if n and normalizar(n) in CONHECIDOS:
             return normalizar(n)
-    n = re.sub(r"[_-]\d+$", "", str(meta.get("name") or "").strip())
+    n = SUFIXO_NUMERO.sub("", str(meta.get("name") or "").strip())
     return normalizar(n) if n else ""
 
 
