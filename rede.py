@@ -519,6 +519,7 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             return None
 
     _corpo_pendente = False   # POST/PUT... cujo corpo ainda não foi lido
+    timeout = 15   # prazo do socket (StreamRequestHandler): cliente lento não prende a thread lendo cabeçalho ou corpo
 
     def _drenar_corpo(self, maximo=65536):
         """Descarta o corpo não lido antes de responder. Recusar um POST sem ler o corpo deixa bytes no socket e, ao
