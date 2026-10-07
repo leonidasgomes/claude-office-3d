@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.2
+- **Segurança — arquivos internos não são mais servidos por URL disfarçada** (`servidor.py`): o bloqueio de `dados/`,
+  scripts e `.json` olhava o caminho como chegava; com `%64ados`, `/x/../dados`, `dados.`, `dados::$DATA` (Windows) ou
+  `/servidor.py/.` dava para baixar `dados/` (inclusive sessões e tokens anti-CSRF dos outros aparelhos) e os scripts —
+  só para quem já tinha acesso (PC ou aparelho pareado). Agora o caminho é decodificado e normalizado como o servidor o
+  resolve, o arquivo real precisa ficar dentro da pasta do escritório e fora de `dados/`, e o sufixo é conferido no nome
+  normalizado e no nome real (cobre o nome curto 8.3). Novo `ferramentas/testar_estaticos.py` (no CI).
+  **Atualize** se usa o acesso pelo celular.
+
 ## 1.16.1
 - **A triagem das sugestões dos bots voltou a rodar** (`sugestoes_bot.py`): a thread `pronto` do servidor coleta a cada
   3 min sem triagem e pegava as sugestões novas antes da coleta com triagem, que então achava 0 novas e nunca chamava o

@@ -27,6 +27,7 @@ Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador
 import json
 import mimetypes
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -38,7 +39,7 @@ from http.server import ThreadingHTTPServer
 ThreadingHTTPServer.request_queue_size = 64   # o padrão (5) recusa conexões quando a página pede vários módulos de uma vez no Windows
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import alertas  # noqa: E402
@@ -956,6 +957,8 @@ def manifesto():
                       {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}]}
 
 
+
+SUF_BLOQUEADOS = (".py", ".bat", ".sh", ".json", ".md", ".txt")   # nunca servidos como estáticos (servidor.caminho_bloqueado)
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
         dados.pop("_detalhe", None)   # só o servidor preenche (vai para o histórico de ações)
@@ -973,9 +976,29 @@ class Handler(rede.HandlerSeguro):
         return alertas_get(rota, qs, ident)
 
     def caminho_bloqueado(self):
-        # não expõe dados brutos, configuração com caminhos locais nem scripts
-        p = urlparse(self.path).path.lower()
-        return p.startswith(("/dados", "/.")) or p.endswith((".py", ".bat", ".sh", ".json", ".md", ".txt"))
+        # não expõe dados brutos, configuração com caminhos locais nem scripts.
+        # Confere o caminho DECODIFICADO e normalizado, como o SimpleHTTPRequestHandler o resolve: antes, /%64ados/...,
+        # /x/../dados/..., %2epy, "dados." e "dados::$DATA" (Windows) passavam e serviam dados/ (sessões, tokens CSRF).
+        try:
+            bruto = unquote(urlparse(self.path).path, errors="strict").replace("\\", "/")
+        except (UnicodeDecodeError, ValueError):
+            return True
+        if ":" in bruto or "\x00" in bruto:
+            return True   # fluxo alternativo do NTFS (dados::$DATA) e byte nulo
+        partes = [x.rstrip(". ").lower() for x in posixpath.normpath("/" + bruto).split("/") if x]
+        if partes and (partes[0] == "dados" or any(x.startswith(".") or x == "" for x in partes)):
+            return True
+        if partes and partes[-1].endswith(SUF_BLOQUEADOS):   # nome normalizado ("/servidor.py/." conta)
+            return True
+        try:   # o arquivo que seria servido precisa ficar dentro da pasta do escritório e fora de dados/
+            alvo = Path(self.translate_path(self.path)).resolve()
+            base = Path(getattr(self, "directory", None) or PASTA).resolve()
+            rel = alvo.relative_to(base)
+        except (ValueError, OSError):
+            return True
+        if alvo.name.rstrip(". ").lower().endswith(SUF_BLOQUEADOS):   # nome real (cobre o nome curto 8.3 do Windows)
+            return True
+        return bool(rel.parts) and rel.parts[0].rstrip(". ").lower() == "dados"
 
     def rotas_get(self):
         url = urlparse(self.path)
