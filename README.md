@@ -30,7 +30,9 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
   PRs na parede, festa no merge, gaveteiro que evolui com o nível, fio vermelho quando dois agentes editam o mesmo
   arquivo, gato, dia e noite, sons opcionais, animações reduzidas e modo leve para PC sem placa de vídeo.
 - **🩺 Saúde do time** (sem tokens): trabalho duplicado, agentes andando em círculos, PRs parados e risco dos PRs, com
-  Ignorar e **Avisar o líder** (entregue pelo `vigia_lider.py` como informação, nunca como ordem).
+  Ignorar e **Avisar o líder** (entregue pelo `vigia_lider.py` como informação, nunca como ordem); um modelo barato
+  (até 30 chamadas por dia, desligável) faz a triagem de cada item novo: avisa o líder do problema real e silencia o falso
+  positivo até ele se resolver.
 - **⏪ Replay do dia** acelerado na própria cena, com marcas de falha, fala, círculo e merge, e **filtros** por agente e
   tipo de evento no feed e na cena.
 - **Kanban** do GitHub Projects e painel de **PRs** esperando o seu merge (opcionais, via GitHub CLI `gh`).

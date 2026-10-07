@@ -67,3 +67,12 @@ html.movel #saudeCorpo .botao { min-height: 44px; font-size: 15px; padding: 4px 
 html.movel #saudeCorpo .saude-form input { min-height: 44px; font-size: 16px; }
 html.movel #saudeFechar { min-width: 44px; min-height: 44px; }
 html.compacto #saudeCorpo .saude-acoes .botao { flex: 1 1 auto; justify-content: center; }
+
+/* triagem barata (🤖), pedidos cancelados e resolvidos */
+#saudeCorpo .saude-triagem { font-size: 12px; overflow-wrap: anywhere; border-radius: 4px; padding: 2px 6px; background: #0f1419; }
+#saudeCorpo .saude-triagem.problema { color: #fecaca; border-left: 3px solid #e5484d; }
+#saudeCorpo .saude-triagem.falso { color: #c9f2d8; border-left: 3px solid #22c55e; }
+#saudeCorpo .saude-triagem.erro { color: #9aa7b6; border-left: 3px solid #475569; }
+#saudeCorpo .saude-pedido.cancelado { color: #8b98a8; font-style: italic; }
+#saudeCorpo .saude-item.resolvido { border-left-color: #22c55e; opacity: .9; }
+html.compacto #saudeCorpo .saude-triagem { font-size: 13px; }

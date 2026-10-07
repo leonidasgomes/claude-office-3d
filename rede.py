@@ -54,7 +54,7 @@ PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {
                   # sugestões do bot de revisão: tratar (encaminhar/ignorar/resolver) é só do PC; o celular só lê (GET)
                   "/api/sugestoes/tratar": {"pc"},
                   # painel Saúde: ignorar/reativar um item e avisar o líder (pedido entregue pelo vigia) são só do PC
-                  "/api/saude/ignorar": {"pc"}, "/api/saude/avisar": {"pc"},
+                  "/api/saude/ignorar": {"pc"}, "/api/saude/avisar": {"pc"}, "/api/saude/triagem": {"pc"},
                   # alertas (push.py): qualquer aparelho pareado (ver ou mais) e o PC inscrevem o próprio navegador
                   "/api/push/inscrever": {"pc", "ver", "conferir"}, "/api/push/sair": {"pc", "ver", "conferir"},
                   "/api/push/prefs": {"pc", "ver", "conferir"}, "/api/push/teste": {"pc", "ver", "conferir"}}

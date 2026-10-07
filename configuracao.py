@@ -249,12 +249,21 @@ def normalizar_xp(bruto, agentes):
     return xp
 
 
+RE_MODELO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}")
+
+
 def normalizar_sugestoes(bruto):
     """Bloco "sugestoes" do config: modelo da triagem ("" desliga), intervalo em minutos e janela inicial em dias."""
     bruto = bruto if isinstance(bruto, dict) else {}
     s = copy.deepcopy(PADRAO["sugestoes"])
     if isinstance(bruto.get("triagem_modelo"), str):
         s["triagem_modelo"] = bruto["triagem_modelo"].strip()[:80]
+    # triagem da saúde do time (saude_triagem.py): sem a chave, o mesmo modelo da triagem das sugestões; "" desliga.
+    # Nome de modelo inválido (vazio por dentro, começando com "-", espaço ou caractere estranho) desliga: vai como argumento
+    # do `claude -p --model`.
+    st = bruto.get("saude_triagem", s["triagem_modelo"])
+    st = st.strip()[:80] if isinstance(st, str) else s["triagem_modelo"]
+    s["saude_triagem"] = st if not st or RE_MODELO.fullmatch(st) else ""
     for k, minimo, maximo in (("intervalo_min", 1, 1440), ("janela_dias", 1, 30)):
         try:
             s[k] = max(minimo, min(maximo, int(bruto[k]))) if k in bruto else s[k]

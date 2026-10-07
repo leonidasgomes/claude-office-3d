@@ -12,6 +12,7 @@ Serve esta pasta e expõe:
   GET /saude                          -> duplicados, círculos e PRs parados (saude.py; a cada 5 min, gravado em dados/saude.json),
                                          com os itens ignorados e os últimos pedidos ao líder
   POST /api/saude/ignorar|avisar      -> painel 🩺 Saúde: ignorar/reativar um item ou avisar o líder (só o PC, com CSRF)
+  POST /api/saude/triagem             -> desfazer o "falso positivo" da triagem barata (só o PC, com CSRF)
   GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
   POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
 O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
@@ -46,6 +47,7 @@ import cota  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
 import saude  # noqa: E402  (duplicados, círculos, risco do PR, PR parado: saude.py)
+import saude_triagem  # noqa: E402  (triagem barata dos itens novos da saúde: saude_triagem.py)
 import sugestoes_bot  # noqa: E402
 
 HOST = "127.0.0.1"
@@ -715,6 +717,13 @@ def saude_atual():
                              cfg()["alertas"]["parado_horas"])
         # só os círculos (GitHub fora ou PRONTO ainda não carregado, como logo depois de subir): tenta de novo em 60 s
         _saude.update(quando=time.time() - (SAUDE_VALIDADE - 60 if dados.get("sem_prs") else 0), dados=dados)
+        try:   # resolvidos, ignorado/veredicto que expira e pedido cancelado (saude.rodada respeita sem_prs/sem_locais);
+            # antes do saude.json: o --pendentes (outro processo) já acha o "desde" das chaves novas no ciclo
+            r = saude.rodada(dados, saude_pasta())
+            if any(r.values()):
+                print(f"[saude] rodada: {json.dumps(r, ensure_ascii=False)[:200]}", flush=True)
+        except Exception as e:
+            print(f"[saude] rodada: {str(e)[:160]}", flush=True)
         try:
             arq = saude_pasta() / "saude.json"
             arq.parent.mkdir(parents=True, exist_ok=True)
@@ -726,12 +735,55 @@ def saude_atual():
         return dados
 
 
+def silenciados_saude(dados=None):
+    """Chaves que não alertam (agora): ignoradas no painel + falsos positivos da triagem não desfeitos + duplicados/círculos
+    NOVOS esperando a triagem (até saude.SEGURAR_MIN; só com a triagem disponível). Não chama o modelo."""
+    pasta = saude_pasta()
+    tri = saude.ler_triagem(pasta)
+    out = set(saude.ler_ignorados(pasta)) | saude.silenciados(tri)
+    if dados is not None:
+        try:
+            out |= saude.segurados(dados, tri, saude.ler_ciclo(pasta), saude_triagem.disponivel(tri),
+                                   max_por_chave=saude_triagem.MAX_POR_CHAVE_DIA)
+        except Exception:
+            pass
+    return out
+
+
+def _saude_para_alertas():
+    d = saude_atual()
+    return dict(d, ignorados=sorted(silenciados_saude(d)))
+
+
+def triagem_saude(dados):
+    """Triagem barata dos itens novos (saude_triagem.rodada): só na thread `saude`, depois de um cálculo que deu certo; usa
+    os títulos dos PRs que já estão no cache do servidor (sem GitHub). Falha nunca derruba a thread."""
+    try:
+        d = _prs.dados   # só o que já está em cache (o saude_atual acabou de pedir os PRs): nenhuma chamada ao GitHub
+        lista = d.get("prs") if isinstance(d, dict) and isinstance(d.get("prs"), list) else []
+        for chave, v in saude_triagem.rodada(dados, lista, saude_pasta()):
+            print(f"[saude] triagem {chave}: " + (v.get("erro") or ("problema → líder avisado" if v.get("problema") else
+                                                                     "falso positivo (silenciado)")), flush=True)
+    except Exception as e:
+        print(f"[saude] triagem: {str(e)[:160]}", flush=True)
+
+
 def saude_get():
-    """GET /saude: saude_atual() + "ignorados" ({chave: {motivo, quando, origem}}) e os últimos 20 "pedidos" ao líder, cada um
-    com "entregue" (o vigia do líder já o leu pelo `saude.py --pendentes`). Os itens ignorados seguem na lista (o painel separa)."""
-    dados = dict(saude_atual(), ignorados=saude.ler_ignorados(saude_pasta()))
-    limite = saude.ultimo_entregue(saude_pasta()) or 0
-    dados["pedidos"] = [dict(p, entregue=p["ts"] <= limite) for p in saude.ler_pedidos(saude_pasta())[-20:]]
+    """GET /saude: saude_atual() + "ignorados" ({chave: {motivo, quando, origem}}), os últimos 20 "pedidos" ao líder (cada um
+    com "entregue" e "cancelado"), os "resolvidos" das últimas 24 h e a "triagem" (modelo, veredictos, chamadas de hoje e
+    teto). Os itens ignorados seguem na lista (o painel separa)."""
+    pasta = saude_pasta()
+    dados = dict(saude_atual(), ignorados=saude.ler_ignorados(pasta))
+    limite = saude.ultimo_entregue(pasta) or 0
+    ciclo = saude.ler_ciclo(pasta)
+    canc = ciclo["cancelados"]
+    dados["pedidos"] = [dict(p, entregue=p["ts"] <= limite and str(p["ts"]) not in canc, cancelado=str(p["ts"]) in canc)
+                        for p in saude.ler_pedidos(pasta)[-20:]]
+    agora = time.time()
+    dados["resolvidos"] = [r for r in ciclo["resolvidos"] if agora - saude._num(r.get("quando")) < saude.RESOLVIDOS_H * 3600]
+    tri = saude.ler_triagem(pasta)
+    dados["triagem"] = {"modelo": saude_triagem.modelo_configurado(), "veredictos": tri["veredictos"],
+                        "hoje": tri["hoje"] if tri["dia"] == time.strftime("%Y-%m-%d") else 0, "teto": saude_triagem.TETO_DIA}
     return dados
 
 
@@ -792,7 +844,26 @@ def saude_avisar(dados, ident):
     return 200, {"ok": True, "pedido": dict(ped, entregue=False)}
 
 
-ACOES_SAUDE = {"/api/saude/ignorar": saude_ignorar, "/api/saude/avisar": saude_avisar}
+def saude_triagem_post(dados, ident):
+    """POST /api/saude/triagem {"chave", "acao": "desfazer"}: desfaz o "falso positivo" da triagem (o item volta a alertar)."""
+    chave, _ = _validar_saude(dados, "_nada", 0)
+    if chave is None:
+        return 400, {"ok": False, "erro": "chave inválida"}
+    if dados.get("acao") != "desfazer":
+        return 400, {"ok": False, "erro": "acao deve ser 'desfazer'"}
+    try:
+        ok = saude_triagem.desfazer(chave, ident.get("nome") or "PC", dados.get("_ua") or "", saude_pasta())
+    except OSError as e:
+        return 500, {"ok": False, "erro": "não consegui gravar: " + str(e)[:150]}
+    if not ok:
+        return 404, {"ok": False, "erro": "este item não está marcado como falso positivo pela triagem"}
+    dados["_detalhe"] = "desfazer falso positivo " + chave
+    dados["pr"] = int(chave.split(":", 1)[1]) if chave.startswith("parado:") else None
+    print(f"[saude] falso positivo desfeito: {chave}", flush=True)
+    return 200, {"ok": True, "triagem": saude.ler_triagem(saude_pasta())["veredictos"]}
+
+
+ACOES_SAUDE = {"/api/saude/ignorar": saude_ignorar, "/api/saude/avisar": saude_avisar, "/api/saude/triagem": saude_triagem_post}
 
 
 def saude_laco(parar):
@@ -801,9 +872,12 @@ def saude_laco(parar):
         return
     while not parar.is_set():
         try:
-            saude_atual()
+            dados = saude_atual()
         except Exception as e:
+            dados = None
             print(f"[saude] {str(e)[:160]}", flush=True)
+        if isinstance(dados, dict) and not dados.get("erro"):
+            triagem_saude(dados)   # fora do caminho das requisições; no máximo MAX_POR_RODADA chamadas por rodada
         parar.wait(SAUDE_VALIDADE)
 
 
@@ -819,8 +893,8 @@ def criar_alertas(obj_rede):
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
     fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
               "sugestoes": sugestoes_para_alertas, "cota": VIGIA.resumo,
-              # itens ignorados no painel Saúde não alertam (alertas._detectar_saude)
-              "saude": lambda: dict(saude_atual(), ignorados=sorted(saude.ler_ignorados(saude_pasta())))}
+              # itens ignorados no painel Saúde, falsos positivos da triagem e itens novos esperando a triagem não alertam
+              "saude": _saude_para_alertas}
     # "sugestoes" leva o PRONTO da thread de validações: o alerta pr_pronto usa a mesma regra do painel PRs (prs.js);
     # antes da 1ª rodada do PRONTO (pronto_carregado False) o detector não mexe no estado dos PRs
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)

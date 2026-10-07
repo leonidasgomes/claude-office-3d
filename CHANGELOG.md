@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.16.0
+- **Atenção ao atualizar:** a triagem vem LIGADA por padrão (até 30 chamadas por dia do modelo barato no seu plano).
+  Para desligar: `"sugestoes": {"saude_triagem": ""}` no `config.json`.
+- **Triagem do painel 🩺 Saúde por um modelo barato** (`saude_triagem.py`, novo; `saude.py`, `servidor.py`): cada item NOVO
+  (trabalho duplicado, agente em círculos, PR parado) é avaliado uma vez pelo modelo de `sugestoes.saude_triagem` no
+  `config.json` (sem essa chave, o mesmo de `sugestoes.triagem_modelo`, o Haiku), pelo seu Claude Code (`claude -p` sem
+  ferramentas, sem MCP e sem sessão, a partir da pasta do escritório).
+  - **Problema real** → o líder é avisado automaticamente uma vez pelo vigia: `[vigia saude] triagem (modelo barato): ...`,
+    com o aviso de que é um palpite e nada destrutivo deve ser feito sem você (`vigia_lider.AVISO_TRIAGEM`). **Acrescente
+    ao prompt do líder** a regra nova de `INSTALACAO.md` §11.
+  - **Falso positivo** → o item não alerta nem acorda o líder até se resolver; aparece em "Silenciados pela triagem" com o
+    motivo e o botão **↩️ Desfazer falso positivo** (só no PC). Gravidade "alta" nunca é silenciada.
+  - Um duplicado ou círculo novo espera o veredicto até 15 min antes de alertar (PR parado não espera). Se a triagem falhar (sem `claude`, resposta inválida,
+    tempo esgotado), tudo funciona como antes.
+  - **Custo**: no máximo 3 chamadas a cada 5 min e **30 por dia** (a mesma ocorrência nunca é reavaliada; um item que vai e
+    volta, no máximo 2 vezes por dia), cada uma com o contexto curto de um item. O gasto fica em
+    `dados/saude_triagem.json` (`custo_usd`) e a contagem do dia no painel.
+  - **Para desligar**: `"sugestoes": {"saude_triagem": ""}` no `config.json`. Nome de modelo inválido também desliga.
+  - Segurança: branch, título de PR e comando vão ao modelo marcados como dado e escapados; a resposta é validada
+    (enums e tamanho) e a linha ao líder sai de um modelo fixo, com só o motivo (saneado e marcado como dado) em texto livre.
+    No Windows só o `claude.exe` é usado (`claude.cmd`/`.bat` passariam os argumentos pelo `cmd.exe`); no Linux/macOS, o
+    `claude` de sempre.
+- **Ignorar vale só para a ocorrência** (`saude.py`): quando o problema some (numa rodada com o GitHub e o git
+  respondendo), o item vai para **Resolvidos (24 h)**, o "Ignorar" e o veredicto da triagem expiram e o pedido ao líder
+  ainda não entregue é cancelado. Se o problema voltar, alerta de novo.
+- **Painel Saúde** (`saude_painel.js`, `saude_painel.css`): veredicto 🤖 em cada item, seções "Silenciados pela triagem" e
+  "Resolvidos (24 h)", pedido "cancelado: resolvido". Nova rota `POST /api/saude/triagem` (só do PC, com os mesmos
+  cabeçalhos de navegador das outras ações do painel).
+- **Testes** (`ferramentas/testar_saude.py`): triagem com modelo falso (nunca chama o modelo de verdade), injeção no dado e
+  na resposta, teto do dia, oscilação, resolvidos e cancelamento.
+
+
 ## 1.15.0
 **Rode `instalar.py` de novo** (ou `instalar.bat` / `instalar.sh`) para ganhar o hook `PostToolUseFailure`: sem ele o
 escritório não fica sabendo quando um comando falha (o ✖ e o ⚠️ abaixo não aparecem). O instalador só acrescenta o que

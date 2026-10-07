@@ -19,6 +19,7 @@ Uso: python saude.py --pendentes   imprime os pedidos do desenvolvedor ainda nã
                                    e círculos não ignorados) ou NADA (para o vigia do líder)
 """
 import json
+import math
 import os
 import re
 import subprocess
@@ -40,6 +41,14 @@ MAX_PEDIDOS = 200                             # saude_pedidos.jsonl guarda só o
 SEM_ESTADO_H = 24                             # sem o arquivo de estado, só os pedidos das últimas 24 h são entregues
 TRAVA_VALIDADE = 60
 PREFIXO_PEDIDO = "pedido do desenvolvedor: "
+PREFIXO_TRIAGEM = "triagem (modelo barato): "  # aviso automático ao líder (saude_triagem.py), entregue como os pedidos
+CICLO = "saude_ciclo.json"                    # {"ts", "vistos": {chave: desc}, "resolvidos": [...], "cancelados": {ts: quando}}
+TRIAGEM = "saude_triagem.json"                # {"veredictos": {chave: {...}}, "dia", "hoje", "chamadas", "custo_usd"}
+RESOLVIDOS_H = 24                             # "Resolvidos" no painel: itens que saíram nas últimas 24 h
+MAX_RESOLVIDOS, MAX_VISTOS = 100, 500
+GRAVIDADES = ("baixa", "media", "alta")
+ACOES_TRIAGEM = ("juntar", "fechar_um", "parar_e_repensar", "retomar_pr", "nenhuma")
+TIPO_DA_CHAVE = {"dup": "trabalho duplicado", "circulo": "agente andando em círculos", "parado": "PR parado"}
 VALIDADE_ARQ = 1800        # s: saude.json mais velho que isso é ignorado pela linha de comando (servidor parado)
 JANELA_ATIVA_H = 48        # branch local com commit mais novo que isso conta como trabalho em andamento
 MIN_SLUG = 8               # nome de branch (sem prefixo e número) mais curto que isso não serve para comparar
@@ -213,14 +222,17 @@ def parados(prs, agora, horas=PARADO_H, situacao=None):
 
 
 def branches_locais(repo):
-    """Branches locais do repositório com a data do último commit (só leitura). [] se não for um repositório git."""
+    """Branches locais do repositório com a data do último commit (só leitura). [] = nenhuma branch; None = o git FALHOU
+    (sem git, pasta que não é repositório, timeout): aí resumo() marca `sem_locais` e nenhum duplicado conta como resolvido."""
     try:
         r = subprocess.run(["git", "-C", str(repo), "for-each-ref", "--format=%(refname:short)|%(committerdate:unix)", "refs/heads"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.SubprocessError):
-        return []
+        return None
+    if r.returncode != 0:
+        return None
     saida = []
-    for linha in r.stdout.splitlines() if r.returncode == 0 else []:
+    for linha in r.stdout.splitlines():
         nome, _, quando = linha.rpartition("|")
         if nome and quando.isdigit():
             saida.append({"branch": nome, "quando": int(quando)})
@@ -232,9 +244,12 @@ def resumo(prs, locais, eventos, agora, situacao=None, parado_h=PARADO_H):
     PRONTO): só os círculos, que dependem só dos eventos locais; o detector não mexe em duplicados nem parados."""
     if prs is None:
         return {"ts": round(agora), "circulos": circulos(eventos, agora), "sem_prs": True}
-    return {"ts": round(agora), "duplicados": duplicados(prs, locais, agora), "circulos": circulos(eventos, agora),
-            "parados": parados(prs, agora, parado_h, situacao),
-            "abertos": sorted(pr["numero"] for pr in prs or [] if isinstance(pr, dict) and isinstance(pr.get("numero"), int))}
+    d = {"ts": round(agora), "duplicados": duplicados(prs, locais or [], agora), "circulos": circulos(eventos, agora),
+         "parados": parados(prs, agora, parado_h, situacao),
+         "abertos": sorted(pr["numero"] for pr in prs or [] if isinstance(pr, dict) and isinstance(pr.get("numero"), int))}
+    if locais is None:   # git falhou: duplicados só com os PRs; um duplicado ausente pode ser falta de dado (ausente())
+        d["sem_locais"] = True
+    return d
 
 
 # ---------------------------------------------------------------- chaves, ignorados e pedidos ao líder
@@ -304,7 +319,7 @@ def _trocar(tmp, arq):
 
 
 def _num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else 0   # nem bool, nem NaN
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else 0   # nem bool, NaN ou infinito
 
 
 def ler_ignorados(pasta=None):
@@ -374,15 +389,19 @@ def ler_pedidos(pasta=None):
     return saida
 
 
-def registrar_pedido(chave, texto, pasta=None, agora=None, recado="", origem="", ua=""):
+def registrar_pedido(chave, texto, pasta=None, agora=None, recado="", origem="", ua="", triagem=None):
     """Acrescenta {ts, chave, texto, recado, origem, ua} em dados/saude_pedidos.jsonl (uma linha; ts sempre crescente) e guarda
-    só os últimos MAX_PEDIDOS (troca atômica). `texto` é do servidor (descrever); o `recado` digitado fica em campo separado."""
+    só os últimos MAX_PEDIDOS (troca atômica). `texto` é do servidor (descrever); o `recado` digitado fica em campo separado.
+    `triagem` ({"gravidade", "acao", "motivo"} já validados): aviso automático da triagem (tipo_pedido "triagem")."""
     arq = Path(pasta or PASTA_DADOS) / PEDIDOS
     with _trava:
         antigos = ler_pedidos(pasta)
         ultimo = max([p["ts"] for p in antigos] or [0])
         ped = {"ts": round(max(agora or time.time(), ultimo + 0.001), 3), "chave": chave, "texto": texto_linha(texto, MAX_TEXTO),
                "recado": texto_linha(recado, MAX_TEXTO), "origem": texto_linha(origem, 40), "ua": texto_linha(ua, 120)}
+        if triagem:
+            ped.update(tipo_pedido="triagem", gravidade=str(triagem.get("gravidade")), acao=str(triagem.get("acao")),
+                       motivo=texto_linha(triagem.get("motivo"), 160))
         arq.parent.mkdir(parents=True, exist_ok=True)
         if len(antigos) + 1 > MAX_PEDIDOS:
             tmp = arq.with_name(arq.name + ".tmp")
@@ -402,7 +421,15 @@ def ultimo_entregue(pasta=None):
 
 
 def linha_pedido(p):
-    """"pedido do desenvolvedor: <texto do servidor>; recado: "<o que ele digitou>"" numa linha só, sem controle."""
+    """"pedido do desenvolvedor: <texto do servidor>; recado: "<o que ele digitou>"" numa linha só, sem controle. O aviso da
+    triagem sai por TEMPLATE fixo: só o tipo (da chave), a chave e o motivo marcados como dado e os enums revalidados."""
+    if p.get("tipo_pedido") == "triagem":
+        chave = str(p.get("chave") or "")
+        g = p.get("gravidade") if p.get("gravidade") in GRAVIDADES else "?"
+        a = p.get("acao") if p.get("acao") in ACOES_TRIAGEM else "?"
+        mot = texto_linha(p.get("motivo"), 160).replace('"', "'")
+        return (f"{PREFIXO_TRIAGEM}{TIPO_DA_CHAVE.get(chave.partition(':')[0], 'item')} {dado(chave)} — gravidade {g}, "
+                f'ação sugerida {a}; motivo (dado): "{mot}"')
     rec = texto_linha(p.get("recado"), MAX_TEXTO).replace('"', "'")
     return PREFIXO_PEDIDO + texto_linha(p.get("texto"), MAX_TEXTO) + (f'; recado: "{rec}"' if rec else "")
 
@@ -426,10 +453,12 @@ def _travar(arq):
     return False
 
 
-def pedidos_a_entregar(pasta=None, entregar=None, agora=None):
-    """Linhas "pedido do desenvolvedor: ..." ainda não entregues. Chama `entregar(linhas)` (ex.: imprimir) ANTES de gravar o
-    estado (último ts em saude_pedidos_estado.json): se a gravação falhar, entregar de novo é melhor que perder. Sem o
-    arquivo de estado, só os pedidos das últimas SEM_ESTADO_H horas. Com outro processo entregando (trava), devolve []."""
+def pedidos_a_entregar(pasta=None, entregar=None, agora=None, dados=None):
+    """Linhas "pedido do desenvolvedor: ..." / "triagem (modelo barato): ..." ainda não entregues. Chama `entregar(linhas)`
+    (ex.: imprimir) ANTES de gravar o estado (último ts em saude_pedidos_estado.json): se a gravação falhar, entregar de novo
+    é melhor que perder. Sem o arquivo de estado, só os pedidos das últimas SEM_ESTADO_H horas. Com outro processo entregando
+    (trava), devolve []. Pedido cancelado (item resolvido antes da entrega: `cancelados` do saude_ciclo.json, ou ausente em
+    `dados` calculado depois do pedido) não sai, mas conta como visto."""
     pasta = Path(pasta or PASTA_DADOS)
     pasta.mkdir(parents=True, exist_ok=True)
     trava = pasta / PEDIDOS_TRAVA
@@ -442,8 +471,10 @@ def pedidos_a_entregar(pasta=None, entregar=None, agora=None):
         novos = [p for p in ler_pedidos(pasta) if p["ts"] > limite]
         if not novos:
             return []
-        linhas = [linha_pedido(p) for p in novos]
-        if entregar:
+        canc = ler_ciclo(pasta)["cancelados"]
+        linhas = [linha_pedido(p) for p in novos if str(p["ts"]) not in canc
+                  and not (p["ts"] < _num((dados or {}).get("ts")) and ausente(str(p.get("chave") or ""), dados))]
+        if entregar and linhas:
             entregar(linhas)
         try:
             _gravar(pasta / PEDIDOS_ESTADO, {"ultimo_ts": max(p["ts"] for p in novos)})
@@ -455,6 +486,154 @@ def pedidos_a_entregar(pasta=None, entregar=None, agora=None):
             os.remove(trava)
         except OSError:
             pass
+
+
+# ---------------------------------------------------------------- rodada: resolvidos, expiração e cancelamento
+def presentes(dados):
+    """{chave: descrição curta} de tudo o que `dados` (saude.resumo) mostra: duplicados (fortes e fracos), círculos e parados."""
+    out = {}
+    if not isinstance(dados, dict):
+        return out
+    for grupo in ("fortes", "fracos"):
+        for x in (dados.get("duplicados") or {}).get(grupo) or []:
+            if isinstance(x, dict) and x.get("branches"):
+                out[chave_dup(x)] = texto_linha(", ".join(map(str, x["branches"])), 200)
+    for c in dados.get("circulos") or []:
+        if isinstance(c, dict):
+            out[chave_circulo(c)] = texto_linha(f"{c.get('agente')} em {c.get('arquivo')}", 200)
+    for x in dados.get("parados") or []:
+        if isinstance(x, dict):
+            out[chave_parado(x)] = texto_linha(f"PR #{x.get('numero')} {x.get('titulo') or ''}", 200)
+    return out
+
+
+def ausente(chave, dados):
+    """True só se `dados` é completo para o tipo da chave e ela não está lá. Com sem_prs (GitHub fora ou PRONTO não carregado)
+    duplicados e parados faltam por falta de dado, não por resolução: só um círculo pode estar ausente."""
+    if not isinstance(dados, dict) or dados.get("erro") or not chave:
+        return False
+    if dados.get("sem_prs") and not chave.startswith("circulo:"):
+        return False
+    if dados.get("sem_locais") and chave.startswith("dup:"):   # git falhou: duplicado ausente pode ser só falta das branches locais
+        return False
+    return chave not in presentes(dados)
+
+
+def ler_ciclo(pasta=None):
+    c = _ler(Path(pasta or PASTA_DADOS) / CICLO, {})
+    return {"ts": _num(c.get("ts")), "vistos": c.get("vistos") if isinstance(c.get("vistos"), dict) else {},
+            "desde": c.get("desde") if isinstance(c.get("desde"), dict) else {},
+            "resolvidos": [r for r in c.get("resolvidos") or [] if isinstance(r, dict) and chave_valida(r.get("chave"))],
+            "cancelados": c.get("cancelados") if isinstance(c.get("cancelados"), dict) else {}}
+
+
+PENDENTE_MAX_S = 300   # chamada ao modelo (timeout 90 s) que não terminou nisso foi interrompida
+
+
+def ler_triagem(pasta=None):
+    t = _ler(Path(pasta or PASTA_DADOS) / TRIAGEM, {})
+    ver = t.get("veredictos") if isinstance(t.get("veredictos"), dict) else {}
+    pc = t.get("por_chave") if isinstance(t.get("por_chave"), dict) else {}
+    agora = time.time()
+    ver = {k: (dict(v, pendente=False, erro="triagem interrompida") if v.get("pendente") and agora - _num(v.get("quando")) > PENDENTE_MAX_S
+               else v) for k, v in ver.items() if isinstance(v, dict)}
+    return {"veredictos": {k: v for k, v in ver.items() if chave_valida(k) and isinstance(v, dict)},
+            "dia": str(t.get("dia") or ""), "hoje": int(_num(t.get("hoje"))), "chamadas": int(_num(t.get("chamadas"))),
+            "custo_usd": float(_num(t.get("custo_usd"))),
+            # por chave, sobrevive à expiração do veredicto: {"dia", "n" (triagens no dia), "aviso" (ts do último aviso)}
+            "por_chave": {k: v for k, v in pc.items() if chave_valida(k) and isinstance(v, dict)}}
+
+
+def silencia(v):
+    """Veredicto que silencia: falso positivo não desfeito e de gravidade baixa ou média (falso positivo "alta" é contraditório
+    ou induzido por dado de terceiros: vira alerta normal)."""
+    return isinstance(v, dict) and v.get("problema") is False and not v.get("desfeito") and v.get("gravidade") != "alta"
+
+
+def silenciados(triagem):
+    """Chaves que a triagem julgou falso positivo (e o desenvolvedor não desfez): não alertam nem vão ao --pendentes."""
+    return {k for k, v in (triagem or {}).get("veredictos", {}).items() if silencia(v)}
+
+
+def rodada(dados, pasta=None, agora=None):
+    """Depois de cada cálculo (servidor.saude_atual): o que estava na rodada anterior e saiu vira "resolvido" (24 h no painel);
+    ignorado, veredicto da triagem e pedido não entregue de um item ausente numa rodada calculada DEPOIS deles expiram
+    (ignorar vale só para a ocorrência atual: se voltar, alerta de novo). Respeita sem_prs (ausente()). Devolve o resumo."""
+    if not isinstance(dados, dict) or dados.get("erro"):
+        return {}
+    agora = agora or time.time()
+    ts = _num(dados.get("ts")) or agora
+    pasta = Path(pasta or PASTA_DADOS)
+    with _trava:
+        ciclo = ler_ciclo(pasta)
+        pres = presentes(dados)
+        antes = ciclo["vistos"]
+        resolvidos_agora = [k for k in antes if ausente(k, dados)]
+        vistos = {k: v for k, v in antes.items() if k not in resolvidos_agora}
+        vistos.update(pres)
+        vistos = dict(list(vistos.items())[-MAX_VISTOS:])
+        res = [r for r in ciclo["resolvidos"] if agora - _num(r.get("quando")) < RESOLVIDOS_H * 3600 and r["chave"] not in pres]
+        res += [{"chave": k, "quando": round(agora), "desc": texto_linha(antes[k], 200)} for k in resolvidos_agora]
+        ign = ler_ignorados(pasta)
+        expirados = [k for k, v in ign.items() if ausente(k, dados) and _num(v.get("quando")) < ts]
+        if expirados:
+            for k in expirados:
+                del ign[k]
+            _gravar(pasta / IGNORADOS, ign)
+        tri = ler_triagem(pasta)
+        tri_exp = [k for k, v in tri["veredictos"].items() if ausente(k, dados) and _num(v.get("quando")) < ts]
+        if tri_exp:
+            for k in tri_exp:
+                del tri["veredictos"][k]
+            _gravar(pasta / TRIAGEM, tri)
+        ult = ultimo_entregue(pasta) or 0
+        peds = ler_pedidos(pasta)
+        canc = dict(ciclo["cancelados"])
+        cancelados_agora = []
+        for p in peds:
+            k = str(p["ts"])
+            if p["ts"] > ult and k not in canc and p["ts"] < ts and ausente(str(p.get("chave") or ""), dados):
+                canc[k] = round(agora)
+                cancelados_agora.append(p.get("chave"))
+        validos = {str(p["ts"]) for p in peds}
+        canc = {k: v for k, v in canc.items() if k in validos}
+        novo_em = round(agora) if _num(ciclo.get("ts")) else round(agora) - SEGURAR_MIN * 60 - 1   # sem ciclo anterior: já existia
+        desde = {k: ciclo["desde"].get(k) if _num(ciclo["desde"].get(k)) else novo_em for k in vistos}
+        _gravar(pasta / CICLO, {"ts": ts, "vistos": vistos, "desde": desde, "resolvidos": res[-MAX_RESOLVIDOS:], "cancelados": canc})
+    return {"resolvidos": resolvidos_agora, "ignorados_expirados": expirados, "triagem_expirada": tri_exp,
+            "pedidos_cancelados": cancelados_agora}
+
+
+SEGURAR_MIN = 15   # item novo (duplicado forte, círculo) espera o veredicto da triagem até 15 min antes de alertar/acordar o líder
+
+
+def segurados(dados, triagem, ciclo, triagem_ativa, agora=None, max_por_chave=2):
+    """Chaves de duplicados fortes e círculos NOVOS ainda sem veredicto, vistos pela 1ª vez há menos de SEGURAR_MIN: o alerta e
+    o --pendentes esperam a triagem (evita acordar o líder antes de ela dizer se é falso positivo). Triagem desligada ou
+    indisponível (triagem_ativa False) → nada é segurado: comportamento de antes."""
+    if not triagem_ativa or not isinstance(dados, dict):
+        return set()
+    agora = agora or time.time()
+    ver, desde = (triagem or {}).get("veredictos", {}), (ciclo or {}).get("desde", {})
+    chaves = [chave_dup(d) for d in (dados.get("duplicados") or {}).get("fortes") or [] if isinstance(d, dict)]
+    chaves += [chave_circulo(c) for c in dados.get("circulos") or [] if isinstance(c, dict)]
+    por_chave, hoje = (triagem or {}).get("por_chave", {}), time.strftime("%Y-%m-%d", time.localtime(agora))
+    out = set()
+    for k in chaves:
+        v = ver.get(k)
+        if v and not v.get("pendente"):
+            continue   # já tem veredicto (problema, falso positivo ou erro): segue a regra normal
+        pc = por_chave.get(k) if isinstance(por_chave, dict) else None
+        if isinstance(pc, dict) and pc.get("dia") == hoje and _num(pc.get("n")) >= max_por_chave:
+            continue   # a triagem desta chave já esgotou hoje: o veredicto não vem, não adianta segurar
+        d = _num(desde.get(k))
+        if not d:
+            continue   # sem "desde" válido (ciclo não gravado, apagado, 1ª leitura): falha aberto, alerta como antes
+        if d > agora:
+            continue   # "desde" no futuro (relógio voltou): inválido, falha aberto
+        if agora - d < SEGURAR_MIN * 60:
+            out.add(k)
+    return out
 
 
 def pendentes(dados, agora=None, ignorados=()):
@@ -487,8 +666,16 @@ def main():
     def imprimir(linhas):
         print("\n".join(linhas), flush=True)
         impressas.extend(linhas)
-    pedidos_a_entregar(entregar=imprimir)
-    linhas = pendentes(dados, ignorados=ler_ignorados())
+    fresco = dados if isinstance(dados, dict) and time.time() - _num(dados.get("ts")) <= VALIDADE_ARQ else None
+    pedidos_a_entregar(entregar=imprimir, dados=fresco)
+    # ignorados no painel, falsos positivos da triagem (não desfeitos) e itens novos esperando a triagem não acordam o líder
+    tri = ler_triagem()
+    try:
+        import saude_triagem   # import tardio: saude_triagem importa saude
+        ativa = saude_triagem.disponivel(tri)
+    except Exception:
+        ativa = False
+    linhas = pendentes(dados, ignorados=set(ler_ignorados()) | silenciados(tri) | segurados(dados, tri, ler_ciclo(), ativa))
     if linhas:
         print("\n".join(linhas))
     elif not impressas:

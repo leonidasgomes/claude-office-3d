@@ -43,6 +43,12 @@ function urlPr(n) {
   return repo() ? `https://github.com/${repo()}/pull/${n}` : '';
 }
 
+// triagem barata (saude_triagem.py): veredicto por chave; falso positivo não desfeito = silenciado
+const veredictos = () => (dados && dados.triagem && typeof dados.triagem.veredictos === 'object' && dados.triagem.veredictos) || {};
+// a mesma regra de saude.silencia: falso positivo de gravidade "alta" não silencia (vira alerta normal)
+const silenciado = (k) => { const v = veredictos()[k]; return !!v && v.problema === false && !v.desfeito && v.gravidade !== 'alta'; };
+const ROT_ACAO = { juntar: 'juntar', fechar_um: 'fechar um', parar_e_repensar: 'parar e repensar', retomar_pr: 'retomar o PR', nenhuma: 'nenhuma' };
+
 // chaves estáveis (as mesmas de saude.chave_dup / chave_circulo / chave_parado)
 const chaveDup = (d) => 'dup:' + [...(d.branches || [])].map(String).sort().join(',');
 const chaveCirculo = (c) => `circulo:${c.agente}:${c.arquivo}`;
@@ -91,6 +97,17 @@ async function ignorar(chave, valor, motivo, b) {
     if (dados) dados.ignorados = j.ignorados || {};
     formAberto = ''; rascunho = ''; atrasado = false;
     msgAcao = valor ? '🙈 Ignorado: não alerta mais nem acorda o líder (fica em "Ignorados").' : '↩️ Reativado: volta a alertar.';
+  } catch (e) {
+    msgAcao = '⚠️ Não deu: ' + e.message;
+  }
+  desenhar();
+}
+async function desfazerFP(chave, b) {
+  b.disabled = true;
+  try {
+    const j = await postar('/api/saude/triagem', { chave, acao: 'desfazer' });
+    if (dados && dados.triagem) dados.triagem.veredictos = j.triagem || {};
+    msgAcao = '↩️ Falso positivo desfeito: o item volta a alertar e a acordar o líder.';
   } catch (e) {
     msgAcao = '⚠️ Não deu: ' + e.message;
   }
@@ -176,15 +193,47 @@ function acoes(chave, links) {
       botaoForm('ignorar', chave, '🙈 Ignorar', 'Não alerta mais nem acorda o líder por este item (dá para reativar)'));
   }
   if (linha.childElementCount) caixa.append(linha);
-  const ped = [...((dados && dados.pedidos) || [])].reverse().find((p) => p.chave === chave);
-  if (ped) {
-    const d = el('div', 'saude-pedido', `📨 pedido ao líder às ${hora(ped.ts)} — ${ped.entregue ? 'entregue pelo vigia' : 'aguardando o vigia'}`
-      + (ped.recado ? ` · recado: "${ped.recado}"` : '') + ' ');
-    d.append(quemFez(ped));
-    caixa.append(d);
-  }
+  const t = linhaTriagem(chave);
+  if (t) caixa.append(t);
+  const ped = [...((dados && dados.pedidos) || [])].reverse().find((p) => p.chave === chave && p.tipo_pedido !== 'triagem');
+  if (ped) caixa.append(linhaPedido(ped));
   if (formAberto.endsWith('|' + chave)) caixa.append(formulario(formAberto.split('|')[0], chave));
   return caixa;
+}
+
+function situacaoPedido(p) {
+  return p.cancelado ? 'cancelado: resolvido antes da entrega' : p.entregue ? 'entregue pelo vigia' : 'aguardando o vigia';
+}
+function linhaPedido(ped) {
+  const d = el('div', 'saude-pedido' + (ped.cancelado ? ' cancelado' : ''), `📨 pedido ao líder às ${hora(ped.ts)} — ${situacaoPedido(ped)}`
+    + (ped.recado ? ` · recado: "${ped.recado}"` : '') + ' ');
+  d.append(quemFez(ped));
+  return d;
+}
+// veredicto da triagem barata do item (🤖) e se o líder já foi avisado automaticamente
+function linhaTriagem(chave) {
+  const v = veredictos()[chave];
+  if (!v) return null;
+  const d = el('div', 'saude-triagem' + (v.erro ? ' erro' : v.problema ? ' problema' : ' falso'));
+  if (v.pendente) {
+    d.textContent = '🤖 triagem em andamento — o alerta espera o veredicto (até 15 min)';
+    return d;
+  }
+  if (v.erro) {
+    d.textContent = '🤖 triagem indisponível (' + v.erro + ') — alerta normal, sem aviso automático';
+    return d;
+  }
+  if (v.problema) {
+    const aviso = [...((dados && dados.pedidos) || [])].reverse().find((p) => p.chave === chave && p.tipo_pedido === 'triagem');
+    d.textContent = `🤖 triagem: problema real (gravidade ${v.gravidade}, ação sugerida: ${ROT_ACAO[v.acao] || v.acao}) — ${v.motivo}`
+      + (aviso ? ` · líder avisado automaticamente às ${hora(aviso.ts)} (${situacaoPedido(aviso)})` : '')
+      + (v.aviso_suprimido ? ' · sem novo aviso: a mesma chave já avisou o líder nas últimas 24 h' : '')
+      + (v.erro_aviso ? ' · o aviso ao líder não foi registrado (' + v.erro_aviso + ')' : '');
+    return d;
+  }
+  d.textContent = `🤖 triagem: falso positivo — ${v.motivo}` + (v.desfeito ? ` · desfeito por ${v.desfeito_por || '?'} às ${hora(v.desfeito)}` : '')
+    + (v.gravidade === 'alta' && !v.desfeito ? ' · gravidade alta: não silencia (alerta normal)' : '');
+  return d;
 }
 
 // ---------------------------------------------------------------- itens
@@ -247,6 +296,35 @@ function itemIgnorado(chave, info_, ativo) {
     linha.append(b);
   }
   if (linha.childElementCount) li.append(linha);
+  return li;
+}
+
+function itemSilenciado(chave, ativo) {
+  const v = veredictos()[chave] || {};
+  const li = el('li', 'saude-item ignorado');
+  li.append(el('div', 'saude-titulo', descreverChave(chave)));
+  const meta = el('div', 'saude-meta');
+  meta.append(el('span', null, ativo ? 'ainda detectado' : 'não detectado agora'));
+  if (typeof v.quando === 'number') meta.append(el('span', null, 'triado às ' + hora(v.quando)));
+  if (v.modelo) meta.append(el('span', null, 'modelo ' + v.modelo));
+  li.append(meta, el('div', 'saude-motivo', '🤖 falso positivo (triagem): ' + (v.motivo || '')));
+  if (ehPc()) {
+    const linha = el('div', 'saude-acoes');
+    const b = el('button', 'botao', '↩️ Desfazer falso positivo');
+    b.type = 'button'; b.title = 'O item volta a alertar e a acordar o líder';
+    b.addEventListener('click', () => desfazerFP(chave, b));
+    linha.append(b); li.append(linha);
+  }
+  return li;
+}
+function itemResolvido(r) {
+  const li = el('li', 'saude-item resolvido');
+  li.append(el('div', 'saude-titulo', '✔ resolvido às ' + hora(r.quando) + ' — ' + descreverChave(r.chave)));
+  if (r.desc) li.append(el('div', 'saude-meta', r.desc));
+  for (const p of ((dados && dados.pedidos) || []).filter((x) => x.chave === r.chave && x.cancelado)) {
+    li.append(el('div', 'saude-pedido cancelado', (p.tipo_pedido === 'triagem' ? '🤖 aviso automático' : '📨 pedido ao líder')
+      + ` de ${hora(p.ts)} — cancelado: resolvido`));
+  }
   return li;
 }
 
@@ -328,7 +406,7 @@ function desenhar() {
   if (msgAcao) partes.push(el('p', msgAcao.startsWith('⚠️') ? 'saude-aviso' : 'saude-bom', msgAcao));
   if (dados && !dados.erro) {
     const ign = dados.ignorados && typeof dados.ignorados === 'object' ? dados.ignorados : {};
-    const fora = (k) => !(k in ign);
+    const fora = (k) => !(k in ign) && !silenciado(k);
     if (dados.sem_prs) partes.push(el('p', 'saude-aviso', '⏳ GitHub fora do ar ou escritório recém-iniciado: por enquanto só os círculos. '
       + 'Duplicados e PRs parados voltam em cerca de 1 minuto.'));
     const dup = dados.duplicados || { fortes: [], fracos: [] };
@@ -359,6 +437,17 @@ function desenhar() {
     partes.push(secao('ign', 'Ignorados', 'Itens que você mandou ignorar: não alertam nem acordam o líder, mas continuam sendo calculados. '
       + 'Reativar volta a alertar se o problema ainda existir.', chavesIgn.map((k) => itemIgnorado(k, ign[k], atuais.has(k))),
       'Nenhum item ignorado.', true));
+    const sil = Object.keys(veredictos()).filter(silenciado);
+    const tm = (dados.triagem && dados.triagem.modelo) || '';
+    partes.push(secao('sil', 'Silenciados pela triagem (falso positivo)', tm
+      ? `Um modelo barato (${tm}) avalia cada item novo; o que ele julga falso positivo não alerta nem acorda o líder até se `
+        + `resolver (se voltar depois, é avaliado de novo). Hoje: ${dados.triagem.hoje || 0} de ${dados.triagem.teto || 30} avaliações.`
+      : 'Triagem desligada (sugestoes.saude_triagem ou sugestoes.triagem_modelo = "" no config.json): todo item alerta normalmente.',
+    sil.map((k) => itemSilenciado(k, atuais.has(k))), 'Nenhum.', true));
+    const res = (Array.isArray(dados.resolvidos) ? dados.resolvidos : []).slice().sort((a, b) => (b.quando || 0) - (a.quando || 0));
+    partes.push(secao('res', 'Resolvidos (24 h)', 'Itens que estavam aqui e saíram (numa rodada com os dados completos: com o GitHub fora, '
+      + 'duplicados e PRs parados não contam como resolvidos). Ignorar e o veredicto da triagem valem só para a ocorrência: '
+      + 'expiram quando o item se resolve, e pedido ainda não entregue é cancelado.', res.map(itemResolvido), 'Nada resolvido nas últimas 24 h.', true));
     if (!ehPc()) partes.push(el('p', 'saude-msg', 'Ignorar e avisar o líder só pelo PC.'));
   }
   corpo.replaceChildren(...partes);
