@@ -53,6 +53,12 @@
     "resumo_horas": 3,
     "parado_horas": 24
   },
+  "grafo": {
+    "ativo": true,
+    "ref": "origin/main",
+    "arquivo": "",
+    "intervalo_min": 60
+  },
   "sugestoes": {
     "triagem_modelo": "claude-haiku-4-5-20251001",
     "intervalo_min": 15,

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.17.0
+- **Grafo de arquitetura para agentes** (`grafo/`, nova; copiada pelo instalador): `python grafo/grafo.py` mantém um grafo
+  de arquitetura do seu projeto **conferido contra o código** (imports/includes reais de Python, C/C++, JS/TS, C# e
+  scripts) e responde barato o que um agente pergunta antes de mexer: `init` (propõe um grafo; nunca sobrescreve),
+  `validate` (esquema, cobertura, camadas, ciclos e imports reais que o grafo não declara), `owner`/`suggest` (dono de um
+  arquivo), `slice` (recorte de um sistema em ~250–600 tokens), `impact` (o que a mudança afeta e que testes rodar),
+  `find`, `drift`, `index` e `sync-rules`. Nada chama modelo. Hooks opcionais do Claude Code **por projeto**
+  (`python grafo/claude/instalar_grafo.py --projeto <pasta> --aplicar`): contexto do sistema na 1ª edição, dono para
+  arquivo novo e `validate` no fim da tarefa. Manual em `grafo/LEIAME.md`.
+- **Painel 🗺️ Arquitetura** (`grafo_painel.py`, `arquitetura.js`, `arquitetura.css`, novos; `servidor.py`): sistemas em
+  colunas por camada, dependências declaradas, imports reais não declarados, camadas violadas e ciclos; ficha de cada
+  sistema; ao vivo, quem está lendo/editando cada sistema, ✖ de teste/build que falhou e 🔁 de quem anda em círculos; a
+  ficha do agente mostra o "sistema atual". O servidor lê o grafo **só leitura** pelo git, na ref `grafo.ref` (padrão
+  `origin/main`) da 1ª pasta de `projetos`, a cada `grafo.intervalo_min` (60). Sem grafo no projeto, o painel mostra como
+  criar um. Novo bloco `"grafo"` no `config.json` (`ativo`, `ref`, `arquivo`, `intervalo_min`; veja `INSTALACAO.md` §16).
+  Nova rota `GET /grafo`.
+- **Segurança e robustez do grafo** (verificação independente): o `instalar_grafo.py` recusa (código 2) quando o alvo
+  seria o `~/.claude/settings.json` do usuário (rodado na home, `--projeto ~` ou num repositório de dotfiles na home) e,
+  com `--copiar`, grava `python` no comando (o arquivo vai para o git do time) e avisa sobre `--python python3`; `includes`
+  que saem da raiz do projeto não são lidos; `name: 2024`/`status: true` no YAML viram texto (não quebram o índice nem o
+  painel); o painel não mostra o índice de outra configuração depois de mudar `grafo.ref`/`grafo.arquivo`/projeto; YAML
+  do grafo acima de 10 MB é recusado.
+- **Eventos do NotebookEdit** (`registrar_evento.py`): o caminho do notebook (`notebook_path`) entra no detalhe do evento.
+- **Testes** (`grafo/testes/testar_grafo.py`, `ferramentas/testar_grafo_painel.py`, novos; no CI).
+
 ## 1.16.2
 - **Segurança — arquivos internos não são mais servidos por URL disfarçada** (`servidor.py`): o bloqueio de `dados/`,
   scripts e `.json` olhava o caminho como chegava; com `%64ados`, `/x/../dados`, `dados.`, `dados::$DATA` (Windows) ou

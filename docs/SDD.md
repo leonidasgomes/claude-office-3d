@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.16.2 (arquivo `VERSION`) |
+| Versão descrita | 1.17.0 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -199,6 +199,7 @@ Princípios que aparecem em todo o código:
 | `alertas` | `alertas.Alertas.laco` | 8 s | `INTERVALO = 60` s | detector de alertas e entrega; a thread só sobe com `alertas.ativo` (`Alertas.iniciar`) |
 | cota | `cota.Vigia.laco` | 3 s | `INTERVALO = 300` s | lê a cota do GitHub |
 | `saude` | `saude_laco` | 30 s | `SAUDE_VALIDADE = 300` s | `saude_atual()` → `saude.rodada` e `dados/saude.json` (mesmo com os alertas desligados); depois de um cálculo que deu certo, `triagem_saude` → `saude_triagem.rodada` (no máximo 3 chamadas do modelo barato por rodada e 30 por dia; títulos dos PRs só do cache, sem GitHub) |
+| `grafo` | `grafo_painel.laco` | 5 s | `grafo.intervalo_min` (60 min; relido a cada rodada) | painel 🗺️ Arquitetura (só com `grafo.ativo` e "projetos"): lê só leitura (`git ls-tree` + `git cat-file --batch`, com vigia de `TIMEOUT_BLOBS = 300` s e sem `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` herdados) a árvore de `grafo.ref` (padrão `origin/main`; `ref_valida`) da 1ª pasta de `projetos`; acha o grafo (`achar_grafo`: `grafo.arquivo`, senão a chave `grafo` do `grafo.json`/`.grafo.json` do projeto, senão os nomes padrão do `grafo.py`) e lê, nele e nos `includes`, só as chaves estruturais de caminho; monta `dados/grafo/base.novo/` com os YAML, o texto da cobertura e os arquivos citados (texto até `MAX_ARQ = 1 MB`/`MAX_TOTAL = 80 MB`; binário ou grande vira vazio; nome inválido no Windows é pulado); roda `grafo/grafo.py index`, `validate --json` e `drift --json` (timeout 600 s cada) e só no sucesso troca `base.novo → base`, `index.json`/`resumo.txt` e `estado.json`. Mesmo commit e mesma configuração (`cfg`: projeto, ref, arquivo) não refazem; falha determinística (YAML inválido, sem grafo — `SemGrafo` —, `grafo.py` com erro) fica em `falha.json` e não repete por até `FALHA_VALIDADE` (6 h) para o mesmo commit e a mesma versão das ferramentas; falha transitória tenta de novo na rodada seguinte |
 | (sob demanda) | `custos()` | — | se `custos.json` > 1 h, no máximo a cada 10 min | dispara `custo_time.py` em subprocesso; sem `projetos` no config não faz nada e devolve `None` |
 
 - **Validades de cache**: Kanban 600 s, PRs 180 s, `mergeable` 1800 s (`MERGEAVEL_TTL`), máximo de 500 eventos por
@@ -492,6 +493,7 @@ Princípios que aparecem em todo o código:
 | `sw.js` | service worker: mostra a notificação do push e abre o painel certo | evento `push`, `notificationclick` |
 | `celular.js` + `qr.js` | painel 📱 (só em localhost): QR da CA e de pareamento, aparelhos, ajuda de Firewall; QR gerado em JS puro | `/rede/status` a cada 5 s com o painel aberto; `POST /rede/*` |
 | `movel.js` | detecção de celular/tela compacta (< 760 px ou altura < 480 px), gaveta inferior, menu ☰ | — |
+| `arquitetura.js` + `arquitetura.css` | painel 🗺️ Arquitetura (botão no menu, escondido sem servidor ou com `grafo.ativo` false; Esc fecha a ficha e depois o painel): grafo 2D em SVG gerado no JS (createElementNS/textContent), colunas por camada na ordem das `may_depend_on`, nós = sistemas (cor da camada, tamanho pelo nº de arquivos), arestas declaradas, imports reais não declarados e camadas violadas (vermelho tracejado) e ciclos reais (laranja); no celular (ou ☰ Lista) lista por camada; ficha do sistema (resumo, arquivos, depende de/usado por, imports não declarados, problemas do validate, eventos, testes, ADRs, quem mexeu hoje). Ao vivo, sem custo por quadro: eventos do escritório (`office-evento`, fora do replay) com `file_path`/`notebook_path` normalizados como o grafo (sem a raiz do projeto informada em `raiz` pelo `/grafo` e sem a do worktree `.claude/worktrees/<nome>/`) põem o anel do agente que mexeu nos últimos 10 min e o calor do dia (`/eventos?de=<hoje>` ao abrir); comando de teste/build com `ok:false` que cita um caminho do sistema põe ✖; círculos da `/saude` (`office-saude`) põem 🔁. Sem grafo no projeto (`sem_grafo`) mostra como criar um (`grafo.py init`). `window.__arquitetura` (`sistemaDe`, `nomeDe`) dá o "sistema atual" da ficha e da dica do agente (`escritorio.js`, último arquivo lido/editado) | `/grafo` 3 s depois de abrir a página, ao abrir o painel e a cada 5 min com ele aberto (30 min fechado); `/eventos?de=` |
 | `dica.js` | dica ⓘ acessível (`dica(texto, rotulo)` devolve o botão): abre com o mouse, o foco do teclado e o toque; Esc ou tocar fora fecha; um balão só para a página (`#dicaBalao`) e o texto também num `<span>` ligado por `aria-describedby`. Usada no Placar, no selo de risco do PR (`prs.js`; limites iguais a `saude.RISCO`) e nas seções do painel Saúde | — |
 
 Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMPO_REUNIAO = 20` s,
@@ -511,6 +513,29 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
 - `skills-candidatos/MODELO.md` e `skills-candidatos/externo/` (quarentena de skills de terceiros — `INSTALACAO.md` §12).
 
 ---
+
+### 3.20 `grafo/` e `grafo_painel.py` — grafo de arquitetura
+
+- **`grafo/grafo.py`** (CLI, só biblioteca padrão; PyYAML opcional — sem ele ou com `GRAFO_SEM_PYYAML=1`, `_MiniYaml` lê o
+  subconjunto do formato; a gravação é sempre `gravar_yaml`). Lê `ARCHITECTURE_GRAPH.yaml` com `includes` ou um YAML único
+  (`Grafo`); configuração em `grafo.json`/`.grafo.toml` na raiz do projeto (`ler_config`) ou `--grafo`. Extrai imports/includes
+  reais (`extrair_refs`: Python por `ast`, C/C++ `#include`, JS/TS `import`/`require`, C# `using`, scripts citados em
+  `.ps1`/`.sh`/`.bat`), resolve (`Resolvedor`), liga arquivo → sistema (`Donos`: exato > pasta mais longa) e classifica as
+  arestas reais entre sistemas em `declarada`, `evento` e `nao_declarada`. `validar`: esquema, arquivos e código (ciclo real e
+  camada violada são erro; aresta não declarada e dependência sem uso, aviso). Refs do git passam por `resolver_ref`. Comandos
+  `init`, `validate`, `owner`, `suggest`, `slice`, `impact`, `find`, `drift`, `index` (`.grafo/index.json` e `resumo.txt`,
+  determinísticos) e `sync-rules` (`.claude/rules/arq-*.md`, só com `--escrever`). Nada chama modelo.
+- **`grafo/claude/hooks/grafo_hook.py`**: `pre` (PreToolUse: contexto do sistema na 1ª edição por sessão), `post` (arquivo
+  novo sem dono + sugestão) e `fim` (Stop/TaskCompleted: `validate --base`; `--bloquear` bloqueia). Nunca derruba o agente.
+- **`grafo/claude/instalar_grafo.py`**: mostra/aplica (`--aplicar`) os hooks no `.claude/settings.json` **do projeto** (nunca no
+  do usuário: raiz resolvida na home ou alvo `~/.claude/settings.json` → código 2, `eh_do_usuario`), sem duplicar;
+  `--desinstalar`, `--copiar` (vendoriza em `.claude/grafo/`; o comando gravado usa `python`, não o caminho absoluto desta
+  máquina), `--skill`, `--bloquear`, `--fim`, `--python`. Include que sai da raiz do projeto não é lido (erro de leitura);
+  escalar não texto em campo de texto (`name: 2024`) vira texto. **`grafo/claude/SKILL.md`**: qual comando para qual pergunta. Manual: `grafo/LEIAME.md`.
+- **`grafo_painel.py`**: thread `grafo` (seção 3.4) e `resposta()` do `GET /grafo` (o index só é servido se `estado.cfg` é a
+  configuração atual — projeto|ref|arquivo —; senão `index` null e o aviso de que está sendo gerado; YAML do grafo acima de
+  `MAX_YAML_BYTES` = 10 × `MAX_ARQ` é falha determinística); projeto = 1ª pasta de `projetos`, `ref`,
+  `arquivo` e intervalo do bloco `grafo` do `config.json` (`servidor.opcoes_grafo`). Nunca escreve no repositório do projeto.
 
 ## 4. Modelo de dados
 
@@ -532,7 +557,7 @@ Formato do JSON em `evento.dados` (docstring de `registrar_evento.py`):
 ```json
 {"ts": "2026-10-01T14:30:00", "agente": "Dev", "tipo": "trabalho|fala|reuniao|subagente|ocioso",
  "para": ["Lider"], "ferramenta": "Bash", "resumo": "até 90 caracteres",
- "texto": "mensagem completa (fala/reunião, até 2000)", "detalhe": "comando ou arquivo (trabalho, até 400)"}
+ "texto": "mensagem completa (fala/reunião, até 2000)", "detalhe": "comando ou arquivo (trabalho, até 400: linhas `chave: valor` de skill, args, command, file_path, notebook_path, path, pattern, glob, url, query, prompt, subagent_type, name)"}
 ```
 
 Eventos `subagente` levam também `funcao` (tipo do subagente) e `modelo` (`registrar_evento.evento`). O `trabalho` do fim de
@@ -561,6 +586,10 @@ um comando Bash/PowerShell leva `ok` (true/false) e, na falha, `codigo` e `erro`
 | `dados/saude_pedidos.lock` | `saude.pedidos_a_entregar` | trava entre processos da entrega (some no fim; vence em 60 s) |
 | `dados/saude_ciclo.json` | `saude.rodada` (`servidor.saude_atual`) | `ts` da última rodada, `vistos` (chave → descrição), `desde` (chave → 1ª vez vista), `resolvidos` (24 h, até 100), `cancelados` (ts do pedido → quando) |
 | `dados/saude_triagem.json` | `saude_triagem.rodada`, `desfazer` | `veredictos` (chave → `problema`, `gravidade`, `acao`, `motivo`, `quando`, `modelo`, `avisado`, `erro`, `erro_aviso`, `aviso_suprimido`, `pendente`, `desfeito`), `dia`, `hoje`, `chamadas`, `custo_usd`, `por_chave` (chave → `dia`, `n`, `aviso`) |
+| `dados/grafo/base/` | `grafo_painel.extrair` (montada em `base.novo/`) | cópia só leitura do projeto (na `grafo.ref`) para o `grafo.py`: YAML do grafo, texto da cobertura e arquivos citados (binário/grande vazio), pastas citadas vazias, marcadores de padrão; trocada só depois de uma rodada boa; nunca servida pela web (`caminho_bloqueado`) |
+| `dados/grafo/index.json`, `resumo.txt` | `grafo.py index` (thread `grafo`) | índice determinístico (arquivo → sistema, sistemas, camadas com cor, arestas declaradas e reais, testes, ADRs) |
+| `dados/grafo/estado.json` | `grafo_painel.atualizar` | `{ts, repo, ref, commit, extraido, validacao (ok, contagens, até 60 erros/avisos), drift, erro, cfg}` da última rodada boa |
+| `dados/grafo/falha.json` | `grafo_painel.atualizar` | `{commit, versao, erro, ts, cfg, sem_grafo}` da última falha determinística (6 h; apagado na próxima rodada boa) |
 | `dados/skills/*.md`, `dados/skills/uso.json`, `dados/skills-promover/` | `skills.py` | candidatos e uso das skills |
 
 Toda a pasta `dados/`, o `config.json`, `vendor/`, `dist/` e `glossario_triagem.md` estão no `.gitignore`.
@@ -597,6 +626,7 @@ além das marcas em `meta`.
 | GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado, linhas, arquivos, risco), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
 | GET | `/xp` | — | `placar.json` + `custos` + `uso`; com `xp.ativo` desligado, `{"ativo": false, "agentes": {}}` | idem |
 | GET | `/saude` | — | `ts`, `duplicados` (`fortes`, `fracos`), `circulos`, `parados`, `abertos`; sem PRs, só `ts`, `circulos` e `sem_prs`; sempre `ignorados` (`{chave: {motivo, quando, origem, ua}}`), `pedidos` (últimos 20, com `entregue` e `cancelado`), `resolvidos` (24 h) e `triagem` (`modelo`, `veredictos`, `hoje`, `teto`) (`servidor.saude_get`) | PC; celular com sessão |
+| GET | `/grafo` | — | `ativo`; `ts`, `ref`, `commit`, `extraido`, `validacao` (`ok`, `n_erros`, `n_avisos`, até 60 `erros`/`avisos` com `codigo`, `msg`, `de`, `para`, `sistemas`), `drift`, `index` (ou null), `erro`, `sem_grafo` (o projeto não tem grafo), `como_criar`, `raiz` (1ª pasta de `projetos`, com `/`), `atualizando` (`grafo_painel.resposta`; com `grafo.ativo` false, só `ativo: false`) | PC; celular com sessão |
 | GET | `/manifest.webmanifest` | — | manifesto PWA | público na rede (`ROTAS_PUBLICAS`) |
 | GET | `/icone-192.png`, `/icone-512.png` | — | ícones do PWA (arquivos estáticos) | público na rede (`ROTAS_PUBLICAS`) |
 | GET | `/api/sessao` | — | `nome`, `permissao`, `csrf` | PC; celular com sessão |
@@ -669,8 +699,19 @@ StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\
 | `saude.py` | `--pendentes` (pedidos do desenvolvedor ainda não entregues, depois os duplicados fortes e círculos não ignorados do `dados/saude.json`, ou `NADA`) |
 | `plugins_projeto.py` | `[--projeto P] [--desligar ids] [--religar ids]` |
 | `modelos/briefing_diretor.py` | `[--config config.json] [--dias-parado 14] [--saida arquivo.md]` (padrão `dados/diretor/briefing.md`) |
+| `grafo/grafo.py` (`grafo.py`) | comuns a todos os comandos: `--raiz R`, `--grafo ARQ`; `--versao` |
+| `grafo.py init` | `[--saida ARQ] [--llm] [--ext .py,.ts] [--raizes a,b] [--max-arquivos 40]` (nunca sobrescreve) |
+| `grafo.py validate` | `[--base REF] [--strict] [--json]` |
+| `grafo.py owner` / `grafo.py suggest` | `<arquivo> [--json]` |
+| `grafo.py slice` | `<sistema\|arquivo> [--budget 600] [--reais] [--json]` |
+| `grafo.py impact` | `<arquivos...> \| --diff REF [--json]` |
+| `grafo.py find` | `<texto> [--max 8] [--arquivos 12] [--json]` |
+| `grafo.py drift` / `grafo.py index` / `grafo.py sync-rules` | `[--json]` / `[--saida .grafo]` / `[--saida .claude/rules] [--escrever]` |
+| `grafo/claude/instalar_grafo.py` (`instalar_grafo.py`) | `[--projeto P] [--aplicar] [--desinstalar] [--copiar] [--skill] [--bloquear] [--fim Stop,TaskCompleted] [--python CMD]` (padrão: o Python que roda o instalador, caminho absoluto) |
+| `grafo/claude/hooks/grafo_hook.py` (`grafo_hook.py`) | `pre`; `post`; `fim [--bloquear] [--base REF]` (stdin do hook) |
+| `grafo/testes/testar_grafo.py` | sem opções (`python -W error`); `GRAFO_BASE_EXEMPLO=<raiz>` liga a fumaça num projeto seu |
 | `ferramentas/verificar.py` | `[--termos arquivo.txt]` |
-| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
+| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `testar_grafo_painel.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
 | Atalhos | `abrir_escritorio[.bat\|.sh] [celular]`, `reiniciar_escritorio[.bat\|.sh] [celular]` |
 
 ### 5.4 `config.json` — chaves principais
@@ -687,6 +728,7 @@ Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.js
 | `revisor` | `ativo`, `modelo`, `max_diff`, `contexto` | desligado, Sonnet, 90000 |
 | `auditor` | `ativo`, `modelo`, `modelo_2`, `max_diff`, `rotulos` | desligado, Haiku, Sonnet, 40000 |
 | `vigia` | `intervalo_min`, `sugestoes`, `saude`, `comandos[]` (`rotulo`, `comando`, `acao`) | 15, true, true, [] |
+| `grafo` | `ativo`, `ref`, `arquivo` (YAML do grafo no repositório; `""` = procurar: `grafo.json` do projeto, depois os nomes padrão do `grafo.py`), `intervalo_min` (5–1440) — painel 🗺️ Arquitetura (`configuracao.normalizar_grafo`: ref inválida volta ao padrão; arquivo absoluto, com `..` ou `:` vira `""`) | true, `origin/main`, `""`, 60 |
 | `alertas` | `ativo`, `tipos`, `lembrete_horas`, `limite_push_hora`, `toast_windows`, `contato`, `escalonamentos`, `agentes_pergunta`, `imediatos`, `resumo_horas`, `parado_horas` | ativo, 24, 20, false, …, `ALERTAS_IMEDIATOS`, 3, 24 |
 | rede | `rede_local`, `rede_https`, `rede_tailscale` | false, true, false |
 | `instalacao` (só no modo silencioso) | `destino`, `hook`, `statusline`, `three_offline`, `abrir` | — |
@@ -975,7 +1017,7 @@ three.js ou cópia em `vendor/` (`INSTALACAO.md` §2, `instalar.py`).
 
 | Workflow | Gatilho | Passos |
 |---|---|---|
-| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_estaticos.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_eventos.py`; `ferramentas/testar_sugestoes_triagem.py`; `ferramentas/build.py` |
+| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_estaticos.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_eventos.py`; `ferramentas/testar_sugestoes_triagem.py`; `grafo/testes/testar_grafo.py`; `ferramentas/testar_grafo_painel.py`; `ferramentas/build.py` |
 | `release.yml` | tag `v*` | `ferramentas/build.py`; `ferramentas/notas_versao.py <tag> > NOTAS.md` (falha se a tag não bater com `VERSION`); `gh release create` com `dist/*.zip` e `dist/*.sha256` |
 
 O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/build.py`).
@@ -995,6 +1037,8 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | `ferramentas/testar_registrar_evento.py` | hook `registrar_evento.py`: `resultado_de` (PostToolUse com `stdout`/`stderr` → `ok: true`; `PostToolUseFailure` "Exit code N" → `ok: false` com `codigo` e a 1ª linha em `erro`, até 120; `exit_code`/`exitCode`/`returncode`, `interrupted`, texto "Error: Exit code N"; `run_in_background` sem resultado; só Bash/PowerShell), `evento` (início sem resultado, Edit/SendMessage sem `ok`) e `main` (entrada quebrada, `cwd` fora de `projetos`, banco falhando, exceção: sempre sai 0, sem saída e rápido), com `banco` falso e pasta temporária | CI e local, com `python -W error` |
 | `ferramentas/testar_eventos.py` | replay: `banco.eventos_periodo` (dia inteiro, horas com `ate` exclusivo, paginação por `apos` sem repetir, `ts` fora da ordem do id, linha quebrada, evento sem `ts`, concorrência com gravações) e `servidor.eventos_periodo` (400 para data inválida/impossível/não ASCII, injeção, `ate <= de`, `apos` inválido ou gigante; 503 com o banco quebrado), a rota HTTP real em porta aleatória (modo novo e o `/eventos` de sempre); banco temporário | CI e local, com `python -W error` |
 | `ferramentas/testar_sugestoes_triagem.py` | triagem das sugestões (`sugestoes_bot.triar`, `_para_triar`, `_ha_para_triar` e o ramo de triagem do `coletar`): item `nova` já na caixa é triado na coleta seguinte mesmo sem novas; `coletar(triagem=False)` nunca chama o modelo; tentativa contada antes da chamada e teto `MAX_TENTATIVAS_TRIAGEM`; falha e resposta sem JSON contam; item tratado pelo líder no meio da chamada não é sobrescrito; sem `claude` não gasta tentativa; só os 30 enviados contam. Caixa em pasta temporária, `gh_api` e `subprocess.run` falsos (sem rede e sem modelo) | CI e local, com `python -W error` |
+| `grafo/testes/testar_grafo.py` | `grafo.py` num repositório git temporário (Python/C++/TS falsos, grafo com aresta não declarada, ciclo real, camada violada, órfão e caminho inexistente): leitor YAML próprio x PyYAML, precedência de dono, `init` (não sobrescreve), `validate` (também `--base` e sem PyYAML), `owner`/`suggest`, `slice` (orçamento), `impact --diff`, `find`, `drift`, `index` e `sync-rules` determinísticos; hooks (JSON válido, uma vez por sessão, bloqueio, entrada quebrada) e instalador (sem duplicar, desinstalar, `--copiar`); fumaça num projeto seu só com `GRAFO_BASE_EXEMPLO` | CI e local, com `python -W error` (precisa de git) |
+| `ferramentas/testar_grafo_painel.py` | `grafo_painel.py` num repositório git temporário com a ref `origin/main`: `caminho_seguro`, o que vai para a base (cobertura e caminhos citados; pasta não citada fica fora), binário/grande vazios, `index.json`/`estado.json`, validate com camada violada e ciclo real, drift, mesmo commit não refaz / `forcar` refaz / commit novo atualiza, falhas mantêm o último index, sem grafo (`sem_grafo`, `como_criar`, também depois de reiniciar), `grafo.ativo` false, sem projeto, ref inválida, `grafo.arquivo` e `grafo.json` do projeto, `normalizar_grafo`, nomes perigosos na árvore, palavra solta não puxa pasta, leitura concorrente e `GET /grafo` em porta aleatória sem servir a cópia da base | CI e local, com `python -W error` (precisa de git) |
 | `ferramentas/verificar_docs.py` | este documento contra o código (seção 13) | CI e local |
 | `ferramentas/build.py` | roda a verificação e monta o zip | CI e release |
 
@@ -1092,7 +1136,7 @@ falha (código 1) listando o que falta:
 |---|---|---|
 | rotas HTTP | literais em comparações `rota ==`/`url.path ==`/`in (...)` de `servidor.py` e `rede.py` e as constantes `ROTAS_PUBLICAS`, `PERMISSAO_ROTA`, `ACOES_XP` (prefixos terminados em `/` não contam) | seção 5.1 |
 | tabelas | `CREATE TABLE IF NOT EXISTS <nome>` em `banco.ESQUEMA` | seção 4.1 |
-| scripts e flags | todo `.py` da raiz com `if __name__ == "__main__"` (mais `SCRIPTS_EXTRAS`, hoje `modelos/briefing_diretor.py`) e as flags `--xxx` que ele lê (`add_argument`, `"--x" in sys.argv/args`, `.index("--x")`, `_arg(args, "--x")`) | linha do script na tabela da seção 5.3 |
+| scripts e flags | todo `.py` da raiz com `if __name__ == "__main__"` (mais `SCRIPTS_EXTRAS`, hoje `modelos/briefing_diretor.py`, `grafo/grafo.py`, `grafo/claude/instalar_grafo.py` e `grafo/claude/hooks/grafo_hook.py`) e as flags `--xxx` que ele lê (`add_argument`, `"--x" in sys.argv/args`, `.index("--x")`, `_arg(args, "--x")`) | linha do script na tabela da seção 5.3 |
 | chaves do config | chaves de primeiro nível de `configuracao.PADRAO` | seção 5.4 |
 | variáveis de ambiente | nomes `OFFICE_*` nos scripts da raiz | qualquer lugar (seção 5.5) |
 
@@ -1130,3 +1174,4 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.16.0 | saúde com triagem por modelo barato (aviso automático ao líder, falso positivo silenciado até resolver, item novo espera o veredicto até 15 min); ignorar vale só para a ocorrência; "Resolvidos (24 h)"; pedido cancelado se o item se resolveu; `sugestoes.saude_triagem` | `saude_triagem.py`, `saude.py`, `servidor.py`, `rede.py`, `configuracao.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `instalar.py`, `ferramentas/testar_saude.py` |
 | 1.16.1 | triagem das sugestões dos bots volta a rodar com itens `nova` já na caixa; no máximo 2 tentativas por item | `sugestoes_bot.py`, `ferramentas/testar_sugestoes_triagem.py` |
 | 1.16.2 | segurança: `caminho_bloqueado` com caminho decodificado/normalizado e nome real (contorno de `dados/` e de scripts) | `servidor.py`, `ferramentas/testar_estaticos.py` |
+| 1.17.0 | grafo de arquitetura para agentes (`grafo/`: CLI init/validate/owner/suggest/slice/impact/find/drift/index/sync-rules, hooks do Claude Code e instalador por projeto); painel 🗺️ Arquitetura (`GET /grafo`, thread `grafo`, bloco `grafo` do config) com quem mexe onde ao vivo e "sistema atual" na ficha; `notebook_path` no detalhe do evento | `grafo/`, `grafo_painel.py`, `arquitetura.js`, `arquitetura.css`, `servidor.py`, `configuracao.py`, `escritorio.js`, `index.html`, `registrar_evento.py`, `instalar.py`, `ferramentas/` |

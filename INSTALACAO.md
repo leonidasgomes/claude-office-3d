@@ -12,7 +12,9 @@ O Claude Office 3D é um escritório em 3D, aberto no navegador, que mostra em t
   "daily") levam o time para a **sala de vidro**;
 - **subagentes** avulsos aparecem como bonequinhos temporários ao lado de quem os chamou;
 - quem fica **ocioso** vai para as áreas de pausa: sofá e TV, fliperama, ping-pong, refeitório e banheiro;
-- painéis opcionais de **Kanban** (GitHub Projects) e **PRs** abertos esperando o seu merge.
+- painéis opcionais de **Kanban** (GitHub Projects) e **PRs** abertos esperando o seu merge;
+- painel **🗺️ Arquitetura**: o grafo de sistemas do seu projeto (camadas, imports reais, violações) e quem está mexendo
+  onde, com a ferramenta `grafo/` para os agentes consultarem a arquitetura gastando pouco (seção 16).
 
 ## 2. Requisitos
 
@@ -235,6 +237,7 @@ recarregar a página (a porta só muda reiniciando o servidor).
     "atribuicao": {"prefixos_branch": {"research/": "Pesquisa"}, "padrao": "Dev"}   // PR sem cartão: por prefixo do branch
   },
   "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
+  "grafo": {"ativo": true, "ref": "origin/main", "arquivo": "", "intervalo_min": 60},   // painel 🗺️ Arquitetura (seção 16)
   "sugestoes": {"triagem_modelo": "claude-haiku-4-5-20251001", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
                                       // + "saude_triagem": modelo da triagem do painel Saúde (seção 7; sem a chave = triagem_modelo; "" desliga)
   "revisor": {"ativo": false, "modelo": "claude-sonnet-5-5", "max_diff": 90000, "contexto": []},   // revisor-ia (seção 11)
@@ -1102,3 +1105,52 @@ se quiser remover tudo.
   aparelho (ou revogá-lo) apaga a inscrição.
 - A única comunicação externa é opcional: o `gh` consultando o GitHub (Kanban/PRs) com a sua conta, e o three.js
   baixado do CDN jsDelivr (ou uma vez só, no instalador, se você escolher a cópia local).
+
+## 16. Grafo de arquitetura (`grafo/`) e o painel 🗺️ Arquitetura
+
+A pasta `grafo/` (copiada pelo instalador junto do escritório) é uma ferramenta de linha de comando, só biblioteca padrão
+(PyYAML opcional), que mantém um **grafo de arquitetura conferido contra o código** e responde barato às perguntas que um
+agente faz antes de mexer no projeto: de quem é este arquivo, o que preciso saber deste sistema, o que minha mudança afeta
+e que testes rodar, onde está X, quebrei a arquitetura? Nada aqui chama modelo. Manual completo: `grafo/LEIAME.md`.
+
+### Criar e conferir o grafo
+
+```bash
+python grafo/grafo.py init --raiz <projeto> --saida docs/ARCHITECTURE_GRAPH.yaml   # propõe sistemas por pasta (nunca sobrescreve)
+python grafo/grafo.py validate --raiz <projeto>        # esquema, cobertura, camadas, ciclos e imports REAIS x depends_on
+python grafo/grafo.py owner src/app/tela.py --raiz <projeto>     # dono de um arquivo
+python grafo/grafo.py slice sys.app --budget 400 --raiz <projeto> # recorte de um sistema para colar no prompt
+python grafo/grafo.py impact --diff origin/main --raiz <projeto>  # o que a mudança afeta e que testes rodar
+```
+
+O `init` propõe os sistemas com `status: proposto`; revise nomes, camadas e descrições e troque para `active`. Saída 0 =
+ok, 1 = achados (validate reprovado), 2 = erro de uso.
+
+### Hooks do Claude Code e times de agentes
+
+`python grafo/claude/instalar_grafo.py --projeto <projeto>` mostra o que faria; `--aplicar` grava os hooks no
+`.claude/settings.json` **do projeto** (nunca no do usuário): na 1ª edição de cada sistema por sessão o agente recebe o
+recorte do sistema, arquivo novo sem dono ganha uma sugestão de dono, e no fim (`Stop`/`TaskCompleted`) roda
+`validate --base` (aviso; `--bloquear` bloqueia). `--copiar` põe o `grafo.py` e o hook em `.claude/grafo/` do projeto (o
+time recebe pelo git) e `--skill` instala a skill. `--desinstalar --aplicar` remove só as entradas do grafo. Num time de
+agentes, o líder cola no prompt do colega o `slice` do sistema e os testes do `impact`, com a regra "import de outro
+sistema exige `depends_on`; arquivo novo precisa de dono".
+
+### O painel 🗺️ Arquitetura
+
+Com o bloco `"grafo"` do `config.json` (padrão: ligado), o servidor lê **só leitura** a ref `grafo.ref` (padrão
+`origin/main`) da **1ª pasta de `projetos`**, monta uma cópia do que o grafo cita em `dados/grafo/base/` e roda o
+`grafo.py` (index, validate, drift) na partida e a cada `grafo.intervalo_min` (60 min; só refaz se o commit mudou). O
+grafo é procurado em `grafo.arquivo` (caminho no repositório) ou, vazio, na chave `grafo` do `grafo.json` do projeto e nos
+nomes padrão (`docs/ARCHITECTURE_GRAPH.yaml`, `docs/grafo.yaml`, `grafo.yaml`, `architecture.yaml`...). Faça `git fetch`
+(ou deixe seu fluxo normal de push/pull) para a ref ficar em dia.
+
+O painel mostra os sistemas em colunas por camada, as dependências declaradas, os imports reais não declarados, as camadas
+violadas e os ciclos; clique num sistema para a ficha (arquivos, dependências, testes, ADRs, problemas do validate e quem
+mexeu hoje). Ao vivo, o anel do agente aparece no sistema que ele está lendo/editando, ✖ quando um teste/build daquele
+sistema falha e 🔁 quando alguém anda em círculos ali; a ficha do agente mostra o "sistema atual". **Sem grafo no
+projeto** o painel explica como criar um (os comandos acima) e nada mais muda. Para desligar: `"grafo": {"ativo": false}`.
+
+Custo: nenhum token; a rodada lê o repositório pelo git (sem checkout, nunca escreve nele) e leva alguns segundos num
+projeto de algumas centenas de arquivos. Testes: `python -W error grafo/testes/testar_grafo.py` e
+`python -W error ferramentas/testar_grafo_painel.py`.

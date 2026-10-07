@@ -41,5 +41,9 @@ jobs:
         run: python -W error ferramentas/testar_eventos.py
       - name: Triagem das sugestões dos bots (itens já na caixa, teto de tentativas)
         run: python -W error ferramentas/testar_sugestoes_triagem.py
+      - name: Grafo de arquitetura (grafo/grafo.py, hooks e instalador)
+        run: python -W error grafo/testes/testar_grafo.py
+      - name: Painel Arquitetura (base só leitura, GET /grafo, bloco grafo do config)
+        run: python -W error ferramentas/testar_grafo_painel.py
       - name: Build do pacote
         run: python ferramentas/build.py

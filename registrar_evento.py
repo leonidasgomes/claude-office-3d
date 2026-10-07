@@ -109,7 +109,7 @@ def quem(d):
 def detalhe_de(entrada):
     """O que exatamente o agente fez (comando, arquivo, busca), para a ficha do agente."""
     partes = []
-    for k in ("skill", "args", "command", "file_path", "path", "pattern", "glob", "url", "query", "prompt", "subagent_type", "name"):
+    for k in ("skill", "args", "command", "file_path", "notebook_path", "path", "pattern", "glob", "url", "query", "prompt", "subagent_type", "name"):
         v = (entrada or {}).get(k)
         if v:
             partes.append(f"{k}: {v}")

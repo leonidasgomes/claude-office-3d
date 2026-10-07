@@ -13,6 +13,9 @@ Serve esta pasta e expõe:
                                          com os itens ignorados e os últimos pedidos ao líder
   POST /api/saude/ignorar|avisar      -> painel 🩺 Saúde: ignorar/reativar um item ou avisar o líder (só o PC, com CSRF)
   POST /api/saude/triagem             -> desfazer o "falso positivo" da triagem barata (só o PC, com CSRF)
+  GET /grafo                          -> painel 🗺️ Arquitetura (grafo_painel.py + grafo/grafo.py): index do grafo do projeto,
+                                         drift e validação resumida; a thread `grafo` lê só leitura a `grafo.ref` da 1ª pasta
+                                         de "projetos" a cada grafo.intervalo_min (sem grafo: diz como criar um)
   GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
   POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
 O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
@@ -50,6 +53,7 @@ import rede  # noqa: E402
 import saude  # noqa: E402  (duplicados, círculos, risco do PR, PR parado: saude.py)
 import saude_triagem  # noqa: E402  (triagem barata dos itens novos da saúde: saude_triagem.py)
 import sugestoes_bot  # noqa: E402
+import grafo_painel  # noqa: E402  (painel 🗺️ Arquitetura: base só leitura + grafo/grafo.py)
 
 HOST = "127.0.0.1"
 PASTA = Path(__file__).resolve().parent
@@ -124,6 +128,7 @@ def config_publica():
                    "projeto_owner": g["projeto_owner"], "projeto_numero": g["projeto_numero"],
                    "check_revisao": g["check_revisao"], "times": g["times"], "colunas": g["colunas"]},
         "xp": {"ativo": c["xp"]["ativo"], "niveis": c["xp"]["niveis"]},
+        "grafo": {"ativo": bool(c["grafo"]["ativo"])},
         "gh_disponivel": bool(gh()),
         "three_local": three_local(),
     }
@@ -1042,6 +1047,10 @@ class Handler(rede.HandlerSeguro):
                 return self.responder(saude_get())
             except Exception as e:
                 return self.responder({"erro": str(e)[:200]})
+        if url.path == "/grafo":   # painel 🗺️ Arquitetura: index + drift + validação resumida (thread grafo)
+            o = opcoes_grafo()
+            return self.responder(grafo_painel.resposta(ativo=o["ativo"], raiz=o["repo"] or "", ref=o["ref"],
+                                                        arquivo=o["arquivo"]))
         if url.path == "/manifest.webmanifest":
             return self.responder(json.dumps(manifesto(), ensure_ascii=False).encode("utf-8"), "application/manifest+json; charset=utf-8")
         if url.path in ("/", "/index.html"):
@@ -1049,6 +1058,14 @@ class Handler(rede.HandlerSeguro):
             self.csp_html = texto  # o hash do importmap inline entra na Content-Security-Policy
             return self.responder(texto.encode("utf-8"), "text/html; charset=utf-8")
         self.servir_estatico()
+
+
+def opcoes_grafo():
+    """Opções da thread e da rota do grafo: bloco "grafo" do config.json e o projeto (1ª pasta de "projetos")."""
+    c = cfg()
+    g, projetos = c["grafo"], c["projetos"]
+    return {"ativo": bool(g["ativo"]), "repo": str(projetos[0]) if projetos else "", "ref": g["ref"], "arquivo": g["arquivo"],
+            "intervalo_min": g["intervalo_min"]}
 
 
 def opcoes_rede(args):
@@ -1122,6 +1139,8 @@ def main():
     parar_sugestoes = iniciar_sugestoes()
     parar_cota = VIGIA.iniciar()
     threading.Thread(target=saude_laco, args=(parar_cota,), daemon=True, name="saude").start()
+    parar_grafo = threading.Event()   # painel 🗺️ Arquitetura: na partida (5 s) e a cada grafo.intervalo_min; só lê o projeto
+    threading.Thread(target=grafo_painel.laco, args=(parar_grafo, opcoes_grafo), daemon=True, name="grafo").start()
     print(f"Cota do GitHub: vigia a cada {cota.INTERVALO // 60} min (dados/github_cota.jsonl)")
     cfg_sug = sugestoes_bot.configuracao()
     print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
@@ -1146,6 +1165,7 @@ def main():
         parar_alertas.set()
         parar_sugestoes.set()
         parar_cota.set()
+        parar_grafo.set()
         servidor.server_close()
         for s in extras:
             s.shutdown()

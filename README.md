@@ -33,6 +33,9 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
   Ignorar e **Avisar o líder** (entregue pelo `vigia_lider.py` como informação, nunca como ordem); um modelo barato
   (até 30 chamadas por dia, desligável) faz a triagem de cada item novo: avisa o líder do problema real e silencia o falso
   positivo até ele se resolver.
+- **🗺️ Arquitetura**: a ferramenta `grafo/` mantém um grafo de arquitetura do seu projeto conferido contra os imports
+  reais (`python grafo/grafo.py init` / `validate` / `slice` / `impact`, hooks do Claude Code por projeto, sem tokens) e o
+  painel mostra camadas, violações, ciclos e quem está mexendo onde. Veja a seção 16 do [INSTALACAO.md](INSTALACAO.md).
 - **⏪ Replay do dia** acelerado na própria cena, com marcas de falha, fala, círculo e merge, e **filtros** por agente e
   tipo de evento no feed e na cena.
 - **Kanban** do GitHub Projects e painel de **PRs** esperando o seu merge (opcionais, via GitHub CLI `gh`).

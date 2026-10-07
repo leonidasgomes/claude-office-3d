@@ -17,7 +17,8 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 SDD = RAIZ / "docs" / "SDD.md"
-SCRIPTS_EXTRAS = ["modelos/briefing_diretor.py"]   # CLIs fora da raiz que o SDD também descreve
+SCRIPTS_EXTRAS = ["modelos/briefing_diretor.py", "grafo/grafo.py", "grafo/claude/instalar_grafo.py",
+                  "grafo/claude/hooks/grafo_hook.py"]   # CLIs fora da raiz que o SDD também descreve
 # exclusões intencionais: "tipo:valor" -> motivo
 IGNORAR = {
     "script:registrar_evento.py": "hook do Claude Code (JSON no stdin, sem flags); descrito na seção 5.2",

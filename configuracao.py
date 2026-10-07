@@ -117,6 +117,11 @@ PADRAO = {
               "sugestoes": True,                      # inclui `sugestoes_bot.py --pendentes` (com bots configurados)
               "saude": True,                          # inclui `saude.py --pendentes` (trabalho duplicado, agente em círculos)
               "comandos": []},                        # extras: [{"rotulo", "comando" (texto, roda no shell), "acao"}]
+    # painel 🗺️ Arquitetura (grafo_painel.py + grafo/grafo.py): grafo do projeto (1ª pasta de "projetos") lido na `ref`
+    "grafo": {"ativo": True,                           # False: sem a thread grafo e sem o painel
+              "ref": "origin/main",                    # branch/ref do git de onde o grafo e o código são lidos (só leitura)
+              "arquivo": "",                           # YAML do grafo no repositório; "" = procurar (grafo.json, nomes padrão)
+              "intervalo_min": 60},                    # de quanto em quanto tempo recalcula (só se o commit mudou)
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
                 "contato": "", "escalonamentos": "", "agentes_pergunta": [], "imediatos": ALERTAS_IMEDIATOS,
                 "resumo_horas": 3, "parado_horas": 24},
@@ -272,6 +277,36 @@ def normalizar_sugestoes(bruto):
     return s
 
 
+RE_REF_INVALIDA = re.compile(r"[\s~^:?*\[\\\x00-\x1f\x7f]")
+
+
+def normalizar_grafo(bruto):
+    """Bloco "grafo" do config (painel 🗺️ Arquitetura): ativo, ref do git (inválida → padrão), arquivo relativo do YAML
+    (absoluto, com ".." ou caractere estranho → "" = procurar) e intervalo em minutos (5 a 1440)."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    g = copy.deepcopy(PADRAO["grafo"])
+    if isinstance(bruto.get("ativo"), bool):
+        g["ativo"] = bruto["ativo"]
+    ref = bruto.get("ref")
+    if (isinstance(ref, str) and 0 < len(ref.strip()) <= 200 and not ref.strip().startswith("-") and ".." not in ref
+            and not RE_REF_INVALIDA.search(ref.strip()) and not ref.strip().endswith((".", "/", ".lock"))):
+        g["ref"] = ref.strip()
+    arq = bruto.get("arquivo")
+    if isinstance(arq, str):
+        a = arq.strip().replace("\\", "/")
+        while a.startswith("./"):
+            a = a[2:]
+        partes = a.split("/")
+        if (a and len(a) <= 300 and not a.startswith("/") and ":" not in a
+                and all(x not in ("", ".", "..") for x in partes) and not any(ord(c) < 32 for c in a)):
+            g["arquivo"] = a
+    try:
+        g["intervalo_min"] = max(5, min(1440, int(bruto["intervalo_min"]))) if "intervalo_min" in bruto else g["intervalo_min"]
+    except (TypeError, ValueError):
+        pass
+    return g
+
+
 def normalizar_vigia(bruto):
     """Bloco "vigia" do config (vigia_lider.py): intervalo em minutos (5 a 240), sugestões ligadas por padrão e comandos
     extras do projeto, cada um com rótulo, comando de shell e a ação que o líder faz quando o comando tiver saída."""
@@ -406,6 +441,7 @@ def normalizar(cfg):
     base["revisor"] = normalizar_revisor(cfg.get("revisor"))
     base["auditor"] = normalizar_auditor(cfg.get("auditor"))
     base["vigia"] = normalizar_vigia(cfg.get("vigia"))
+    base["grafo"] = normalizar_grafo(cfg.get("grafo"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

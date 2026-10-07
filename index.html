@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="celular.css">
 <link rel="stylesheet" href="alertas.css">
 <link rel="stylesheet" href="saude_painel.css">
+<link rel="stylesheet" href="arquitetura.css">
 <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="icone-192.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -60,6 +61,10 @@
       <header><div><h3>🔔 Alertas</h3><div id="alertasInfo"></div></div><button id="alertasFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div id="alertasCorpo"></div>
     </section>
+    <section id="arquitetura" hidden aria-labelledby="arqTitulo">
+      <header><div><h3 id="arqTitulo">🗺️ Arquitetura</h3><div id="arqInfo" aria-live="polite"></div></div><div class="botoes"><button id="arqModo" type="button" aria-pressed="false" hidden>☰ Lista</button><button id="arqFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></div></header>
+      <div id="arqConteudo"><div id="arqCorpo"></div><aside id="arqFicha" hidden aria-label="Ficha do sistema"></aside></div>
+    </section>
     <section id="saude" hidden aria-labelledby="saudeTitulo">
       <header><div><h3 id="saudeTitulo">🩺 Saúde do time</h3><div id="saudeInfo" aria-live="polite"></div></div><button id="saudeFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div id="saudeCorpo"></div>
@@ -102,6 +107,7 @@
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
         <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
         <button id="btnAlertas" title="Alertas: avisa quando há algo esperando por você (PR pronto, pergunta do Diretor...)" hidden>🔔 Alertas <span id="alertasConta" hidden></span></button>
+        <button id="btnArquitetura" title="Arquitetura do projeto: sistemas, camadas, imports reais e quem está mexendo onde" hidden>🗺️ Arquitetura</button>
         <button id="btnSaude" title="Saúde do time: trabalho duplicado, agentes em círculos, PRs parados e risco dos PRs" hidden>🩺 Saúde</button>
         <button id="btnCelular" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
         <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
@@ -135,5 +141,6 @@
 <script type="module" src="celular.js"></script>
 <script type="module" src="alertas.js"></script>
 <script type="module" src="saude_painel.js"></script>
+<script type="module" src="arquitetura.js"></script>
 </body>
 </html>

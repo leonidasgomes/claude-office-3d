@@ -2165,6 +2165,12 @@ function estadoFicha(a) {   // "trabalhando · rodando há 9 min · último even
   const falha = textoFalha(a);
   $('fichaEstado').textContent = (l.rel.startsWith('ocioso') ? '' : est + ' · ') + rel + (a.ultimoEventoMs ? ' (' + l.exata + ')' : '') + (falha ? ' · ' + falha : '');
 }
+function sistemaAtual(a) {   // "Nome do sistema" do último arquivo que o agente leu/editou (painel 🗺️ Arquitetura), ou ''
+  const A = window.__arquitetura;
+  if (!A || !a.ultimoArquivo) return '';
+  const sid = A.sistemaDe(a.ultimoArquivo);
+  return sid ? A.nomeDe(sid) : '';
+}
 function desenharFicha() {
   const a = fichaAberta; if (!a) return;
   const cor = corCss(a.cor);
@@ -2172,7 +2178,9 @@ function desenharFicha() {
   $('fichaNome').textContent = a.titulo + (a.funcao ? ' — ' + a.funcao : ''); $('fichaNome').style.color = cor;
   estadoFicha(a);
   const f = a.agoraFaz;
-  $('fichaAgora').textContent = f ? iconeDe(f.ferramenta) + ' ' + (f.ferramenta || '') + ' — ' + (f.resumo || '') : 'sem trabalho em andamento';
+  const sis = sistemaAtual(a);
+  $('fichaAgora').textContent = (f ? iconeDe(f.ferramenta) + ' ' + (f.ferramenta || '') + ' — ' + (f.resumo || '') : 'sem trabalho em andamento')
+    + (sis ? ' · sistema atual: ' + sis : '');
   document.querySelectorAll('#ficha .abas button').forEach((b) => b.classList.toggle('ativo', b.dataset.aba === abaFicha));
   const lista = $('fichaLista'); lista.textContent = '';
   if (abaFicha === 'xp') { desenharAbaXp(lista, a); return; }
@@ -2338,6 +2346,7 @@ function textoDicaAgente(x) {
     linhas.push('⏳ comando há ' + Math.floor(dec / 60) + ' min (limite ' + Math.round(lim / 60) + ' min)');
   }
   const falha = textoFalha(x); if (falha) linhas.push(falha);
+  const sis = sistemaAtual(x); if (sis) linhas.push('🗺️ sistema atual: ' + sis);
   if (x.xp) linhas.push(estrelas(x.xp.nivel) + ' ' + x.xp.titulo + ' · ' + x.xp.xp + ' XP');
   linhas.push('Clique para abrir a ficha');
   return linhas.join('\n');
@@ -2403,6 +2412,7 @@ let ultimaSaude = null;
 function aplicarSaude(d) {
   if (!d || typeof d !== 'object' || d.erro) return false;
   ultimaSaude = d;
+  window.dispatchEvent(new CustomEvent('office-saude', { detail: d }));   // painel 🗺️ Arquitetura (🔁 no sistema)
   if (replay) return true;   // no replay os círculos vêm da linha do tempo; reaplica ao sair
   const ign = d.ignorados && typeof d.ignorados === 'object' && !Array.isArray(d.ignorados) ? d.ignorados : {};   // ignorados no painel Saúde
   const com = new Set();
@@ -2486,6 +2496,7 @@ function processar(ev, animar = true, silencioso = false) {   // silencioso: ava
   const a = garantirAgente(nome);
   para.filter((p) => p !== '*').forEach(garantirAgente);
   adicionarFeed(ev, a, !silencioso);
+  if (!silencioso && !replay) window.dispatchEvent(new CustomEvent('office-evento', { detail: ev }));   // painel 🗺️ Arquitetura (quem mexe onde)
   if (!a) return;
   a.ultimoEvento = horaDe(ev);
   const msEv = Date.parse(ev.ts);
@@ -2494,6 +2505,10 @@ function processar(ev, animar = true, silencioso = false) {   // silencioso: ava
   guardarHist(a, ev, 'fez');
   if (tipo === 'trabalho') a.agoraFaz = ev;
   else if (tipo === 'ocioso') a.agoraFaz = null;
+  if (tipo === 'trabalho') {   // último arquivo lido/editado: "sistema atual" na ficha (mapa arquivo → sistema do painel Arquitetura)
+    const m = /(?:^|\n)(?:file_path|notebook_path): *([^\n]+)/.exec(String(ev.detalhe || ''));
+    if (m) a.ultimoArquivo = m[1].trim();
+  }
   // comando longo em andamento (PreToolUse, `inicio`): o PostToolUse só chega no fim; até lá o agente segue trabalhando.
   // Qualquer outro evento do agente (o fim do comando, ocioso) encerra a espera.
   if (ev.inicio) {
