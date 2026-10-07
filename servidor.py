@@ -8,6 +8,7 @@ Serve esta pasta e expõe:
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
   GET /api/alertas?desde=<id>         -> fila de alertas (alertas.py); GET /api/push/chave e POST /api/push/inscrever|sair|prefs|teste
                                          (Web Push, push.py: só aparelho pareado com sessão + CSRF, ou o PC)
+  GET /saude                          -> duplicados, círculos e PRs parados (saude.py; a cada 5 min, gravado em dados/saude.json)
   GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
   POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
 O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
@@ -39,6 +40,7 @@ import banco  # noqa: E402  (banco local SQLite: eventos, decisões do XP, custo
 import cota  # noqa: E402
 import configuracao  # noqa: E402
 import rede  # noqa: E402
+import saude  # noqa: E402  (duplicados, círculos, risco do PR, PR parado: saude.py)
 import sugestoes_bot  # noqa: E402
 
 HOST = "127.0.0.1"
@@ -352,7 +354,8 @@ def _conflito_do_pr(repo, n, sha, agora):
     dados = dados or {}
     mergeavel = dados.get("mergeable")
     conflito = None if mergeavel is None else (mergeavel is False or dados.get("mergeable_state") == "dirty")
-    _rest["merge"][sha] = {"conflito": conflito, "quando": agora}
+    linhas = (dados.get("additions") or 0) + (dados.get("deletions") or 0) if "additions" in dados else None
+    _rest["merge"][sha] = {"conflito": conflito, "quando": agora, "linhas": linhas, "arquivos": dados.get("changed_files")}
     return bool(conflito)
 
 
@@ -384,6 +387,9 @@ def _ler_prs():
                     "rotulos": [lb["name"] for lb in pr.get("labels") or []],
                     "fecha": sorted({int(x) for x in RE_FECHA.findall(pr.get("body") or "")}),
                     "autor": (pr.get("user") or {}).get("login", ""), "atualizado": pr.get("updated_at", "")})
+        tam = _rest["merge"].get(sha) or {}   # o mesmo GET /pulls/{n} do conflito traz o tamanho (sem chamada a mais)
+        prs[-1].update(linhas=tam.get("linhas"), arquivos=tam.get("arquivos"))
+        prs[-1]["risco"] = saude.risco_pr(prs[-1])
     vivos = {pr["head"]["sha"] for pr in lista}
     for k in ("status", "merge"):
         _rest[k] = {sha: v for sha, v in _rest[k].items() if sha in vivos}
@@ -609,6 +615,81 @@ def sugestoes_tratar(dados, ident):
     return 200, {"ok": True, "mensagem": msg, "sugestoes": sugestoes_get()[1]}
 
 
+SAUDE_VALIDADE = 300   # s entre cálculos (branches locais + últimos eventos + PRs em cache)
+_saude = {"quando": 0.0, "dados": None}
+_saude_trava = threading.Lock()
+
+
+def sugestoes_para_alertas():
+    """Fonte "sugestoes" do detector (e regra de "pronto" da saúde): o resumo da caixa + o PRONTO da thread de validações."""
+    try:
+        return dict(sugestoes_bot.resumo(), pronto=dict(PRONTO), pronto_carregado=PRONTO_CARREGADO.is_set())
+    except Exception as e:
+        # caixa ilegível com bots/revisor ligados: o detector pula os PRs nesta rodada em vez de cair no "só a
+        # revisão" (alerta pr_pronto falso); sem `itens`, também não mexe nas sugestões
+        try:
+            c = sugestoes_bot.configuracao()
+            configurado = bool(c["bots"] or c["revisor"])
+        except Exception:
+            configurado = True   # nem a configuração leu: na dúvida, pula os PRs (sem alerta falso)
+        if configurado:
+            return {"ativo": True, "pronto_carregado": False, "erro": str(e)[:200]}
+        raise
+
+
+def saude_atual():
+    """Duplicados, círculos e PRs parados (saude.resumo), recalculado no máximo a cada SAUDE_VALIDADE e gravado em
+    dados/saude.json (lido por `saude.py --pendentes`, no vigia do líder). As branches locais vêm da 1ª pasta de "projetos"."""
+    with _saude_trava:
+        if _saude["dados"] is not None and time.time() - _saude["quando"] < SAUDE_VALIDADE:
+            return _saude["dados"]
+        lista, sg = [], None
+        if cfg()["github"]["repo"]:
+            try:
+                d = prs()
+            except Exception:
+                d = None
+            try:
+                sg = sugestoes_para_alertas()
+            except Exception:
+                sg = None
+            lista = d.get("prs") if isinstance(d, dict) and not d.get("erro") and isinstance(d.get("prs"), list) else None
+            if not isinstance(sg, dict) or sg.get("pronto_carregado") is False:
+                lista = None   # sem a regra de "pronto" do painel (PRONTO não carregado, caixa ilegível): sem parado falso
+        # lista None (GitHub fora, ou sem a regra do painel): só os círculos, que dependem só dos eventos locais
+        try:
+            eventos = banco.ler_eventos(0, 3000)[1]
+        except Exception:
+            eventos = []
+        projetos = cfg()["projetos"]
+        locais = saude.branches_locais(projetos[0]) if projetos and lista is not None else []
+        dados = saude.resumo(lista, locais, eventos, time.time(), lambda pr: alertas.situacao_pr(pr, sg),
+                             cfg()["alertas"]["parado_horas"])
+        # só os círculos (GitHub fora ou PRONTO ainda não carregado, como logo depois de subir): tenta de novo em 60 s
+        _saude.update(quando=time.time() - (SAUDE_VALIDADE - 60 if dados.get("sem_prs") else 0), dados=dados)
+        try:
+            arq = PASTA / "dados" / "saude.json"
+            arq.parent.mkdir(parents=True, exist_ok=True)
+            tmp = arq.with_suffix(".tmp")
+            tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(arq)
+        except OSError:
+            pass
+        return dados
+
+
+def saude_laco(parar):
+    """Grava dados/saude.json a cada SAUDE_VALIDADE mesmo com os alertas desligados (o vigia do líder lê o arquivo)."""
+    if parar.wait(30):
+        return
+    while not parar.is_set():
+        try:
+            saude_atual()
+        except Exception as e:
+            print(f"[saude] {str(e)[:160]}", flush=True)
+        parar.wait(SAUDE_VALIDADE)
+
+
 def criar_alertas(obj_rede):
     """Liga o detector aos dados que o servidor já tem (PRs em cache, placar de XP, eventos, escalonamentos opcionais)."""
     global ALERTAS
@@ -619,22 +700,8 @@ def criar_alertas(obj_rede):
     def escalonamentos():   # opcional: alertas.escalonamentos = caminho de um JSON {"semana": [{cartao, motivo, aberto, fechado, resultado}]}
         caminho = cfg()["alertas"].get("escalonamentos") or ""
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
-    def sugestoes():
-        try:
-            return dict(sugestoes_bot.resumo(), pronto=dict(PRONTO), pronto_carregado=PRONTO_CARREGADO.is_set())
-        except Exception as e:
-            # caixa ilegível com bots/revisor ligados: o detector pula os PRs nesta rodada em vez de cair no "só a
-            # revisão" (alerta pr_pronto falso); sem `itens`, também não mexe nas sugestões
-            try:
-                c = sugestoes_bot.configuracao()
-                configurado = bool(c["bots"] or c["revisor"])
-            except Exception:
-                configurado = True   # nem a configuração leu: na dúvida, pula os PRs (sem alerta falso)
-            if configurado:
-                return {"ativo": True, "pronto_carregado": False, "erro": str(e)[:200]}
-            raise
     fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
-              "sugestoes": sugestoes, "cota": VIGIA.resumo}
+              "sugestoes": sugestoes_para_alertas, "cota": VIGIA.resumo, "saude": saude_atual}
     # "sugestoes" leva o PRONTO da thread de validações: o alerta pr_pronto usa a mesma regra do painel PRs (prs.js);
     # antes da 1ª rodada do PRONTO (pronto_carregado False) o detector não mexe no estado dos PRs
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
@@ -654,7 +721,7 @@ def alertas_get(rota, qs, ident):
         except ValueError:
             desde = 0
         lista, ultimo = A.listar(desde) if A.opcoes["ativo"] else ([], 0)
-        return 200, {"ok": True, "ativo": A.opcoes["ativo"], "alertas": lista, "ultimo": ultimo, "titulo": TITULO(),
+        return 200, {"ok": True, "ativo": A.opcoes["ativo"], "alertas": lista, "ultimo": ultimo, "titulo": TITULO(), "hoje": A.hoje(),
                      "tipos": alertas.tipos_publicos(A.opcoes), "push": {"disponivel": disponivel, "motivo": motivo}}
     if rota == "/api/push/chave":
         if not disponivel or not A.opcoes["ativo"]:
@@ -747,6 +814,11 @@ class Handler(rede.HandlerSeguro):
             except (OSError, ValueError) as e:
                 corpo = {"agentes": {}, "erro": f"placar de XP indisponível (rode 'python xp.py'): {str(e)[:120]}"}
             return self.responder(corpo)
+        if url.path == "/saude":
+            try:
+                return self.responder(saude_atual())
+            except Exception as e:
+                return self.responder({"erro": str(e)[:200]})
         if url.path == "/manifest.webmanifest":
             return self.responder(json.dumps(manifesto(), ensure_ascii=False).encode("utf-8"), "application/manifest+json; charset=utf-8")
         if url.path in ("/", "/index.html"):
@@ -826,6 +898,7 @@ def main():
     parar_alertas = alertas_obj.iniciar()
     parar_sugestoes = iniciar_sugestoes()
     parar_cota = VIGIA.iniciar()
+    threading.Thread(target=saude_laco, args=(parar_cota,), daemon=True, name="saude").start()
     print(f"Cota do GitHub: vigia a cada {cota.INTERVALO // 60} min (dados/github_cota.jsonl)")
     cfg_sug = sugestoes_bot.configuracao()
     print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "

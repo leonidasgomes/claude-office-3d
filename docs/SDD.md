@@ -97,6 +97,7 @@ flowchart LR
     TP["thread pronto (3 min)"]
     TA["thread alertas (60 s, com alertas.ativo)"]
     TC["thread cota (5 min)"]
+    TH["thread saude (5 min)"]
   end
   DB --> HTTP
   XP["xp.py"] --> PJ["dados/xp/placar.json"] --> HTTP
@@ -220,13 +221,21 @@ Princípios que aparecem em todo o código:
 ### 3.6 `alertas.py` e `push.py` — alertas
 
 - **Detector** (funções do módulo, puras, sem E/S): `detectar` chama `_detectar_prs`, `_detectar_placar`,
-  `_detectar_escalonamentos`, `_detectar_sugestoes`, `_detectar_cota` e `_detectar_eventos`. Na primeira leitura de cada
-  fonte só registra o estado (sem enxurrada).
+  `_detectar_escalonamentos`, `_detectar_sugestoes`, `_detectar_cota`, `_detectar_saude` e `_detectar_eventos`. Na primeira
+  leitura de cada fonte só registra o estado (sem enxurrada); a cota e a saúde alertam já na 1ª leitura (fato do presente).
 - `alertas.Alertas`: ciclo (`passo` lê as fontes e chama `detectar`; `laco`; `iniciar`), fila (`_entrar_na_fila`,
   `listar`) e entrega (`entregar`, `alerta_teste`).
 - **Tipos** (`alertas.TIPOS`): `pr_pronto`, `pr_problema`, `auditoria`, `conferir` (desligado por padrão),
-  `escalonamento`, `pergunta`, `lembrete`, `sugestao`, `cota`. O tipo `teste` não está em `TIPOS`: só existe no alerta do
-  botão de teste (`Alertas.alerta_teste`).
+  `escalonamento`, `pergunta`, `lembrete`, `sugestao`, `cota`, `duplicado`, `circulo`, `pr_parado` (os três últimos da
+  fonte `saude`, seção 3.6.1). O tipo `teste` não está em `TIPOS`: só existe no alerta do botão de teste
+  (`Alertas.alerta_teste`).
+- **Orçamento de atenção** (`IMEDIATOS_PADRAO`, `alertas.imediatos`, `alertas.resumo_horas`): só os tipos imediatos
+  (`pr_pronto`, `pr_problema`, `pergunta`, `escalonamento`, `auditoria`, `cota`) vão na hora para o push e o toast; os
+  outros entram na fila com `resumo: true` (a página lista e conta no selo, sem toast na hora; o resumo vira toast com `toast_windows`) e saem num único push `resumo`
+  `resumo_horas` depois do 1º aviso pendente (padrão 3; `Alertas._fechar_resumo`; o push vai a quem quer pelo menos um dos `tipos` agrupados,
+  `push.enviar`). Contagem por dia, imediatos x resumo, dos últimos 14 dias (`Alertas._contar`, `hoje`) em
+  `GET /api/alertas` e no rodapé do painel. Base: "Oversight Has a Capacity" (arXiv 2606.08919): avisar demais cansa quem
+  supervisiona e piora a supervisão.
 - **`pr_pronto` com a regra do painel PRs** (`situacao_pr(pr, sugestoes)`): a fonte `sugestoes` do servidor leva o
   `sugestoes_bot.resumo()` mais o `PRONTO` da thread de validações; revisão aprovada só vira "pronto" sem sugestão
   segurando o merge (`seguram_merge`) e, com bots/revisor configurados (`ativo`), com o `--pronto` OK para o `sha` atual
@@ -243,6 +252,33 @@ Princípios que aparecem em todo o código:
   (`_postar`, `_SemRedirecionar`), lista branca de serviços (`SERVICOS_PUSH`) contra SSRF, saneamento do texto
   (`sanear`, corpo até 120 e título até 60 caracteres).
 - Sem `cryptography`, o Web Push fica indisponível (`CRIPTO_ERRO`) e as demais camadas continuam.
+
+### 3.6.1 `saude.py` — saúde do time (sem tokens)
+
+- `duplicados(prs, locais, agora)`: trabalho em andamento repetido; só conta PR aberto ou branch local com commit nas
+  últimas `JANELA_ATIVA_H` (48) horas. **Fortes** (alerta `duplicado`): o mesmo nome de tarefa (`slug_da_branch`: sem
+  prefixo, número, data e `-vN`, com pelo menos `MIN_SLUG` = 8 letras) sem nenhuma issue comum a todos, ou dois PRs
+  abertos para a mesma issue (`numero_da_branch` + `fecha`). **Fracos** (só em `/saude`): duas branches ativas com o mesmo
+  número (pode ser parte 1 e parte 2).
+- `circulos(eventos, agora)`: agente no ciclo editar → rodar → editar: na janela de `JANELA_CIRCULO_MIN` (45) min, o mesmo
+  arquivo editado `MIN_EDICOES` (6) vezes **e** o mesmo comando rodado `MIN_COMANDOS` (4) vezes pelo mesmo agente; o
+  início de comando (`PreToolUse`, `inicio`) não conta. O alerta `circulo` não se repete para o mesmo agente e arquivo
+  antes de `REPETICAO_CIRCULO` (2 h).
+- `risco_pr(pr)`: selo do painel PRs (`nivel` ok/medio/grande pelos limites de `RISCO`: 300 linhas ou 10 arquivos; 800
+  ou 25) e checks `FAILURE`/`ERROR`, com a dica "dividir em PRs menores" ou "corrigir os checks antes". O tamanho vem do
+  mesmo `GET /pulls/{n}` do conflito (`servidor._conflito_do_pr`), sem chamada a mais.
+- `parados(prs, agora, horas)`: PR aberto (fora rascunho e pronto, pela regra do painel: `situacao_pr(pr, sugestoes)`) sem
+  atualização há mais de `alertas.parado_horas` (24); o alerta sai uma vez por PR e `updated_at`, até o PR fechar (`abertos`).
+- `branches_locais(repo)`: `git for-each-ref` (só leitura) na 1ª pasta de `projetos`.
+- `servidor.saude_atual()` junta tudo (`resumo`) no máximo a cada `SAUDE_VALIDADE` (300 s), grava `dados/saude.json` e
+  serve `GET /saude`; a thread `saude` (`saude_laco`) grava o arquivo mesmo com os alertas desligados. Sem PRs (GitHub fora)
+  ou sem a regra de "pronto" do painel (`sugestoes_para_alertas`, PRONTO ainda não carregado) calcula só os círculos
+  (`sem_prs`), e o detector não mexe no estado dos duplicados nem dos parados. `python saude.py --pendentes` lê
+  esse arquivo (ignora se tiver mais de 30 min) e imprime os duplicados fortes e os círculos, ou `NADA`: é o passo `saude`
+  do `vigia_lider.py`.
+- Base: "Where Do AI Coding Agents Fail?" (arXiv 2601.15195: 23% dos PRs de agente rejeitados eram duplicados; cada check
+  que falha tira ~15% da chance de merge; PR maior entra 17% menos), MAST (arXiv 2503.13657) e "The Observability Gap"
+  (arXiv 2603.26942: oscilar entre correções é aviso precoce de que o agente trata o sintoma).
 
 ### 3.7 `cota.py` — vigia da cota do GitHub
 
@@ -330,7 +366,8 @@ Princípios que aparecem em todo o código:
 
 ### 3.15 `vigia_lider.py` — vigia do líder
 
-- Laço sem tokens que roda `sugestoes_bot.py --pendentes` (se `vigia.sugestoes` e houver bots ou revisor) e os
+- Laço sem tokens que roda `sugestoes_bot.py --pendentes` (se `vigia.sugestoes` e houver bots ou revisor),
+  `saude.py --pendentes` (se `vigia.saude`: trabalho duplicado ou agente em círculos) e os
   `vigia.comandos` extras (no shell, na 1ª pasta de `projetos`); imprime `[vigia <rotulo>] <acao>: <resumo>` só quando
   a saída muda (hash SHA-1), ignorando vazio ou `NADA`. Intervalo `vigia.intervalo_min` (mínimo 5 min). `--uma` faz
   uma rodada. Feito para a ferramenta Monitor do líder.
@@ -422,6 +459,7 @@ Eventos `subagente` levam também `funcao` (tipo do subagente) e `modelo` (`regi
 | `dados/acoes.jsonl` | `rede.py` | histórico de ações, pareamentos e revogações |
 | `dados/tls/` | `tls.py` | CA, certificado do servidor e `meta.json` |
 | `dados/github_cota.jsonl` | `cota.py` | histórico da cota (7 dias) |
+| `dados/saude.json` | `servidor.saude_atual` | duplicados, círculos e PRs parados; lido por `saude.py --pendentes` (vigia do líder) sem abrir o servidor |
 | `dados/skills/*.md`, `dados/skills/uso.json`, `dados/skills-promover/` | `skills.py` | candidatos e uso das skills |
 
 Toda a pasta `dados/`, o `config.json`, `vendor/`, `dist/` e `glossario_triagem.md` estão no `.gitignore`.
@@ -454,14 +492,15 @@ além das marcas em `meta`.
 | GET | `/config` | — | `titulo`, `tema`, `apelidos`, `agentes`, `github` (`repo`, `kanban`, `prs`, `projeto_owner`, `projeto_numero`, `check_revisao`, `times`, `colunas`), `xp` (`ativo`, `niveis`), `gh_disponivel`, `three_local` (`servidor.config_publica`) | idem |
 | GET | `/eventos` | `desde=<id>`, `ultimos=<k>` (0–200) | `{"total": <último id>, "eventos": [...]}` (até 500) | idem |
 | GET | `/kanban` | — | `configurado`, `projeto`, `cartoes`, `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
-| GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
+| GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado, linhas, arquivos, risco), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
 | GET | `/xp` | — | `placar.json` + `custos` + `uso`; com `xp.ativo` desligado, `{"ativo": false, "agentes": {}}` | idem |
+| GET | `/saude` | — | `ts`, `duplicados` (`fortes`, `fracos`), `circulos`, `parados`, `abertos`; sem PRs, só `ts`, `circulos` e `sem_prs` | PC; celular com sessão |
 | GET | `/manifest.webmanifest` | — | manifesto PWA | público na rede (`ROTAS_PUBLICAS`) |
 | GET | `/icone-192.png`, `/icone-512.png` | — | ícones do PWA (arquivos estáticos) | público na rede (`ROTAS_PUBLICAS`) |
 | GET | `/api/sessao` | — | `nome`, `permissao`, `csrf` | PC; celular com sessão |
 | GET | `/api/acoes` | — | últimas 50 ações (IP só para o PC) | idem |
 | GET | `/api/sugestoes` | — | resumo da caixa (`por_pr`, `itens`, estado), `limite`, `pronto` (por PR) | idem |
-| GET | `/api/alertas` | `desde=<id>` | `ativo`, `alertas`, `ultimo`, `titulo`, `tipos`, `push` | idem |
+| GET | `/api/alertas` | `desde=<id>` | `ativo`, `alertas`, `ultimo`, `titulo`, `hoje`, `tipos`, `push` | idem |
 | GET | `/api/push/chave` | — | `disponivel`, `chave` (VAPID pública), `motivo` | idem |
 | GET | `/api/push/estado` | `h=<id 12 hex>` | `inscrito`, `tipos` | idem |
 | POST | `/api/xp/conferido`, `/api/xp/desfazer` | `{"pr": N}` | `{ok, placar}` ou erro 400/403/404/409/500 | PC e celular "conferir" (desfazer só de "conferido") |
@@ -518,10 +557,11 @@ StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\
 | `statusline_uso.py` | `[--so-gravar]` (stdin = JSON da statusline) |
 | `skills.py` | `listar`; `novo <nome> --autor A`; `usar <nome> --agente A --cartao N --resultado ok\|falhou`; `contar-uso`; `promover <nome> [--forcar]` |
 | `vigia_lider.py` | sem argumentos (laço); `--uma` |
+| `saude.py` | `--pendentes` (duplicados fortes e círculos do `dados/saude.json`, ou `NADA`) |
 | `plugins_projeto.py` | `[--projeto P] [--desligar ids] [--religar ids]` |
 | `modelos/briefing_diretor.py` | `[--config config.json] [--dias-parado 14] [--saida arquivo.md]` (padrão `dados/diretor/briefing.md`) |
 | `ferramentas/verificar.py` | `[--termos arquivo.txt]` |
-| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
+| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_saude.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
 | Atalhos | `abrir_escritorio[.bat\|.sh] [celular]`, `reiniciar_escritorio[.bat\|.sh] [celular]` |
 
 ### 5.4 `config.json` — chaves principais
@@ -537,8 +577,8 @@ Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.js
 | `sugestoes` | `triagem_modelo`, `intervalo_min`, `janela_dias` | Haiku, 15, 3 |
 | `revisor` | `ativo`, `modelo`, `max_diff`, `contexto` | desligado, Sonnet, 90000 |
 | `auditor` | `ativo`, `modelo`, `modelo_2`, `max_diff`, `rotulos` | desligado, Haiku, Sonnet, 40000 |
-| `vigia` | `intervalo_min`, `sugestoes`, `comandos[]` (`rotulo`, `comando`, `acao`) | 15, true, [] |
-| `alertas` | `ativo`, `tipos`, `lembrete_horas`, `limite_push_hora`, `toast_windows`, `contato`, `escalonamentos`, `agentes_pergunta` | ativo, 24, 20, false |
+| `vigia` | `intervalo_min`, `sugestoes`, `saude`, `comandos[]` (`rotulo`, `comando`, `acao`) | 15, true, true, [] |
+| `alertas` | `ativo`, `tipos`, `lembrete_horas`, `limite_push_hora`, `toast_windows`, `contato`, `escalonamentos`, `agentes_pergunta`, `imediatos`, `resumo_horas`, `parado_horas` | ativo, 24, 20, false, …, `ALERTAS_IMEDIATOS`, 3, 24 |
 | rede | `rede_local`, `rede_https`, `rede_tailscale` | false, true, false |
 | `instalacao` (só no modo silencioso) | `destino`, `hook`, `statusline`, `three_offline`, `abrir` | — |
 
@@ -680,15 +720,15 @@ Agendador de Tarefas).
 ```mermaid
 sequenceDiagram
   participant D as alertas.Alertas (60 s)
-  participant F as fontes (prs, placar, eventos, escalonamentos, sugestoes, cota)
+  participant F as fontes (prs, placar, eventos, escalonamentos, sugestoes, cota, saude)
   participant Q as alertas.jsonl
   participant P as push.Push
   participant W as serviço de push
   participant N as navegador (sw.js / alertas.js)
   D->>F: lê os dados que o servidor já tem
   D->>D: detectar() vs alertas_estado.json (sem repetir, baseline na 1ª leitura)
-  D->>Q: entra na fila (últimos 200)
-  D->>P: enviar(): filtra tipos por inscrição, limite por hora, saneia texto
+  D->>Q: entra na fila (últimos 200); rotina marcada resumo
+  D->>P: enviar() só dos imediatos (rotina: um push de resumo resumo_horas depois do 1º aviso); filtra tipos, limite por hora, saneia
   P->>W: POST cifrado (aes128gcm) + VAPID, sem redirecionamento
   W-->>N: push → sw.js mostra a notificação
   N->>N: clique abre /#alerta=prs|placar
@@ -699,7 +739,8 @@ Origem de cada tipo: `pr_pronto`/`pr_problema`/`lembrete` vêm da lista de PRs e
 `pr_pronto` só sai quando o painel PRs ficaria verde (com bots/revisor, `--pronto` OK no commit atual — seção 3.6); `auditoria` e
 `conferir`, do `placar.json`; `pergunta`, de eventos `fala` cujo texto começa com `PERGUNTA` ou contém "pergunta ao
 desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escalonamento`, do JSON opcional em
-`alertas.escalonamentos`; `sugestao`, das sugestões P0/P1 novas; `cota`, do vigia da cota.
+`alertas.escalonamentos`; `sugestao`, das sugestões P0/P1 novas; `cota`, do vigia da cota; `duplicado`, `circulo` e
+`pr_parado`, de `servidor.saude_atual` (seção 3.6.1).
 
 ---
 
@@ -819,7 +860,7 @@ three.js ou cópia em `vendor/` (`INSTALACAO.md` §2, `instalar.py`).
 
 | Workflow | Gatilho | Passos |
 |---|---|---|
-| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/build.py` |
+| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_saude.py`; `ferramentas/build.py` |
 | `release.yml` | tag `v*` | `ferramentas/build.py`; `ferramentas/notas_versao.py <tag> > NOTAS.md` (falha se a tag não bater com `VERSION`); `gh release create` com `dist/*.zip` e `dist/*.sha256` |
 
 O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/build.py`).
@@ -834,6 +875,7 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | `ferramentas/testar_instalacao.py` | lista `instalar.PACOTE` completa (todo item existe; todo arquivo versionado está nela ou em `FORA_DO_PACOTE`); instalação silenciosa numa pasta temporária, conferindo a cópia de `modelos/`, `VERSION`, `CHANGELOG.md` e `LICENSE`: instala duas vezes sem duplicar (4 hooks do escritório), preserva um hook alheio, desinstala só os seus, liga/remove a statusline do escritório e nunca troca nem remove uma statusline alheia | CI e local |
 | `ferramentas/testar_alertas.py` | RFC 8291 (exemplo oficial do apêndice A), cifra e decifra por implementação de referência, assinatura VAPID, saneamento e validação de endpoints, envio a um serviço de push local de mentira, detector com dados simulados, `pr_pronto` com a mesma regra do painel PRs e vigia da cota (`testar_rfc8291`, `testar_roundtrip`, `testar_vapid`, `testar_sanear_e_endpoints`, `testar_envio`, `testar_detector`, `testar_pronto_igual_ao_painel`, `testar_cota`) | CI e local, com `python -W error`; exige `cryptography` (sai se faltar) |
 | `ferramentas/testar_rede.py` | filtro de origem `rede.ip_permitido`: IP privado entra; `100.64.0.0/10` recusado com `rede_tailscale` desligado e aceito com ele ligado; IP público, loopback alheio, link-local, multicast e reservado recusados; `rede.Rede` guarda o flag | CI e local |
+| `ferramentas/testar_saude.py` | `saude.py` (número e nome da tarefa na branch; duplicados fortes e fracos, só PR aberto ou branch local com commit < 48 h, forte por nome só sem issue em comum; círculos, sem contar o `inicio`, com `notebook_path`; `risco_pr` com `CHECKS_FALHOS`; `parados` com a regra do painel; `resumo` sem PRs = só círculos; `branches_locais` num repositório git temporário; `--pendentes` sem contagens), os alertas `duplicado`/`circulo`/`pr_parado` com fontes falsas (sem repetir; fonte com erro ou sem PRs não mexe no estado; PR parado não repete enquanto aberto), o orçamento de atenção em `Alertas.passo` (imediatos na hora; push de resumo `resumo_horas` depois do 1º aviso pendente, também com estado antigo sem `resumo_desde`; `conferir` chega pelo resumo ao aparelho que o ligou, com push real e HTTP falso; contagem `hoje`), `servidor.saude_atual` (sem `projetos`/`github.repo`, GitHub fora, PRONTO não carregado, PR segurado por sugestão), `servidor.saude_laco` e o passo `saude` do vigia | CI e local, com `python -W error` |
 | `ferramentas/verificar_docs.py` | este documento contra o código (seção 13) | CI e local |
 | `ferramentas/build.py` | roda a verificação e monta o zip | CI e release |
 
@@ -963,3 +1005,4 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.10.0 | eventos, decisões do XP e vereditos no SQLite; banco em `dados/escritorio.db`; migração automática | `banco.py`, `registrar_evento.py`, `servidor.py`, `xp.py`, `skills.py` |
 | 1.11.0 | uso do plano pela statusline; tiles no Placar; statusline opcional no instalador | `statusline_uso.py`, `banco.py`, `placar.js`, `instalar.py`, `ferramentas/testar_instalacao.py` |
 | 1.12.0 | faixa Tailscale só com `rede_tailscale` (segurança); `pr_pronto` com a regra do painel PRs; pacote do instalador com `modelos/`, `VERSION`, `CHANGELOG.md`, `LICENSE`; este SDD e `verificar_docs.py`; `testar_rede.py`; CI com alertas, rede e docs | `rede.py`, `servidor.py`, `alertas.py`, `instalar.py`, `docs/SDD.md`, `ferramentas/` |
+| 1.13.0 | saúde do time sem tokens (trabalho duplicado, agente em círculos, PR parado, selo de risco do PR); orçamento de atenção (push de resumo); `vigia.saude` | `saude.py`, `alertas.py`, `push.py`, `servidor.py`, `prs.js`, `alertas.js`, `configuracao.py`, `vigia_lider.py` |

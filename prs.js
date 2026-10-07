@@ -150,6 +150,12 @@ function desenhar() {
     meta.append(el('span', null, pr.branch));
     if (pr.autor) meta.append(el('span', null, '@' + pr.autor));
     if (pr.fecha.length) meta.append(el('span', null, 'fecha ' + pr.fecha.map((n) => '#' + n).join(', ')));
+    const r = pr.risco;   // saude.risco_pr: PR grande ou com checks falhando entra menos (arXiv 2601.15195)
+    if (r && r.nivel !== '?') {
+      const selo = el('span', 'risco ' + r.nivel, `${r.linhas} linhas · ${r.arquivos} arq.` + (r.falhas ? ` · ${r.falhas} check(s) falhando` : ''));
+      selo.title = r.dica ? 'Sugestão: ' + r.dica : 'Tamanho do PR (linhas alteradas e arquivos)';
+      meta.append(selo);
+    }
     const acoes = el('div', 'acoes');
     const abrir = el('a', 'botao principal', s.classe === 'pronto' ? 'Aprovar e fazer merge ↗' : 'Abrir no GitHub ↗');
     abrir.href = pr.url + (s.classe === 'pronto' ? '#partial-pull-merging' : ''); abrir.target = '_blank'; abrir.rel = 'noopener';

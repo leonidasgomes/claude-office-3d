@@ -3,6 +3,7 @@
 //  * com a página fechada: Web Push (sw.js) — precisa de contexto seguro (localhost no PC; HTTPS do modo rede no celular);
 //  * iPhone: só funciona com o escritório na Tela de Início (iOS 16.4+).
 // Nada de comando, caminho ou código vai no push; este painel só liga/desliga e testa.
+// Avisos de rotina (a.resumo) entram na lista e no selo sem toast: o servidor os junta num push de resumo (alertas.py).
 const POLL_MS = 10000;
 const CHAVES = { visto: 'office.alertas.visto', tipos: 'office.alertas.tipos', push: 'office.alertas.push' };
 const $ = (id) => document.getElementById(id);
@@ -27,6 +28,7 @@ let ultimo = null;               // maior id já baixado (null = ainda não baix
 let visto = Number(lerLS(CHAVES.visto)) || 0;   // maior id que você já viu (painel aberto)
 let recentes = [], tipos = [], ativo = true, pushInfo = { disponivel: true, motivo: '' }, titulo = '';
 let destacar = 0;
+let hoje = null;                 // {imediatos, resumo}: avisos de hoje (orçamento de atenção)
 let sessao = null, estadoPush = { inscrito: false, h: '' }, mensagem = '', mensagemErro = false;
 
 // ---------------------------------------------------------------- rede
@@ -109,13 +111,13 @@ async function ler() {
   let j;
   try { j = await pegar('/api/alertas?desde=' + (ultimo === null ? 0 : ultimo)); } catch (e) { return; }
   if (!j || !j.ok) return;
-  ativo = j.ativo !== false; tipos = j.tipos || tipos; pushInfo = j.push || pushInfo; titulo = j.titulo || titulo;
+  ativo = j.ativo !== false; tipos = j.tipos || tipos; hoje = j.hoje || hoje; pushInfo = j.push || pushInfo; titulo = j.titulo || titulo;
   const primeira = ultimo === null;
   if (!primeira && j.ultimo < ultimo) { ultimo = j.ultimo; recentes = []; }   // fila recomeçou
   for (const a of j.alertas || []) {
     if (recentes.some((r) => r.id === a.id)) continue;
     recentes.push(a);
-    if (!primeira && querTipo(a.tipo)) { toast(a); notificar(a); }
+    if (!primeira && querTipo(a.tipo) && !a.resumo) { toast(a); notificar(a); }
   }
   recentes = recentes.slice(-50);
   if (primeira && lerLS(CHAVES.visto) === null) { visto = j.ultimo; gravarLS(CHAVES.visto, String(visto)); }
@@ -245,14 +247,15 @@ function desenhar() {
   if (!itens.length) ol.append(el('li', 'msg', 'Nada por enquanto. Quando algo esperar por você, aparece aqui.'));
   for (const a of itens) {
     const li = el('li', 'alerta' + (a.id > destacar ? ' novo' : ''));
-    li.append(el('span', 'hora', horaDe(a.ts) + (querTipo(a.tipo) ? '' : ' · tipo desligado')), el('b', null, a.titulo), el('span', null, a.corpo));
+    li.append(el('span', 'hora', horaDe(a.ts) + (querTipo(a.tipo) ? '' : ' · tipo desligado') + (a.resumo ? ' · no resumo' : '')), el('b', null, a.titulo), el('span', null, a.corpo));
     if (a.detalhe) li.append(el('span', 'det', a.detalhe));
     li.addEventListener('click', () => abrirPainel(painelDaUrl(a.url)));
     ol.append(li);
   }
   lista.append(ol); partes.push(lista);
   corpo.replaceChildren(...partes);
-  info.textContent = ultimo === null ? 'consultando…' : (recentes.length + ' alerta(s) guardado(s)');
+  info.textContent = ultimo === null ? 'consultando…' : (recentes.length + ' alerta(s) guardado(s)'
+    + (hoje ? ' · hoje: ' + hoje.imediatos + ' na hora, ' + hoje.resumo + ' no resumo' : ''));
 }
 function abrir() {
   painel.hidden = false;

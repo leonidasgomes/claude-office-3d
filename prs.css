@@ -52,3 +52,8 @@ html.compacto #prsConta { font-size: 13px; }
 #prsLista .sug-acoes .botao { cursor: pointer; font-size: 12px; padding: 2px 8px; font-family: inherit; }
 #prsLista .sug-acoes .botao:disabled { opacity: .5; cursor: default; }
 html.compacto #prsLista .sug, html.compacto #prsLista .sugestoes > summary { font-size: 14px; }
+
+/* Selo de risco do PR (saude.risco_pr): tamanho e checks falhando */
+#prsLista .risco { border-radius: 999px; padding: 0 8px; background: #1f2a37; color: #cbd5e1; }
+#prsLista .risco.medio { background: #713f12; color: #fde68a; }
+#prsLista .risco.grande { background: #7f1d1d; color: #fecaca; }

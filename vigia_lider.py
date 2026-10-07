@@ -8,6 +8,8 @@ notificação para ele; sem linha, ele não acorda.
 
 O que roda (bloco "vigia" do config.json):
   - `sugestoes_bot.py --pendentes` (se "sugestoes" não for false e houver bots configurados);
+  - `saude.py --pendentes` (se "saude" não for false): trabalho duplicado ou agente andando em círculos, do dados/saude.json
+    que o servidor do escritório grava (sem o servidor aberto, não avisa nada);
   - os "comandos" extras do seu projeto: cada um com "rotulo", "comando" (texto, roda no shell, na 1ª pasta de "projetos")
     e "acao" (o que o líder faz quando o comando tiver saída). Saída vazia ou só "NADA" = nada a avisar.
 A mesma saída não é avisada duas vezes seguidas.
@@ -33,6 +35,9 @@ def passos(cfg):
     if v.get("sugestoes", True) and ((cfg.get("github") or {}).get("bots_revisao") or (cfg.get("revisor") or {}).get("ativo")):
         lista.append(("sugestoes", [sys.executable, str(RAIZ / "sugestoes_bot.py"), "--pendentes"], False,
                       "trate as sugestões dos bots (dono do PR com --pr; --pronto antes do merge)"))
+    if v.get("saude", True):
+        lista.append(("saude", [sys.executable, str(RAIZ / "saude.py"), "--pendentes"], False,
+                      "trabalho duplicado (junte ou feche um) ou agente em círculos (mande parar e achar a causa antes de tentar de novo)"))
     for c in v.get("comandos") or []:
         lista.append((c["rotulo"], c["comando"], True, c["acao"]))
     return lista

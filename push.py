@@ -369,7 +369,8 @@ class Push:
         for sub in self._ler():
             if so_aparelho is not None and sub.get("aparelho") != str(so_aparelho):
                 continue
-            if not ignorar_tipos and not self._quer(sub, alerta.get("tipo"), padroes):
+            # o push de resumo leva `tipos` (os avisos agrupados): vai a quem quer pelo menos um deles
+            if not ignorar_tipos and not any(self._quer(sub, t, padroes) for t in (alerta.get("tipos") or [alerta.get("tipo")])):
                 continue
             if validar and not endpoint_valido(sub["endpoint"]):
                 continue

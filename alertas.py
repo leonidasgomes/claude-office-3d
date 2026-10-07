@@ -6,7 +6,11 @@ Cada alerta novo vai para a fila dados/alertas.jsonl (últimos 200), para o Web 
 ligado, para um toast do sistema. A página lê a fila em GET /api/alertas?desde=<id>.
 
 Tipos: pr_pronto, pr_problema, auditoria, conferir, escalonamento, pergunta, lembrete, sugestao (sugestão P0/P1 do bot de
-revisão; fonte "sugestoes") e "teste" (do botão de teste).
+revisão; fonte "sugestoes"), cota (fonte "cota"), duplicado (o mesmo trabalho em duas branches/PRs), circulo (agente no ciclo editar → rodar → editar), pr_parado (PR aberto sem
+atualização há mais de N h) — fonte "saude", de saude.py — e "teste" (do botão de teste).
+Orçamento de atenção ("Oversight Has a Capacity", arXiv 2606.08919: avisar demais cansa e piora a supervisão): só os tipos em
+`imediatos` vão na hora para o push/toast; os outros entram na fila marcados `resumo` (a página lista sem pop-up) e saem num
+único push de resumo `resumo_horas` depois do 1º aviso pendente. A contagem por dia (imediatos x resumo) vai em GET /api/alertas (`hoje`).
 Na primeira leitura de cada fonte o estado só é registrado (baseline): o que já existia não vira alerta.
 """
 import json
@@ -19,6 +23,7 @@ import time
 from pathlib import Path
 
 import push as _push
+import saude as _saude
 
 MAX_FILA = 200
 INTERVALO = 60                 # s entre leituras do detector
@@ -36,10 +41,17 @@ TIPOS = [
     {"id": "lembrete", "rotulo": "Lembrete de PR pronto esperando há mais de 24 h", "padrao": True, "painel": "prs"},
     {"id": "sugestao", "rotulo": "Sugestão P0/P1 nova do bot de revisão", "padrao": True, "painel": "prs"},
     {"id": "cota", "rotulo": "Cota do GitHub baixa", "padrao": True, "painel": "prs"},
+    {"id": "duplicado", "rotulo": "Trabalho duplicado (mesma tarefa em duas branches ou PRs)", "padrao": True, "painel": "prs"},
+    {"id": "circulo", "rotulo": "Agente andando em círculos (edita e roda o mesmo de novo)", "padrao": True, "painel": ""},
+    {"id": "pr_parado", "rotulo": "PR aberto parado (sem atualização há mais de parado_horas)", "padrao": True, "painel": "prs"},
 ]
+IMEDIATOS_PADRAO = ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"]
+REPETICAO_CIRCULO = 7200       # s: o mesmo agente em círculo no mesmo arquivo não alerta de novo antes disso
+DIAS_CONTAGEM = 14
 PADROES = {t["id"]: t["padrao"] for t in TIPOS}
 OPCOES_PADRAO = {"ativo": True, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
-                 "contato": _push.CONTATO_PADRAO, "tipos": dict(PADROES), "agentes_pergunta": []}
+                 "contato": _push.CONTATO_PADRAO, "tipos": dict(PADROES), "agentes_pergunta": [],
+                 "imediatos": list(IMEDIATOS_PADRAO), "resumo_horas": 3, "parado_horas": 24}
 
 
 def tipos_publicos(opcoes):
@@ -53,7 +65,8 @@ def normalizar_opcoes(bruto):
     if isinstance(bruto, dict):
         o["ativo"] = bruto.get("ativo") is not False
         o["toast_windows"] = bruto.get("toast_windows") is True
-        for k, minimo, maximo in (("lembrete_horas", 1, 24 * 14), ("limite_push_hora", 1, 200)):
+        for k, minimo, maximo in (("lembrete_horas", 1, 24 * 14), ("limite_push_hora", 1, 200), ("resumo_horas", 1, 24),
+                                  ("parado_horas", 1, 24 * 14)):
             try:
                 o[k] = max(minimo, min(maximo, int(bruto[k]))) if k in bruto else o[k]
             except (TypeError, ValueError):
@@ -66,6 +79,8 @@ def normalizar_opcoes(bruto):
                     o["tipos"][k] = bruto["tipos"][k] is True
         if isinstance(bruto.get("agentes_pergunta"), list):
             o["agentes_pergunta"] = [str(a).strip().lower() for a in bruto["agentes_pergunta"] if str(a).strip()]
+        if isinstance(bruto.get("imediatos"), list):
+            o["imediatos"] = [k for k in PADROES if k in bruto["imediatos"]]
     return o
 
 
@@ -207,6 +222,48 @@ def _detectar_escalonamentos(est, registro, novos):
     base["esc"] = True
 
 
+def _detectar_saude(est, sd, agora, novos):
+    """Fonte "saude" (saude.resumo): duplicados fortes novos, agentes em círculo e PRs parados. Alerta já na 1ª leitura
+    (como a cota): é um fato do presente que custa tokens enquanto ninguém olha, não uma novidade a ignorar."""
+    # sem "duplicados"/"parados" (GitHub fora do ar: só os círculos) o estado deles fica como está (sem alerta repetido depois)
+    fortes = [d for d in (sd.get("duplicados") or {}).get("fortes") or [] if isinstance(d, dict) and d.get("branches")]
+    chaves = {",".join(d["branches"]): d for d in fortes}
+    antes = set(est.get("dup", []))
+    novas = [d for k, d in sorted(chaves.items()) if k not in antes] if "duplicados" in sd else []
+    if "duplicados" in sd:
+        est["dup"] = sorted(chaves)   # o que sumiu (juntado, fechado) e voltar alerta de novo
+    if novas:
+        um = len(novas) == 1
+        novos.append(_alerta("duplicado", "Trabalho duplicado" if um else f"{len(novas)} trabalhos duplicados",
+                             (f"{novas[0]['motivo'][:1].upper()}{novas[0]['motivo'][1:]}: {' e '.join(novas[0]['branches'][:3])}." if um else
+                              "; ".join(d["motivo"] for d in novas[:3]) + "."),
+                             "duplicado:" + ";".join(sorted(",".join(d["branches"]) for d in novas))[:200],
+                             "; ".join(", ".join(d["branches"]) for d in novas)[:300]))
+    for c in sd.get("circulos") or []:
+        if not isinstance(c, dict) or _repetido(est, f"circulo:{c.get('agente')}:{c.get('arquivo')}", agora, REPETICAO_CIRCULO):
+            continue
+        quem = _push.sanear(str(c.get("agente") or "?"), 30)
+        novos.append(_alerta("circulo", f"{quem} andando em círculos",
+                             f"{quem} editou {_push.sanear(str(c.get('arquivo')), 40)} {c.get('edicoes')} vezes e rodou o mesmo "
+                             f"comando {c.get('comandos')} vezes em {_saude.JANELA_CIRCULO_MIN} min. Vale parar e repensar a causa.",
+                             f"circulo:{c.get('agente')}:{c.get('arquivo')}:{int(agora // REPETICAO_CIRCULO)}",
+                             _push.sanear(str(c.get("comando") or ""), 200)))
+    vistos = est.setdefault("parado", {})   # {PR: atualizado já avisado}; só esquece quando o PR fecha
+    if isinstance(sd.get("abertos"), list):
+        abertos = {str(n) for n in sd["abertos"]}
+        for n in [n for n in vistos if n not in abertos]:
+            del vistos[n]
+    for x in sd.get("parados") or []:
+        if not isinstance(x, dict) or not isinstance(x.get("numero"), int):
+            continue
+        n, quando = str(x["numero"]), str(x.get("atualizado") or "")
+        if vistos.get(n) != quando:
+            vistos[n] = quando
+            novos.append(_alerta("pr_parado", f"PR #{n} parado há {x.get('horas')} h",
+                                 f"Ninguém mexeu no PR #{n} há {x.get('horas')} h: retomar, fechar ou pedir ajuda ao líder.",
+                                 f"pr_parado:{n}:{quando}", _push.sanear(str(x.get("titulo") or ""), 200)))
+
+
 PRIORIDADES_ALERTA = ("P0", "P1")
 
 
@@ -300,6 +357,9 @@ def detectar(est, entradas, agora, opc):
     ct = entradas.get("cota")
     if isinstance(ct, dict):
         _detectar_cota(est, ct, novos)
+    sd = entradas.get("saude")
+    if isinstance(sd, dict) and not sd.get("erro"):
+        _detectar_saude(est, sd, agora, novos)
     ult = est.get("ultimo", {})   # esquece chaves com mais de 2 dias
     est["ultimo"] = {k: v for k, v in ult.items() if agora - v < 2 * 86400}
     return novos
@@ -418,7 +478,7 @@ class Alertas:
         """Uma leitura do detector. Devolve os alertas que saíram. Falha de uma fonte não derruba as outras."""
         agora = time.time() if agora is None else agora
         ent = {}
-        for nome in ("prs", "placar", "escalonamentos", "sugestoes", "cota"):
+        for nome in ("prs", "placar", "escalonamentos", "sugestoes", "cota", "saude"):
             fn = self.fontes.get(nome)
             if fn:
                 try:
@@ -431,10 +491,24 @@ class Alertas:
             except Exception as e:
                 print(f"[alertas] fonte eventos: {str(e)[:120]}", flush=True)
         with self.trava:
-            novos = detectar(self.estado, ent, agora, self.opcoes)
+            novos = [dict(a, resumo=a["tipo"] not in self.opcoes["imediatos"]) for a in detectar(self.estado, ent, agora, self.opcoes)]
             saida = [self._entrar_na_fila(a, agora) for a in novos]
+            self._contar([a for a in saida if self.opcoes["tipos"].get(a["tipo"])], agora)
+            pend = self.estado.setdefault("resumo_pendente", [])
+            pend += [{"tipo": a["tipo"], "titulo": a["titulo"]} for a in saida if a["resumo"]]
+            if pend and "resumo_desde" not in self.estado:
+                self.estado["resumo_desde"] = agora   # a janela do resumo começa no 1º aviso de rotina (ou no estado antigo sem ela)
+            resumo = self._fechar_resumo(agora)
             self._gravar_estado()
-        for a in saida:
+        if resumo:
+            try:
+                r = self.push.enviar(self._payload_do_alerta(resumo), padroes=self.opcoes["tipos"])
+                if self.opcoes["toast_windows"] and any(self.opcoes["tipos"].get(t) for t in resumo["tipos"]):
+                    toast_windows(resumo["titulo"], resumo["corpo"])
+                print(f"[alertas] resumo: {resumo['corpo'][:80]} (push: {r['enviados']} enviado(s))", flush=True)
+            except Exception as e:
+                print(f"[alertas] resumo falhou: {str(e)[:120]}", flush=True)
+        for a in [x for x in saida if not x["resumo"]]:
             try:
                 r = self.entregar(a)
                 print(f"[alertas] {a['tipo']}: {a['corpo'][:80]} (push: {r['enviados']} enviado(s), {r['falhas']} falha(s), "
@@ -447,6 +521,38 @@ class Alertas:
             except Exception:
                 pass
         return saida
+
+    def _contar(self, saida, agora):
+        """Contagem por dia (imediatos x resumo) dos últimos DIAS_CONTAGEM dias, para medir o volume de avisos."""
+        cont = self.estado.setdefault("contagem", {})
+        dia = time.strftime("%Y-%m-%d", time.localtime(agora))
+        c = cont.setdefault(dia, {"imediatos": 0, "resumo": 0})
+        for a in saida:
+            c["resumo" if a["resumo"] else "imediatos"] += 1
+        for d in sorted(cont)[:-DIAS_CONTAGEM]:
+            del cont[d]
+
+    def hoje(self, agora=None):
+        """{"imediatos": n, "resumo": m} de hoje (GET /api/alertas)."""
+        dia = time.strftime("%Y-%m-%d", time.localtime(time.time() if agora is None else agora))
+        return dict({"imediatos": 0, "resumo": 0}, **self.estado.get("contagem", {}).get(dia, {}))
+
+    def _fechar_resumo(self, agora):
+        """Junta os avisos de rotina pendentes num só (tipo "resumo", com `tipos` para o filtro de cada aparelho)
+        resumo_horas depois do 1º aviso pendente; None se ainda não é hora ou não há nada. Não entra na fila: cada aviso
+        já está lá."""
+        pend = self.estado.get("resumo_pendente") or []
+        if not pend or agora - self.estado.get("resumo_desde", agora) < self.opcoes["resumo_horas"] * 3600:
+            return None
+        self.estado["resumo_pendente"] = []
+        self.estado.pop("resumo_desde", None)
+        rotulos = {t["id"]: t["rotulo"] for t in TIPOS}
+        por_tipo = {}
+        for x in pend:
+            por_tipo[x["tipo"]] = por_tipo.get(x["tipo"], 0) + 1
+        partes = [f"{n}× {rotulos.get(t, t).split(' (')[0].lower()}" for t, n in sorted(por_tipo.items(), key=lambda x: (-x[1], x[0]))]
+        return {"tipo": "resumo", "tipos": sorted(por_tipo), "titulo": f"Resumo: {len(pend)} aviso(s)",
+                "corpo": "; ".join(partes), "detalhe": "", "chave": "resumo", "url": "/", "id": 0}
 
     def laco(self, parar, intervalo=INTERVALO, atraso=8):
         """Thread do detector. `parar`: threading.Event."""

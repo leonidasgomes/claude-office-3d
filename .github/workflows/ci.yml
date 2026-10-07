@@ -31,5 +31,7 @@ jobs:
         run: python -W error ferramentas/testar_alertas.py
       - name: Filtro de origem do acesso pelo celular (rede_tailscale)
         run: python -W error ferramentas/testar_rede.py
+      - name: Saúde do time e orçamento de atenção (duplicados, círculos, PR parado, push de resumo)
+        run: python -W error ferramentas/testar_saude.py
       - name: Build do pacote
         run: python ferramentas/build.py

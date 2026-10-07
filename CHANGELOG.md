@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.13.0
+- **Saúde do time, sem tokens** (`saude.py`, novo; `servidor.py`, `alertas.py`): três alertas novos a partir de uma
+  pesquisa sobre por que PRs de agentes falham ("Where Do AI Coding Agents Fail?", arXiv 2601.15195; MAST, arXiv
+  2503.13657; "The Observability Gap", arXiv 2603.26942):
+  - `duplicado`: a mesma tarefa em duas branches ou PRs ativos (mesmo nome com números de issue diferentes, ou dois PRs
+    abertos para a mesma issue). PR duplicado é a 2ª causa de PR de agente rejeitado (23%).
+  - `circulo`: o mesmo agente editou o mesmo arquivo 6 vezes e rodou o mesmo comando 4 vezes em 45 min (o ciclo
+    editar → rodar → editar que trata o sintoma em vez da causa).
+  - `pr_parado`: PR aberto, fora rascunho e pronto, sem atualização há mais de `alertas.parado_horas` (24 h).
+  `GET /saude` mostra tudo (inclusive os duplicados "fracos": duas branches ativas da mesma issue) e o servidor grava
+  `dados/saude.json` a cada 5 min (mesmo com os alertas desligados; com o GitHub fora, só os círculos).
+- **Selo de risco no painel PRs** (`prs.js`, `servidor.py`): linhas alteradas, arquivos e checks falhando de cada PR,
+  amarelo/vermelho quando grande (cada check que falha tira ~15% da chance de merge; PR maior entra 17% menos). O tamanho
+  vem do mesmo `GET /pulls/{n}` que o servidor já fazia para o conflito: nenhuma chamada a mais ao GitHub.
+- **Orçamento de atenção** (`alertas.py`, `push.py`, `alertas.js`): só os tipos de `alertas.imediatos` (PR pronto, PR com
+  problema, pergunta, escalonamento, auditoria, cota) avisam na hora; os de rotina entram na lista sem toast e saem num
+  único push de resumo `alertas.resumo_horas` (3 h) depois do primeiro aviso. O painel mostra quantos avisos saíram hoje. Base: "Oversight
+  Has a Capacity" (arXiv 2606.08919). **Muda o comportamento:** `lembrete` e `sugestao` deixam de chegar na hora; para
+  voltar ao antigo, ponha os dois em `alertas.imediatos`.
+- **Vigia do líder avisa duplicado e círculo** (`vigia_lider.py`, `configuracao.py`): passo `saude` (`vigia.saude`,
+  ligado por padrão) roda `saude.py --pendentes`.
+
 ## 1.12.0
 - **Segurança — faixa do Tailscale só com `rede_tailscale`** (`rede.py`, `servidor.py`): com o acesso pelo celular
   ligado, `rede.ip_permitido` aceitava sempre a faixa `100.64.0.0/10` (Tailscale/CGNAT), mesmo com

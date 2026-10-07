@@ -41,13 +41,17 @@
   },
   "alertas": {
     "ativo": true,
-    "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true},
+    "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true, "cota": true,
+              "duplicado": true, "circulo": true, "pr_parado": true},
     "lembrete_horas": 24,
     "limite_push_hora": 20,
     "toast_windows": false,
     "contato": "mailto:alertas@example.com",
     "escalonamentos": "",
-    "agentes_pergunta": ["Diretor"]
+    "agentes_pergunta": ["Diretor"],
+    "imediatos": ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"],
+    "resumo_horas": 3,
+    "parado_horas": 24
   },
   "sugestoes": {
     "triagem_modelo": "claude-haiku-4-5-20251001",
@@ -70,6 +74,7 @@
   "vigia": {
     "intervalo_min": 15,
     "sugestoes": true,
+    "saude": true,
     "comandos": []
   },
   "rede_local": false,

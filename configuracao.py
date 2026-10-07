@@ -66,7 +66,9 @@ XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design":
 
 # Alertas (notificação/push quando algo espera por você): cada tipo liga/desliga; "conferir" vem desligado
 ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "conferir": False, "escalonamento": True,
-                 "pergunta": True, "lembrete": True, "sugestao": True}
+                 "pergunta": True, "lembrete": True, "sugestao": True, "cota": True, "duplicado": True, "circulo": True, "pr_parado": True}
+# Orçamento de atenção: só estes tipos avisam na hora; os outros vão num push de resumo a cada alertas.resumo_horas
+ALERTAS_IMEDIATOS = ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"]
 
 # Sugestões do bot de revisão (sugestoes_bot.py): só funciona com github.repo e github.bots_revisao preenchidos
 SUGESTOES_MODELO = "claude-haiku-4-5-20251001"   # triagem barata (uma chamada de `claude -p` por coleta com itens novos)
@@ -113,9 +115,11 @@ PADRAO = {
                 "rotulos": []},                          # rótulos extras da issue aberta na suspeita (ex.: ["P2"])
     "vigia": {"intervalo_min": 15,                     # vigia_lider.py: de quanto em quanto tempo roda os comandos
               "sugestoes": True,                      # inclui `sugestoes_bot.py --pendentes` (com bots configurados)
+              "saude": True,                          # inclui `saude.py --pendentes` (trabalho duplicado, agente em círculos)
               "comandos": []},                        # extras: [{"rotulo", "comando" (texto, roda no shell), "acao"}]
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
-                "contato": "", "escalonamentos": "", "agentes_pergunta": []},
+                "contato": "", "escalonamentos": "", "agentes_pergunta": [], "imediatos": ALERTAS_IMEDIATOS,
+                "resumo_horas": 3, "parado_horas": 24},
     "tema": "neutro",
     "apelidos": "desligado",
     "rede_local": False,        # True: escuta na rede local para o celular (QR code + sessão pareada); False: só 127.0.0.1
@@ -269,6 +273,7 @@ def normalizar_vigia(bruto):
     except (TypeError, ValueError):
         pass
     v["sugestoes"] = bruto.get("sugestoes") is not False
+    v["saude"] = bruto.get("saude") is not False
     for i, c in enumerate(bruto.get("comandos") or []):
         if isinstance(c, dict) and isinstance(c.get("comando"), str) and c["comando"].strip():
             v["comandos"].append({"rotulo": str(c.get("rotulo") or f"comando{i + 1}").strip()[:30],
@@ -324,7 +329,8 @@ def normalizar_alertas(bruto):
     a = copy.deepcopy(PADRAO["alertas"])
     a["ativo"] = bruto.get("ativo") is not False
     a["toast_windows"] = bruto.get("toast_windows") is True
-    for k, minimo, maximo in (("lembrete_horas", 1, 24 * 14), ("limite_push_hora", 1, 200)):
+    for k, minimo, maximo in (("lembrete_horas", 1, 24 * 14), ("limite_push_hora", 1, 200), ("resumo_horas", 1, 24),
+                              ("parado_horas", 1, 24 * 14)):
         try:
             a[k] = max(minimo, min(maximo, int(bruto[k]))) if k in bruto else a[k]
         except (TypeError, ValueError):
@@ -338,6 +344,8 @@ def normalizar_alertas(bruto):
             a[k] = bruto[k].strip()[:300]
     if isinstance(bruto.get("agentes_pergunta"), list):
         a["agentes_pergunta"] = [str(x).strip() for x in bruto["agentes_pergunta"] if str(x).strip()]
+    if isinstance(bruto.get("imediatos"), list):
+        a["imediatos"] = [str(x).strip() for x in bruto["imediatos"] if str(x).strip()]
     return a
 
 

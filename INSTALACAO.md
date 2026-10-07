@@ -595,6 +595,18 @@ desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celula
 | Lembrete | PR pronto esperando há mais de 24 h (no máximo 1 lembrete por dia) | ligado |
 | Sugestão P0/P1 do bot de revisão | sugestão nova de prioridade P0 ou P1 de um bot de `github.bots_revisao` (seção 11) | ligado |
 | Cota do GitHub baixa | restam menos de 20% dos pontos da hora na API do GitHub (GraphQL ou REST); o vigia `cota.py` lê a cota a cada 5 min e grava `dados/github_cota.jsonl`; o rodapé do Kanban e dos PRs mostra "GraphQL: 3.200/5.000 (volta 11:25)" | ligado |
+| Trabalho duplicado | a mesma tarefa em duas branches ou PRs ativos (mesmo nome com números diferentes, ou dois PRs para a mesma issue); lê as branches locais da 1ª pasta de `projetos` | ligado |
+| Agente andando em círculos | o mesmo agente editou o mesmo arquivo 6 vezes e rodou o mesmo comando 4 vezes em 45 min: vale parar e achar a causa | ligado |
+| PR parado | PR aberto (fora rascunho e pronto) sem atualização há mais de `parado_horas` (24 h) | ligado |
+
+Os três últimos vêm de `saude.py`, sem tokens; `GET /saude` mostra também os "fracos" (duas branches ativas com o mesmo
+número de issue). No painel PRs, cada PR ganha um selo de tamanho (linhas e arquivos; amarelo a partir de 300 linhas ou
+10 arquivos, vermelho a partir de 800 ou 25) e de checks falhando: PR grande ou com CI falhando entra menos.
+
+**Orçamento de atenção.** Avisar demais cansa e piora a supervisão. Só PR pronto, PR com problema, pergunta,
+escalonamento, auditoria e cota avisam na hora (`imediatos`); os outros entram na lista do painel marcados "no resumo",
+sem toast na hora, e saem num único push de resumo `resumo_horas` (3 h) depois do primeiro aviso. O rodapé do painel mostra quantos avisos saíram
+hoje.
 
 ### Como funciona
 
@@ -647,13 +659,17 @@ Tocar na notificação abre o escritório já no painel certo (PRs ou Placar).
 "alertas": {
   "ativo": true,                      // false desliga tudo (detector, fila e push)
   "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false,
-            "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true},   // padrão inicial de cada aparelho
+            "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true,
+            "duplicado": true, "circulo": true, "pr_parado": true},   // padrão inicial de cada aparelho
   "lembrete_horas": 24,               // PR pronto esperando há mais que isso gera o lembrete diário
   "limite_push_hora": 20,             // máximo de pushes por hora (todos os aparelhos)
   "toast_windows": false,             // true: também um toast do Windows no PC (PowerShell, sem dependências)
   "contato": "mailto:alertas@example.com",   // identificação do servidor no VAPID (opcional; troque pelo seu e-mail)
   "escalonamentos": "",               // caminho de um JSON de escalonamentos (opcional, veja abaixo)
-  "agentes_pergunta": ["Diretor"]     // só estes agentes disparam "pergunta de escopo" (vazio = qualquer um)
+  "agentes_pergunta": ["Diretor"],    // só estes agentes disparam "pergunta de escopo" (vazio = qualquer um)
+  "imediatos": ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"],   // avisam na hora
+  "resumo_horas": 3,                  // os outros tipos vão num push de resumo a cada N horas
+  "parado_horas": 24                  // PR sem atualização há mais que isso gera "PR parado"
 }
 ```
 
@@ -669,6 +685,8 @@ avisa quando um escalonamento abre e quando fecha. Arquivo ausente: essa fonte �
 - `python -W error ferramentas/testar_alertas.py`: detector com dados simulados, fila, cifra do push decifrada de volta
   por uma implementação de referência (inclui o exemplo oficial do apêndice A da RFC 8291), assinatura VAPID verificada
   com a chave pública e envio a um "serviço de push" local de mentira.
+- `python -W error ferramentas/testar_saude.py`: duplicados, círculos, risco do PR, PR parado e o orçamento de atenção
+  (resumo agrupado), com dados simulados.
 
 ### Não chegou?
 
@@ -782,9 +800,11 @@ líder; ao líder ficam os "discutir", os PRs de dono ausente e uma amostra das 
 skill do líder, está em `modelos/sugestoes_lider.md`; o guia completo de time enxuto, em `modelos/GUIA-TIME-ENXUTO.md`.
 
 ```json
-"vigia": {"intervalo_min": 15, "sugestoes": true,
+"vigia": {"intervalo_min": 15, "sugestoes": true, "saude": true,
           "comandos": [{"rotulo": "ciclo", "comando": "python scripts/o_que_mudou.py", "acao": "rode o ciclo do líder"}]}
 ```
+`"saude": true` (padrão) inclui `saude.py --pendentes`: trabalho duplicado ou agente andando em círculos, lidos do
+`dados/saude.json` que o servidor do escritório grava a cada 5 min (com o servidor fechado, não avisa nada).
 `python vigia_lider.py --uma` faz uma rodada só (para testar o que acordaria o líder).
 
 ### Linha de comando
