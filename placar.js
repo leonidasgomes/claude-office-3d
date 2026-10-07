@@ -5,7 +5,7 @@ import { CONFIG } from './config.js';
 import { dica } from './dica.js';
 
 const ATUALIZAR_MS = 60000;
-const CHAVE_NIVEIS = 'office.xp.niveis', CHAVE_ORDEM = 'office.placar.ordem';
+const CHAVE_NIVEIS = 'office.xp.niveis', CHAVE_ORDEM = 'office.placar.ordem', CHAVE_PRS = 'office.xp.prs';
 const NIVEIS_BASE = [{ nivel: 1, titulo: 'Estagiário', xp: 0 }, { nivel: 2, titulo: 'Júnior', xp: 20 }, { nivel: 3, titulo: 'Pleno', xp: 60 },
   { nivel: 4, titulo: 'Sênior', xp: 150 }, { nivel: 5, titulo: 'Mestre', xp: 300 }];
 // níveis do config.json (xp.niveis); até 5 níveis têm cor/estrela própria, acima disso repete a última
@@ -31,6 +31,7 @@ let atual = null;         // dados normalizados em exibição
 let fonte = '';           // 'real' | 'demo' | 'injetado'
 let ordem = lerLS(CHAVE_ORDEM, 'nome') === 'nivel' ? 'nivel' : 'nome';
 let visto = null;         // níveis vistos em memória (demonstração)
+let vistoPrs = null;      // PRs pontuados vistos em memória (demonstração): merge novo = festa curta no escritório
 
 // ---------------------------------------------------------------- Normalização
 function nivelPorXp(niveis, xp) { let n = niveis[0]; for (const x of niveis) if (xp >= x.xp) n = x; return n; }
@@ -110,19 +111,31 @@ function aplicar(obj, opcoes = {}) {
   let anteriores = null;
   if (novaFonte === 'demo') anteriores = novaFonte !== fonte ? null : visto;
   else { try { anteriores = JSON.parse(lerLS(CHAVE_NIVEIS, 'null')); } catch (e) { anteriores = null; } }
-  const novos = {}, subiram = [];
+  let prsAntes = null;
+  if (novaFonte === 'demo') prsAntes = novaFonte !== fonte ? null : vistoPrs;
+  else { try { prsAntes = JSON.parse(lerLS(CHAVE_PRS, 'null')); } catch (e) { prsAntes = null; } }
+  const pausado = !!(o && o.emReplay && o.emReplay());   // replay aberto: não comemora nem grava como visto; a festa fica para depois
+  const novos = {}, subiram = [], prsNovos = {}, mergeados = [];
   for (const [nome, d] of Object.entries(dados.agentes)) {
     novos[nome] = d.nivel;
-    if (anteriores && typeof anteriores[nome] === 'number' && d.nivel > anteriores[nome]) subiram.push([nome, d.titulo_nivel]);
+    const subiu = !pausado && anteriores && typeof anteriores[nome] === 'number' && d.nivel > anteriores[nome];
+    if (subiu) subiram.push([nome, d.titulo_nivel]);
+    const n = Number(d.prs) || 0; prsNovos[nome] = n;
+    // PR novo pontuado (merge atribuído a ele): festa curta; quem também subiu de nível fica só com a festa grande
+    if (!pausado && !subiu && prsAntes && typeof prsAntes[nome] === 'number' && n > prsAntes[nome]) mergeados.push([nome, (d.ultimos || []).find((u) => u && u.pr) || null, n - prsAntes[nome]]);
+  }
+  if (!pausado) {
+    if (novaFonte === 'demo') vistoPrs = prsNovos; else gravarLS(CHAVE_PRS, JSON.stringify({ ...(prsAntes || {}), ...prsNovos }));
+    if (novaFonte === 'demo') visto = novos; else gravarLS(CHAVE_NIVEIS, JSON.stringify({ ...(anteriores || {}), ...novos }));
   }
   fonte = novaFonte; atual = dados;
-  if (novaFonte === 'demo') visto = novos; else gravarLS(CHAVE_NIVEIS, JSON.stringify({ ...(anteriores || {}), ...novos }));
   if (o) {
     for (const a of o.agentes.values()) {
       const d = dados.agentes[a.nome];
       o.xpDefinir(a.nome, d ? { nivel: d.nivel, titulo: d.titulo_nivel, xp: d.xp, xp_base: d.xp_base, xp_proximo: d.xp_proximo } : null);
     }
     subiram.forEach(([nome, titulo], i) => setTimeout(() => o.comemorar(nome, titulo), i * 700));
+    if (o.merge) mergeados.forEach(([nome, u, n], i) => setTimeout(() => o.merge(nome, u && u.pr, u && u.pontos, n), (subiram.length + i) * 700));
     o.atualizarFicha();
   }
   const aud = Number(dados.time.auditorias_abertas) || 0, conf = Number(dados.time.conferir_abertos) || 0;

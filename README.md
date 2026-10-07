@@ -25,6 +25,14 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 
 - Painel lateral com os agentes, o estado de cada um e os últimos eventos; clique num agente para ver a **ficha**
   (o que está fazendo e o que está falando).
+- **Escritório 3D que se lê de relance**: ícone e anel de estado visíveis de longe, ✔/✖ no fim de cada comando (⚠️ com 3
+  falhas seguidas), relógio do comando longo, agente em círculos com seta laranja, PRs parados na mesa do líder, tela de
+  PRs na parede, festa no merge, gaveteiro que evolui com o nível, fio vermelho quando dois agentes editam o mesmo
+  arquivo, gato, dia e noite, sons opcionais, animações reduzidas e modo leve para PC sem placa de vídeo.
+- **🩺 Saúde do time** (sem tokens): trabalho duplicado, agentes andando em círculos, PRs parados e risco dos PRs, com
+  Ignorar e **Avisar o líder** (entregue pelo `vigia_lider.py` como informação, nunca como ordem).
+- **⏪ Replay do dia** acelerado na própria cena, com marcas de falha, fala, círculo e merge, e **filtros** por agente e
+  tipo de evento no feed e na cena.
 - **Kanban** do GitHub Projects e painel de **PRs** esperando o seu merge (opcionais, via GitHub CLI `gh`).
 - **XP e níveis** (opcional): pontos por PR mergeado com resultado verificado, nível no crachá da mesa, painel
   **Placar** cooperativo e auditoria anti-trapaça nos testes (`python xp.py`).

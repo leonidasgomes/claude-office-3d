@@ -3,12 +3,15 @@
 Serve esta pasta e expõe:
   GET /config                         -> configuração pública (título, tema, agentes, GitHub) para a página
   GET /eventos?desde=<n>[&ultimos=<k>] -> {"total": N, "eventos": [...]} depois do id n (tabela evento do banco local)
+  GET /eventos?de=<ISO>[&ate=<ISO>][&apos=<id>] -> eventos de um período (replay do dia; paginado por id, até 5000 por página)
   GET /kanban                         -> cartões do GitHub Projects (REST via gh, em cache; traz também o texto da cota do GitHub)
   GET /prs[?forcar=1]                 -> pull requests abertos do repositório configurado (via gh, em cache)
   GET /xp                             -> placar de XP e níveis (dados/xp/placar.json, gerado por xp.py; opcional)
   GET /api/alertas?desde=<id>         -> fila de alertas (alertas.py); GET /api/push/chave e POST /api/push/inscrever|sair|prefs|teste
                                          (Web Push, push.py: só aparelho pareado com sessão + CSRF, ou o PC)
-  GET /saude                          -> duplicados, círculos e PRs parados (saude.py; a cada 5 min, gravado em dados/saude.json)
+  GET /saude                          -> duplicados, círculos e PRs parados (saude.py; a cada 5 min, gravado em dados/saude.json),
+                                         com os itens ignorados e os últimos pedidos ao líder
+  POST /api/saude/ignorar|avisar      -> painel 🩺 Saúde: ignorar/reativar um item ou avisar o líder (só o PC, com CSRF)
   GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
   POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
 O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
@@ -32,6 +35,7 @@ import webbrowser
 from functools import partial
 from http.server import ThreadingHTTPServer
 ThreadingHTTPServer.request_queue_size = 64   # o padrão (5) recusa conexões quando a página pede vários módulos de uma vez no Windows
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -74,6 +78,10 @@ def custos():
 
 XP_PY = PASTA / "xp.py"
 MAX_POR_RESPOSTA = 500  # evita respostas gigantes se o cliente ficar muito para trás
+MAX_PERIODO = 5000      # GET /eventos?de=&ate= (replay do dia): por página; o cliente pagina com apos=<proximo>
+RE_ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2})?)?", re.ASCII)
+FORMATOS_ISO = {10: "%Y-%m-%d", 16: "%Y-%m-%dT%H:%M", 19: "%Y-%m-%dT%H:%M:%S"}
+MAX_ID = 2 ** 63 - 1   # maior inteiro do SQLite
 KANBAN_VALIDADE = 600   # s; o quadro é lido no máximo a cada 10 min (REST; o GraphQL do `gh project` só entra como reserva)
 PRS_VALIDADE = 180      # s; REST, com ETag na lista (304 não conta no limite) e cache por sha
 MERGEAVEL_TTL = 1800    # s; a base pode andar sem o sha do PR mudar, então o "conflito" é conferido de novo a cada 30 min
@@ -121,6 +129,40 @@ def config_publica():
 def three_local():
     return (VENDOR / "build" / "three.module.js").is_file() and \
         (VENDOR / "examples" / "jsm" / "controls" / "OrbitControls.js").is_file()
+
+
+def iso_valido(texto):
+    """Data/hora ISO local só com dígitos ASCII e que existe de verdade (mês 13 ou 25:61 não passam)."""
+    if not RE_ISO.fullmatch(texto or ""):
+        return False
+    try:
+        datetime.strptime(texto, FORMATOS_ISO[len(texto)])
+    except (KeyError, ValueError):
+        return False
+    return True
+
+
+def eventos_periodo(qs):
+    """GET /eventos?de=<ISO>&ate=<ISO>[&apos=<id>] (replay do dia): (código, dados). Datas no formato do hook, hora local
+    ("2026-10-07T14:00" ou "2026-10-07"); `ate` exclusivo e opcional (sem ele, até agora); no máximo MAX_PERIODO por resposta."""
+    de, ate = (qs.get("de") or [""])[0].strip(), (qs.get("ate") or [""])[0].strip()
+    if not iso_valido(de) or (ate and not iso_valido(ate)):
+        return 400, {"erro": "de/ate no formato AAAA-MM-DD ou AAAA-MM-DDTHH:MM[:SS], com data e hora que existem"}
+    ate = ate or "9999-12-31"
+    if ate <= de:
+        return 400, {"erro": "ate precisa ser depois de de"}
+    try:
+        apos = max(0, int((qs.get("apos") or ["0"])[0] or "0"))
+    except ValueError:
+        return 400, {"erro": "apos precisa ser um número"}
+    if apos > MAX_ID:
+        return 400, {"erro": "apos grande demais"}
+    try:
+        eventos, proximo = banco.eventos_periodo(de, ate, apos, MAX_PERIODO)
+    except Exception as e:   # banco ocupado ou quebrado
+        print(f"[eventos] ERRO no período: {type(e).__name__}: {str(e)[:150]}", flush=True)
+        return 503, {"erro": "banco de eventos indisponível agora"}
+    return 200, {"de": de, "ate": ate, "eventos": eventos, "proximo": proximo, "maximo": MAX_PERIODO}
 
 
 def ler_eventos(desde=0, ultimos=0):
@@ -638,6 +680,11 @@ def sugestoes_para_alertas():
         raise
 
 
+def saude_pasta():
+    """dados/ do escritório: saude.json, saude_ignorados.json e saude_pedidos.jsonl (saude.py)."""
+    return PASTA / "dados"
+
+
 def saude_atual():
     """Duplicados, círculos e PRs parados (saude.resumo), recalculado no máximo a cada SAUDE_VALIDADE e gravado em
     dados/saude.json (lido por `saude.py --pendentes`, no vigia do líder). As branches locais vêm da 1ª pasta de "projetos"."""
@@ -669,7 +716,7 @@ def saude_atual():
         # só os círculos (GitHub fora ou PRONTO ainda não carregado, como logo depois de subir): tenta de novo em 60 s
         _saude.update(quando=time.time() - (SAUDE_VALIDADE - 60 if dados.get("sem_prs") else 0), dados=dados)
         try:
-            arq = PASTA / "dados" / "saude.json"
+            arq = saude_pasta() / "saude.json"
             arq.parent.mkdir(parents=True, exist_ok=True)
             tmp = arq.with_suffix(".tmp")
             tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
@@ -677,6 +724,75 @@ def saude_atual():
         except OSError:
             pass
         return dados
+
+
+def saude_get():
+    """GET /saude: saude_atual() + "ignorados" ({chave: {motivo, quando, origem}}) e os últimos 20 "pedidos" ao líder, cada um
+    com "entregue" (o vigia do líder já o leu pelo `saude.py --pendentes`). Os itens ignorados seguem na lista (o painel separa)."""
+    dados = dict(saude_atual(), ignorados=saude.ler_ignorados(saude_pasta()))
+    limite = saude.ultimo_entregue(saude_pasta()) or 0
+    dados["pedidos"] = [dict(p, entregue=p["ts"] <= limite) for p in saude.ler_pedidos(saude_pasta())[-20:]]
+    return dados
+
+
+def _validar_saude(dados, campo_texto, limite):
+    """(chave, texto) válidos do corpo do POST, ou (None, erro)."""
+    chave, texto = dados.get("chave"), dados.get(campo_texto, "")
+    if not saude.chave_valida(chave):
+        return None, "chave inválida (dup:<branches>, circulo:<agente>:<arquivo> ou parado:<n>, até 300 caracteres)"
+    if texto is None:
+        texto = ""
+    if not isinstance(texto, str) or len(texto) > limite:
+        return None, f"{campo_texto} deve ser texto de até {limite} caracteres"
+    try:   # JSON com surrogate solto ("\ud800") vira str que não codifica: recusa aqui, antes de gravar
+        chave.encode("utf-8"), texto.encode("utf-8")
+    except UnicodeError:
+        return None, "texto com caractere inválido (não é UTF-8)"
+    return chave, texto
+
+
+def saude_ignorar(dados, ident):
+    """POST /api/saude/ignorar {"chave", "ignorar": true|false, "motivo"}: some (ou volta) dos alertas e do --pendentes."""
+    chave, motivo = _validar_saude(dados, "motivo", saude.MAX_MOTIVO)
+    if chave is None:
+        return 400, {"ok": False, "erro": motivo}
+    if not isinstance(dados.get("ignorar"), bool):
+        return 400, {"ok": False, "erro": "ignorar deve ser true ou false"}
+    try:
+        ign = saude.definir_ignorado(chave, dados["ignorar"], motivo, ident.get("nome") or "PC", saude_pasta(),
+                                     ua=dados.get("_ua") or "")
+    except OSError as e:
+        return 500, {"ok": False, "erro": "não consegui gravar: " + str(e)[:150]}
+    except (ValueError, TypeError) as e:
+        return 400, {"ok": False, "erro": "entrada inválida: " + str(e)[:150]}
+    dados["_detalhe"] = ("ignorar " if dados["ignorar"] else "reativar ") + chave   # histórico de ações (dados/acoes.jsonl)
+    dados["pr"] = int(chave.split(":", 1)[1]) if chave.startswith("parado:") else None
+    print(f"[saude] {'ignorado' if dados['ignorar'] else 'reativado'}: {chave}", flush=True)
+    return 200, {"ok": True, "ignorados": ign}
+
+
+def saude_avisar(dados, ident):
+    """POST /api/saude/avisar {"chave", "texto"}: grava um pedido em dados/saude_pedidos.jsonl; o vigia do líder o entrega
+    (`saude.py --pendentes` → "[vigia saude] ... pedido do desenvolvedor: ..."). Não manda nada a sessão nenhuma."""
+    chave, nota = _validar_saude(dados, "texto", saude.MAX_TEXTO)
+    if chave is None:
+        return 400, {"ok": False, "erro": nota}
+    # só tipo, números e a chave marcada como dado (nada de título de PR); o recado digitado vai em campo separado
+    texto = saude.descrever(chave, _saude["dados"])   # o cache basta (não recalcula a saúde só para descrever)
+    try:
+        ped = saude.registrar_pedido(chave, texto, saude_pasta(), recado=nota, origem=ident.get("nome") or "PC",
+                                     ua=dados.get("_ua") or "")
+    except OSError as e:
+        return 500, {"ok": False, "erro": "não consegui gravar: " + str(e)[:150]}
+    except (ValueError, TypeError) as e:
+        return 400, {"ok": False, "erro": "entrada inválida: " + str(e)[:150]}
+    dados["_detalhe"] = "avisar " + chave
+    dados["pr"] = int(chave.split(":", 1)[1]) if chave.startswith("parado:") else None
+    print(f"[saude] pedido ao líder: {chave}", flush=True)
+    return 200, {"ok": True, "pedido": dict(ped, entregue=False)}
+
+
+ACOES_SAUDE = {"/api/saude/ignorar": saude_ignorar, "/api/saude/avisar": saude_avisar}
 
 
 def saude_laco(parar):
@@ -702,7 +818,9 @@ def criar_alertas(obj_rede):
         caminho = cfg()["alertas"].get("escalonamentos") or ""
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
     fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
-              "sugestoes": sugestoes_para_alertas, "cota": VIGIA.resumo, "saude": saude_atual}
+              "sugestoes": sugestoes_para_alertas, "cota": VIGIA.resumo,
+              # itens ignorados no painel Saúde não alertam (alertas._detectar_saude)
+              "saude": lambda: dict(saude_atual(), ignorados=sorted(saude.ler_ignorados(saude_pasta())))}
     # "sugestoes" leva o PRONTO da thread de validações: o alerta pr_pronto usa a mesma regra do painel PRs (prs.js);
     # antes da 1ª rodada do PRONTO (pronto_carregado False) o detector não mexe no estado dos PRs
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
@@ -766,6 +884,9 @@ def manifesto():
 
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
+        dados.pop("_detalhe", None)   # só o servidor preenche (vai para o histórico de ações)
+        if rota in ACOES_SAUDE:
+            return ACOES_SAUDE[rota](dados, ident)
         if rota.startswith("/api/push/"):
             return alertas_post(rota, dados, ident)
         if rota == "/api/sugestoes/tratar":
@@ -788,6 +909,10 @@ class Handler(rede.HandlerSeguro):
         if url.path == "/config":
             return self.responder(config_publica())
         if url.path == "/eventos":
+            qs_rep = parse_qs(url.query, keep_blank_values=True)   # "de=" vazio é erro do replay, não o modo antigo
+            if "de" in qs_rep or "ate" in qs_rep:   # replay do dia: filtro por tempo, paginado por id
+                codigo, dados = eventos_periodo(qs_rep)
+                return self.responder(dados, codigo=codigo)
             try:
                 desde = max(0, int(qs.get("desde", ["0"])[0]))
             except ValueError:
@@ -817,7 +942,7 @@ class Handler(rede.HandlerSeguro):
             return self.responder(corpo)
         if url.path == "/saude":
             try:
-                return self.responder(saude_atual())
+                return self.responder(saude_get())
             except Exception as e:
                 return self.responder({"erro": str(e)[:200]})
         if url.path == "/manifest.webmanifest":

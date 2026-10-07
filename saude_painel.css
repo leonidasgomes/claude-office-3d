@@ -1,0 +1,69 @@
+/* Painel "🩺 Saúde" (saude_painel.js): duplicados, círculos, PRs parados, risco dos PRs e ignorados */
+#saude { position: absolute; top: 10px; left: 10px; bottom: 10px; width: min(560px, calc(100% - 20px)); z-index: 6; background: #11171ef7; border: 1px solid #2a3340; border-radius: 10px; display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; box-shadow: 0 6px 24px #000a; }
+#saude[hidden] { display: none; }
+#saude > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+#saude h3 { margin: 0; font-size: 17px; }
+#saudeInfo { font-size: 12px; color: #8b98a8; }
+#saudeFechar { font-size: 18px; line-height: 1; padding: 2px 9px; }
+#saudeCorpo { overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+#saudeCorpo p { margin: 0; }
+#saudeCorpo .saude-msg { color: #8b98a8; }
+#saudeCorpo .saude-msg.carregando { text-align: center; padding: 24px 8px; }
+#saudeCorpo .saude-aviso { background: #3b2a0c; border-left: 4px solid #f59e0b; border-radius: 0 6px 6px 0; padding: 6px 8px; color: #fde7c0; }
+#saudeCorpo .saude-bom { background: #0c2b1a; border-left: 4px solid #22c55e; border-radius: 0 6px 6px 0; padding: 6px 8px; color: #c9f2d8; }
+#saudeCorpo .saude-erro { background: #2a1717; border-left: 4px solid #e5484d; border-radius: 0 6px 6px 0; padding: 8px; color: #fecaca; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+#saudeCorpo .saude-secao { background: #161c24; border: 1px solid #2a3340; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+#saudeCorpo .saude-secao .saude-secao { background: #0f1419; }
+#saudeCorpo .saude-cab { margin: 0; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#saudeCorpo summary.saude-cab { cursor: pointer; list-style-position: inside; display: list-item; }
+#saudeCorpo summary.saude-cab > * { vertical-align: middle; margin-right: 4px; }
+#saudeCorpo .saude-conta { background: #232d3a; color: #cbd5e1; border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 800; }
+#saudeCorpo .saude-conta.tem { background: #b45309; color: #fff; }
+#saudeCorpo .saude-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#saudeCorpo .saude-item { background: #1d2530; border-left: 4px solid #475569; border-radius: 6px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#saudeCorpo .saude-item.forte { border-left-color: #e5484d; }
+#saudeCorpo .saude-item.fraco { border-left-color: #64748b; }
+#saudeCorpo .saude-item.circulo { border-left-color: #f97316; }
+#saudeCorpo .saude-item.parado { border-left-color: #f59e0b; }
+#saudeCorpo .saude-item.risco-grande { border-left-color: #e5484d; }
+#saudeCorpo .saude-item.risco-medio { border-left-color: #f59e0b; }
+#saudeCorpo .saude-item.ignorado { border-left-color: #3f3f46; opacity: .9; }
+#saudeCorpo .saude-vazio { color: #8b98a8; padding: 4px 2px; }
+#saudeCorpo .saude-titulo { font-weight: 600; overflow-wrap: anywhere; }
+#saudeCorpo .saude-num { color: #93c5fd; white-space: nowrap; }
+#saudeCorpo .saude-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; color: #8b98a8; align-items: center; }
+#saudeCorpo .saude-meta > * { overflow-wrap: anywhere; min-width: 0; }
+#saudeCorpo a.saude-branch, #saudeCorpo a.saude-pr { color: #93c5fd; text-decoration: none; }
+#saudeCorpo a.saude-branch:hover, #saudeCorpo a.saude-pr:hover { text-decoration: underline; }
+#saudeCorpo .saude-branch { font-family: Consolas, monospace; }
+#saudeCorpo .saude-cmd { display: block; background: #0f1419; border-radius: 4px; padding: 3px 6px; font-family: Consolas, monospace; font-size: 12px; color: #cbd5e1; overflow-wrap: anywhere; white-space: pre-wrap; }
+#saudeCorpo .saude-motivo { color: #b6c2d0; font-size: 12px; overflow-wrap: anywhere; }
+#saudeCorpo .saude-pedido { color: #9ad1ff; font-size: 12px; overflow-wrap: anywhere; }
+#saudeCorpo .saude-quem { color: #8b98a8; font-size: 12px; }
+#saudeCorpo .saude-quem.suspeito { color: #fbbf24; font-weight: 700; }
+#saudeCorpo .saude-acoes-caixa { display: flex; flex-direction: column; gap: 6px; }
+#saudeCorpo .saude-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+#saudeCorpo .botao { display: inline-flex; align-items: center; text-decoration: none; color: #e6edf3; background: #232d3a; border: 1px solid #3a4756; border-radius: 6px; padding: 3px 9px; font-size: 12px; font-family: inherit; cursor: pointer; }
+#saudeCorpo .botao:hover { background: #2d3a4b; }
+#saudeCorpo .botao:disabled { opacity: .5; cursor: default; }
+#saudeCorpo .botao.principal { background: #1d4ed8; border-color: #3b82f6; color: #fff; font-weight: 700; }
+#saudeCorpo .saude-form { display: flex; flex-direction: column; gap: 4px; background: #0f1419; border: 1px solid #2a3340; border-radius: 6px; padding: 6px 8px; }
+#saudeCorpo .saude-form label { font-size: 12px; color: #9aa7b6; }
+#saudeCorpo .saude-form input { background: #161c24; color: #e6edf3; border: 1px solid #3a4756; border-radius: 6px; padding: 5px 8px; font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+#saudeCorpo .saude-form-botoes { display: flex; gap: 6px; flex-wrap: wrap; }
+#saudeCorpo .saude-risco-resumo { display: flex; flex-wrap: wrap; gap: 6px; }
+#saudeCorpo .risco { border-radius: 999px; padding: 0 8px; background: #1f2a37; color: #cbd5e1; font-size: 12px; }
+#saudeCorpo .risco.medio { background: #713f12; color: #fde68a; }
+#saudeCorpo .risco.grande { background: #7f1d1d; color: #fecaca; }
+#saudeCorpo .risco.sem { background: #27272a; color: #a1a1aa; }
+
+/* Celular (tela estreita/baixa): tela cheia, como os outros painéis */
+html.compacto #saude { position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0; width: auto; max-height: none; border-radius: 0; border-width: 0; z-index: 20; padding: 0 calc(12px + var(--seguro-r)) calc(12px + var(--seguro-b)) calc(12px + var(--seguro-l)); gap: 10px; background: #0f1419; box-shadow: none; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+html.compacto #saude > header { position: sticky; top: 0; z-index: 3; flex: none; align-items: center; background: #0f1419; margin: 0 calc(-12px - var(--seguro-r)) 0 calc(-12px - var(--seguro-l)); padding: calc(8px + var(--seguro-t)) calc(12px + var(--seguro-r)) 8px calc(12px + var(--seguro-l)); border-bottom: 1px solid #2a3340; }
+html.compacto #saude h3 { font-size: 18px; }
+html.compacto #saudeCorpo { flex: none; overflow: visible; font-size: 14px; }
+html.compacto #saudeCorpo .saude-meta, html.compacto #saudeCorpo .saude-pedido, html.compacto #saudeCorpo .saude-motivo { font-size: 13px; }
+html.movel #saudeCorpo .botao { min-height: 44px; font-size: 15px; padding: 4px 12px; }
+html.movel #saudeCorpo .saude-form input { min-height: 44px; font-size: 16px; }
+html.movel #saudeFechar { min-width: 44px; min-height: 44px; }
+html.compacto #saudeCorpo .saude-acoes .botao { flex: 1 1 auto; justify-content: center; }

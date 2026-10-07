@@ -78,7 +78,7 @@ async function tratar(item, acao, botao) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.erro || 'falhou (' + r.status + ')');
     if (j.sugestoes) sugestoes = j.sugestoes;
-    desenhar();
+    desenhar(); publicar();
   } catch (e) {
     botao.disabled = false;
     botao.title = 'não deu: ' + e.message;
@@ -199,6 +199,18 @@ async function carregar(forcar = false) {
     if (js && js.ok) sugestoes = js;
   } catch (e) { /* mantém as últimas */ }
   desenhar();
+  publicar();
+}
+// Para o escritório 3D (tela de PRs na parede e sino do líder): situação já calculada de cada PR, só quando os dados mudam
+let publicado = '';
+function publicar() {
+  if (!dados || !Array.isArray(dados.prs)) return;
+  const prs = dados.prs.map((pr) => ({ numero: pr.numero, titulo: String(pr.titulo || ''), classe: situacao(pr).classe, risco: pr.risco || null }));
+  const detail = { prs, atualizado: dados.atualizado || '', erro: dados.erro || '' };
+  const chave = JSON.stringify(detail);
+  if (chave === publicado) return;
+  publicado = chave;
+  window.dispatchEvent(new CustomEvent('prs', { detail }));
 }
 
 function abrirPainel() { painel.hidden = false; if (!dados) info.textContent = 'buscando os PRs no GitHub…'; carregar(); }
@@ -210,4 +222,4 @@ $('prsAtualizar').addEventListener('click', () => { info.textContent = 'buscando
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hidden) fechar(); });
 // o contador no botão fica sempre em dia, mesmo com o painel fechado (só se o repositório estiver configurado)
 if (GH.prs) { carregar(); setInterval(() => { if (!document.hidden) carregar(); }, ATUALIZAR_MS); }   // aba oculta: não consulta
-window.__prs = { carregar, situacao, seloSugestoes };
+window.__prs = { carregar, situacao, seloSugestoes, get dados() { return dados; } };

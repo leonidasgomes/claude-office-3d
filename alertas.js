@@ -64,7 +64,7 @@ const querTipo = (id) => id === 'teste' || prefs()[id] !== false;
 
 // ---------------------------------------------------------------- abrir o painel certo
 function abrirPainel(nome) {
-  const mapa = { prs: ['prs', 'btnPrs'], placar: ['placar', 'btnPlacar'] }, m = mapa[nome];
+  const mapa = { prs: ['prs', 'btnPrs'], placar: ['placar', 'btnPlacar'], saude: ['saude', 'btnSaude'] }, m = mapa[nome];
   if (!m) return;
   const sec = $(m[0]), b = $(m[1]);
   if (sec && b && sec.hidden) b.click();
@@ -263,7 +263,7 @@ function desenhar() {
     if (a.detalhe) li.append(el('span', 'det', a.detalhe));
     const destino = painelDaUrl(a.url);
     li.addEventListener('click', () => abrirPainel(destino));
-    if (destino === 'prs' || destino === 'placar') {   // abre o painel do alerta: acessível pelo teclado também
+    if (destino === 'prs' || destino === 'placar' || destino === 'saude') {   // abre o painel do alerta: acessível pelo teclado também
       li.tabIndex = 0; li.setAttribute('role', 'button');
       li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirPainel(destino); } });
     }

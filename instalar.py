@@ -48,13 +48,14 @@ for _fluxo in (sys.stdout, sys.stderr):
 WINDOWS = os.name == "nt"
 PYTHON_CMD = "python" if WINDOWS else "python3"
 TOTAL_PASSOS = 7
-EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
-# PreToolUse só nos comandos que podem demorar: marca o início, para o agente não parecer ocioso enquanto espera
-MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*"}
+EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "PostToolUseFailure", "TeammateIdle", "Stop", "SubagentStop")
+# PreToolUse só nos comandos que podem demorar: marca o início, para o agente não parecer ocioso enquanto espera.
+# PostToolUseFailure só nos comandos: é onde chega a falha (exit code diferente de 0) para o ✖ do escritório.
+MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*", "PostToolUseFailure": "Bash|PowerShell"}
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
-          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "dica.js", "push.py", "cota.py", "saude.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
+          "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "dica.js", "push.py", "cota.py", "saude.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
           "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
           "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",

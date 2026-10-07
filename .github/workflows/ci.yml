@@ -33,5 +33,9 @@ jobs:
         run: python -W error ferramentas/testar_rede.py
       - name: Saúde do time e orçamento de atenção (duplicados, círculos, PR parado, push de resumo)
         run: python -W error ferramentas/testar_saude.py
+      - name: Hook do escritório (✔/✖ dos comandos, PostToolUseFailure)
+        run: python -W error ferramentas/testar_registrar_evento.py
+      - name: Replay do dia (GET /eventos?de=&ate=)
+        run: python -W error ferramentas/testar_eventos.py
       - name: Build do pacote
         run: python ferramentas/build.py

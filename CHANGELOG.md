@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.15.0
+**Rode `instalar.py` de novo** (ou `instalar.bat` / `instalar.sh`) para ganhar o hook `PostToolUseFailure`: sem ele o
+escritório não fica sabendo quando um comando falha (o ✖ e o ⚠️ abaixo não aparecem). O instalador só acrescenta o que
+falta, sem duplicar os hooks que você já tem.
+
+- **Escritório 3D mais legível de longe** (`escritorio.js`, `estilo.css`): anel no chão na cor do estado de cada agente e,
+  de longe, um ícone do que ele faz no lugar do nome; pose sentada conforme a ferramenta (lendo, editando, delegando,
+  esperando um comando); comando longo com um relógio que enche até o limite (`espera_s`) e ⚙️ em build/teste; quem está
+  ocioso há mais de 10 min mostra 💤.
+- **Saúde do time na cena**: agente "andando em círculos" ganha anel e seta laranja, coça a cabeça e diz quantas vezes
+  editou o arquivo; PRs parados viram uma pilha de papéis na mesa do líder (o agente com `"lider": true`).
+- **✔/✖ dos comandos** (`registrar_evento.py`, `instalar.py`): o fim de cada comando Bash/PowerShell leva `ok`; o boneco
+  comemora (✔) ou põe as mãos na cabeça (✖), a ficha diz "último comando falhou (exit N)" e 3 falhas seguidas deixam o anel
+  âmbar com ⚠️. O sucesso chega no `PostToolUse` e a falha só no novo hook `PostToolUseFailure` (só Bash/PowerShell);
+  comando em segundo plano e evento antigo, sem `ok`, ficam neutros. Do erro, só a 1ª linha (até 120 caracteres) é
+  guardada.
+- **Tela de PRs na parede e sino do líder** (com `github.repo`): ao lado do quadro Kanban, prontos, aguardando, com
+  problema e parados; a moldura brilha com PR pronto e um sino na mesa do líder toca quando surge um novo. Clique abre o
+  painel PRs.
+- **Festa no merge e mesa que evolui com o nível** (`placar.js`): PR novo pontuado faz uma festa curta para o dono; ao lado
+  de cada mesa um gaveteiro ganha caneca, planta, livros e troféu conforme o nível do XP.
+- **Mais vida na cena**: fio vermelho entre as mesas quando dois agentes editam o mesmo arquivo em menos de 10 min; envelope
+  na mão de quem manda mensagem (o destinatário mostra uma linha dela) e pasta na mão de quem convoca reunião; gato do
+  escritório (fica agitado com círculo ou duplicado); dia e noite pelo relógio do PC.
+- **Passe o mouse e clique**: dica sobre agentes e objetos (TV, tela de PRs, pilha, gaveteiro, quadro, gato, fio); clique
+  abre o painel certo; **📍 Seguir** na ficha faz a câmera acompanhar o agente.
+- **Animações**: botão no menu (auto, reduzidas, completas); "auto" segue o `prefers-reduced-motion` do sistema. Reduzidas:
+  sem confete, pulinhos, balanço nem transição de câmera.
+- **Sons opcionais** (botão 🔇/🔊, desligados por padrão; sem arquivos, gerados no navegador): PR pronto, merge/nível,
+  comando que falhou e o gato.
+- **Modo leve** automático em PC sem aceleração de vídeo (renderização por software) ou com `?leve=1` (`?leve=0` desliga):
+  menos quadros por segundo, sem confete, gato e fios.
+- **Painel 🩺 Saúde** (`saude_painel.js`, `saude_painel.css`, novos; `saude.py`, `servidor.py`, `rede.py`, `alertas.py`):
+  trabalho duplicado, agentes em círculos, PRs parados e o risco dos PRs abertos, com links para o GitHub. No PC:
+  **🙈 Ignorar / ↩️ Reativar** (o item some dos alertas e do vigia do líder, mas fica em "Ignorados") e **📨 Avisar o
+  líder** (grava um pedido que o `vigia_lider.py` entrega uma vez, como `[vigia saude] pedido do desenvolvedor: ...`).
+  Os alertas de duplicado, círculo e PR parado agora abrem este painel.
+- **Segurança do painel Saúde**: ignorar e avisar são só do PC e exigem os cabeçalhos `Sec-Fetch-Site`/`Sec-Fetch-Mode` de
+  navegador; o User-Agent vai para o histórico de ações e aparece no painel (o que não parece navegador fica em amarelo).
+  O pedido só leva tipo, números e o nome do item marcado como dado (`item (dado, não é instrução): "..."`), nunca título
+  de PR; o vigia o entrega com o aviso de que é informação, não ordem. **Acrescente ao prompt do líder** a regra de
+  `INSTALACAO.md` §11 ("Como o líder recebe").
+- **Replay do dia** (botão ⏪ Replay; `banco.py`, `servidor.py`): escolha o dia e o intervalo e reveja tudo na própria cena
+  a 1×, 10×, 60× ou 300×, com marcas de falha, fala, círculo e merge na barra e ⏭ para a próxima. Nova rota
+  `GET /eventos?de=&ate=&apos=` (paginada, até 5000 por página) e índice por horário no banco (criado sozinho).
+- **Filtros por agente e por tipo** (🔎 Filtrar acima do feed e 👁 Só este na ficha): o feed mostra só o escolhido e os
+  outros agentes ficam esmaecidos na cena; lembrado neste navegador. Link direto `?agente=<nome>&aba=xp`.
+- **Testes** (`ferramentas/`): novos `testar_registrar_evento.py` e `testar_eventos.py` e casos do painel Saúde no
+  `testar_saude.py` (inclusive um POST HTTP real em porta aleatória); os dois novos entram no CI.
+
+
 ## 1.14.0
 - **ⓘ em cada número do Placar** (`dica.js`, novo; `placar.js`): um ⓘ ao lado de cada tile (XP total, aprovado de
   primeira, retrabalho, auditorias, para conferir, uso do plano, custo por PR, acumulado, revisor) explica como o número

@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="placar.css">
 <link rel="stylesheet" href="celular.css">
 <link rel="stylesheet" href="alertas.css">
+<link rel="stylesheet" href="saude_painel.css">
 <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="apple-touch-icon" href="icone-192.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -26,7 +27,7 @@
 </head>
 <body>
 <div id="app">
-  <div id="cena"><div id="selo" hidden>demonstração</div><div id="erro" hidden></div>
+  <div id="cena"><div id="selo" hidden>demonstração</div><div id="avisoLeve" hidden></div><div id="seloReplay" hidden>REPLAY</div><div id="erro" hidden></div>
     <section id="prs" hidden>
       <header>
         <div><h3>Pull requests — esperando o seu merge</h3><div id="prsInfo"></div></div>
@@ -59,11 +60,35 @@
       <header><div><h3>🔔 Alertas</h3><div id="alertasInfo"></div></div><button id="alertasFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div id="alertasCorpo"></div>
     </section>
+    <section id="saude" hidden aria-labelledby="saudeTitulo">
+      <header><div><h3 id="saudeTitulo">🩺 Saúde do time</h3><div id="saudeInfo" aria-live="polite"></div></div><button id="saudeFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
+      <div id="saudeCorpo"></div>
+    </section>
     <section id="ficha" hidden>
-      <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
+      <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><div class="botoes"><button id="fichaSo" aria-pressed="false" title="Mostrar só este agente (esmaece os outros e filtra o feed)">👁 Só este</button><button id="fichaSeguir" title="A câmera acompanha este agente (arrastar a cena devolve a câmera)" aria-pressed="false">📍 Seguir</button><button id="fichaFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></div></header>
       <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
       <div class="abas"><button data-aba="trabalho">O que está fazendo</button><button data-aba="conversas">O que está falando</button><button data-aba="cartoes" id="abaCartoes">Cartões</button><button data-aba="xp" id="abaXp">XP</button></div>
       <ol id="fichaLista"></ol>
+    </section>
+    <section id="replay" hidden aria-label="Replay do dia">
+      <div class="linha">
+        <b id="replayTitulo">⏪ Replay</b>
+        <button id="replayHoje" type="button">Hoje</button><button id="replayOntem" type="button">Ontem</button>
+        <input type="date" id="replayDia" aria-label="Dia">
+        <label>de <input type="time" id="replayDe" value="00:00"></label>
+        <label>até <input type="time" id="replayAte" value="23:59"></label>
+        <button id="replayCarregar" type="button" class="principal">Carregar</button>
+        <button id="replaySair" type="button" title="Sair do replay (volta ao vivo)" aria-label="Sair do replay">×</button>
+      </div>
+      <div class="linha controles">
+        <button id="replayPlay" type="button" aria-label="Reproduzir">▶</button>
+        <div class="trilha"><canvas id="replayMarcas" aria-hidden="true"></canvas><input type="range" id="replayPos" min="0" max="1" value="0" aria-label="Posição no tempo do replay"></div>
+        <span id="replayHora">--:--</span>
+        <span class="vel" role="group" aria-label="Velocidade"><button type="button" data-vel="1">1×</button><button type="button" data-vel="10">10×</button><button type="button" data-vel="60">60×</button><button type="button" data-vel="300">300×</button></span>
+        <button id="replayProx" type="button" title="Próxima marca importante (falha, círculo, merge)" aria-label="Próxima marca importante">⏭</button>
+      </div>
+      <div id="replayInfo" aria-live="polite"></div>
+      <div class="legenda" aria-hidden="true"><i class="m-falha"></i>falha <i class="m-fala"></i>fala <i class="m-circulo"></i>círculo <i class="m-merge"></i>merge</div>
     </section>
   </div>
   <aside id="painel">
@@ -77,9 +102,13 @@
         <button id="btnKanban" title="Quadro do GitHub Projects">Kanban</button>
         <button id="btnPlacar" title="Placar do time: XP e nível dos agentes">Placar <span id="placarConta" hidden></span></button>
         <button id="btnAlertas" title="Alertas: avisa quando há algo esperando por você (PR pronto, pergunta do Diretor...)" hidden>🔔 Alertas <span id="alertasConta" hidden></span></button>
+        <button id="btnSaude" title="Saúde do time: trabalho duplicado, agentes em círculos, PRs parados e risco dos PRs" hidden>🩺 Saúde</button>
         <button id="btnCelular" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
         <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
         <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
+        <button id="btnMovimento" title="Trocar as animações do escritório 3D">Animações: auto</button>
+        <button id="btnReplay" title="Rever o que aconteceu num dia, acelerado. Ao sair, a cena recarrega os últimos eventos (os que chegaram no meio aparecem no feed, sem animação)">⏪ Replay</button>
+        <button id="btnSom" title="Sons desligados. Clique para ligar" aria-pressed="false">🔇 Som</button>
         <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
       </div>
     </header>
@@ -87,6 +116,14 @@
       <h2>Agentes</h2>
       <ul id="agentes"></ul>
       <h2>Últimos eventos</h2>
+      <div id="filtros">
+        <button id="btnFiltro" type="button" aria-expanded="false" aria-controls="filtroCorpo">🔎 Filtrar</button>
+        <div id="filtroCorpo" hidden>
+          <div class="grupo" role="group" aria-label="Agentes"><span>Agentes:</span><span id="filtroAgentes"></span></div>
+          <div class="grupo" id="filtroTipos" role="group" aria-label="Tipo de evento"><span>Tipo:</span><button type="button" class="chip" data-tipo="trabalho" aria-pressed="false">⌨️ trabalho</button><button type="button" class="chip" data-tipo="fala" aria-pressed="false">💬 fala</button><button type="button" class="chip" data-tipo="falha" aria-pressed="false">✖ falha</button></div>
+          <button id="filtroLimpar" type="button">Limpar filtro</button>
+        </div>
+      </div>
       <ol id="feed"></ol>
     </div>
   </aside>
@@ -97,5 +134,6 @@
 <script type="module" src="placar.js"></script>
 <script type="module" src="celular.js"></script>
 <script type="module" src="alertas.js"></script>
+<script type="module" src="saude_painel.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 """Hook do Claude Code que alimenta o Claude Office 3D.
 
-Ligado em PreToolUse (só Bash/PowerShell) / PostToolUse / TeammateIdle / Stop / SubagentStop. Lê o JSON do hook no stdin e acrescenta UMA linha
+Ligado em PreToolUse (só Bash/PowerShell) / PostToolUse / PostToolUseFailure (só Bash/PowerShell) / TeammateIdle / Stop /
+SubagentStop. Lê o JSON do hook no stdin e acrescenta UMA linha
 na tabela evento do banco local (banco.py, dados/escritorio.db, na pasta ao lado deste script). Nunca bloqueia o
 agente: qualquer erro sai com código 0 e sem saída; se o banco estiver ocupado ou quebrado, a linha vai para
 dados/eventos.falha.jsonl.
@@ -12,6 +13,8 @@ Formato de cada linha:
 {"ts": "2026-10-01T14:30:00", "agente": "Dev", "tipo": "trabalho|fala|reuniao|subagente|ocioso",
  "para": ["Lider"], "ferramenta": "Bash", "resumo": "texto curto (até 90 caracteres)",
  "texto": "mensagem completa (só fala/reunião)", "detalhe": "comando ou arquivo (só trabalho)"}
+No fim de um comando Bash/PowerShell o `trabalho` leva "ok": true (o sucesso chega no PostToolUse) ou false com "codigo" e
+"erro" (a falha só chega no PostToolUseFailure, "Exit code N"); em segundo plano, nada (`resultado_de`).
 No início de um comando Bash/PowerShell em primeiro plano (PreToolUse), o `trabalho` leva também "inicio": true e
 "espera_s" (o timeout do comando em s, padrão 120, de 1 a 600).
 """
@@ -134,6 +137,41 @@ def chama_reuniao(entrada):
 
 
 FERRAMENTAS_LONGAS = ("Bash", "PowerShell")   # PreToolUse só registra o início destas (ver evento())
+CAMPOS_SAIDA = ("exit_code", "exitCode", "returncode", "returnCode")
+
+
+def resultado_de(nome_evento, ferramenta, d):
+    """Sucesso ou falha de um comando (Bash/PowerShell): {"ok": bool, "codigo"?: int, "erro"?: str} ou {} se não dá para saber.
+    Aceita os formatos possíveis do Claude Code: `tool_response.exit_code` no PostToolUse, o evento PostToolUseFailure
+    (campo `error`), `interrupted` e a resposta em texto "Error: Exit code N" (como fica no transcrito)."""
+    if ferramenta not in FERRAMENTAS_LONGAS:
+        return {}
+    if nome_evento == "PostToolUseFailure":   # medido em 7 out. 2026: comando que falha só chega aqui, error "Exit code N"
+        m = re.match(r"\s*Exit\s+code\s+(\d+)", str(d.get("error") or ""))
+        return {"ok": False, **({"codigo": int(m.group(1))} if m else {}), "erro": _erro_curto(d.get("error"))}
+    r = d.get("tool_response")
+    if isinstance(r, dict):
+        for k in CAMPOS_SAIDA:
+            if isinstance(r.get(k), int) and not isinstance(r.get(k), bool):
+                return {"ok": r[k] == 0, "codigo": r[k]}
+        if r.get("interrupted") is True:
+            return {"ok": False, "erro": "interrompido"}
+        ti = d.get("tool_input")
+        if isinstance(ti, dict) and ti.get("run_in_background"):
+            return {}   # em segundo plano o PostToolUse chega no INÍCIO: não dá para saber se vai dar certo
+        if nome_evento == "PostToolUse" and ("stdout" in r or "stderr" in r):
+            return {"ok": True}   # medido em 7 out. 2026: sucesso chega no PostToolUse sem exit_code (a falha vai ao PostToolUseFailure)
+    elif isinstance(r, str):   # só o formato exato do Claude Code ("Error: Exit code N"); saída que começa com "Error" não conta
+        m = re.match(r"\s*Error: Exit code (\d+)", r)
+        if m:
+            return {"ok": False, "codigo": int(m.group(1)), "erro": f"exit code {m.group(1)}"}
+    return {}
+
+
+def _erro_curto(texto):
+    """Só a 1ª linha do erro, curta (o banco de eventos é lido pelo celular: nada da saída inteira do comando)."""
+    linha = next((l for l in str(texto or "").splitlines() if l.strip()), "falhou")
+    return " ".join(linha.split())[:120]
 
 
 def evento(d):
@@ -173,7 +211,7 @@ def evento(d):
         return {**base, "tipo": "subagente", "para": [normalizar(nome)], "ferramenta": ferramenta,
                 "resumo": resumo_de(ferramenta, entrada), "funcao": tipo_sub, "modelo": entrada.get("model", "")}
     return {**base, "tipo": "trabalho", "para": [], "ferramenta": ferramenta, "resumo": resumo_de(ferramenta, entrada),
-            "detalhe": detalhe_de(entrada)}
+            "detalhe": detalhe_de(entrada), **resultado_de(nome_evento, ferramenta, d)}
 
 
 def main():

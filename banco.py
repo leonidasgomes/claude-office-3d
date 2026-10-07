@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS custo_revisao (chave TEXT PRIMARY KEY, pr INTEGER, co
 CREATE TABLE IF NOT EXISTS custo_diario (dia TEXT PRIMARY KEY, janela_usd REAL, acumulado_usd REAL, prs INTEGER);
 CREATE TABLE IF NOT EXISTS evento (id INTEGER PRIMARY KEY, ts TEXT, agente TEXT, ferramenta TEXT, dados TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS evento_ferramenta ON evento (ferramenta);
+CREATE INDEX IF NOT EXISTS evento_ts ON evento (ts);
 CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT);
 CREATE TABLE IF NOT EXISTS uso_plano (ts INTEGER PRIMARY KEY, five_pct REAL, five_reset INTEGER, seven_pct REAL,
                                       seven_reset INTEGER);
@@ -185,6 +186,31 @@ def ler_eventos(desde=0, ultimos=0, maximo=500):
         if isinstance(obj, dict) and obj:
             out.append(obj)
     return total, out
+
+
+def eventos_periodo(de, ate, apos=0, maximo=5000):
+    """Eventos com `de` <= ts < `ate` (texto ISO local, como o hook grava: "2026-10-07T14:30:00"), em ordem de id, a partir
+    do id seguinte a `apos` (paginação), no máximo `maximo`. Devolve (eventos, proximo): `proximo` = id do último evento
+    devolvido quando há mais na página seguinte (o cliente repete com apos=proximo), senão None. Cada evento leva "id"."""
+    c = conectar()
+    try:
+        _migrar_eventos(c)
+        linhas = c.execute("SELECT id, dados FROM evento WHERE ts >= ? AND ts < ? AND id > ? ORDER BY id LIMIT ?",
+                           (de, ate, int(apos), int(maximo) + 1)).fetchall()
+    finally:
+        c.close()
+    mais = len(linhas) > maximo
+    linhas = linhas[:maximo]
+    out = []
+    for i, dados in linhas:
+        try:
+            obj = json.loads(dados)
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and obj:
+            obj["id"] = i
+            out.append(obj)
+    return out, (linhas[-1][0] if mais and linhas else None)
 
 
 def eventos_da_ferramenta(ferramenta):

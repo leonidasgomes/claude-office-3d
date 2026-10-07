@@ -99,6 +99,7 @@ function aplicarApelidos() {
     if (a.li) { a.li.querySelector('.nome').textContent = a.titulo; a.li.querySelector('.funcao').textContent = a.funcao; }
   }
   if (typeof desenharFicha === 'function') desenharFicha();
+  if (typeof atualizarChips === 'function') { atualizarChips(); renderizarFeed(); }
   const b = document.getElementById('btnApelidos'); if (b) b.textContent = ROTULO_MODO[modoApelido];
 }
 
@@ -114,18 +115,124 @@ const ICONES = { bash: '⌨️', edit: '✏️', write: '✏️', multiedit: '�
 const $ = (id) => document.getElementById(id);
 let saltoRelogio = 0;                // só para depuração: __office.avancar(seg) adianta a simulação
 const agora = () => performance.now() / 1000 + saltoRelogio;
+// Relógio de parede dos eventos: o de agora ao vivo; no replay, o instante que está sendo reproduzido ("há 3 min", fios, ⚠️)
+let replay = null;
+const relogioMs = () => (replay ? replay.tr : Date.now());
 const ulAgentes = $('agentes'), olFeed = $('feed');
+
+// Movimento reduzido: segue o prefers-reduced-motion do sistema ("auto") ou a escolha do botão do menu (office.movimento).
+// Reduzido = sem confete, sem pulinhos/balanço, câmera sem transição, anel de círculo parado. As caminhadas continuam (são informação).
+const CHAVE_MOV = 'office.movimento', MODOS_MOV = ['auto', 'reduzido', 'completo'];
+const ROTULO_MOV = { auto: 'Animações: auto', reduzido: 'Animações: reduzidas', completo: 'Animações: completas' };
+const mqMov = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+let modoMov = 'auto';
+try { const v = localStorage.getItem(CHAVE_MOV); if (MODOS_MOV.includes(v)) modoMov = v; } catch (e) {}
+let MOV_RED = false;
+function aplicarMovimento() {
+  MOV_RED = modoMov === 'reduzido' || (modoMov === 'auto' && !!mqMov.matches);
+  const b = $('btnMovimento');
+  if (b) {
+    b.textContent = ROTULO_MOV[modoMov];
+    b.title = 'Trocar as animações do escritório 3D (auto segue o sistema: agora ' + (MOV_RED ? 'reduzidas' : 'completas') + ')';
+    b.setAttribute('aria-label', b.textContent + (modoMov === 'auto' ? (MOV_RED ? ' (reduzidas pelo sistema)' : ' (completas)') : ''));
+  }
+}
+aplicarMovimento();
+if (mqMov.addEventListener) mqMov.addEventListener('change', aplicarMovimento);
+
+// Filtros por agente e por tipo de evento (feed "Últimos eventos", lista de agentes e cena), lembrados em office.filtro.
+// Agentes fora do filtro ficam esmaecidos na cena (opacidade dos rótulos, balão, anel e ícone; só quando o filtro muda).
+const CHAVE_FILTRO = 'office.filtro', TIPOS_FILTRO = ['trabalho', 'fala', 'falha'];
+const filtro = { agentes: new Set(), tipos: new Set() };
+try {
+  const f = JSON.parse(localStorage.getItem(CHAVE_FILTRO) || 'null');
+  if (f && typeof f === 'object') {
+    (Array.isArray(f.agentes) ? f.agentes : []).forEach((n) => { if (typeof n === 'string' && n.length < 80) filtro.agentes.add(n); });
+    (Array.isArray(f.tipos) ? f.tipos : []).forEach((t) => { if (TIPOS_FILTRO.includes(t)) filtro.tipos.add(t); });
+  }
+} catch (e) {}
+const feedHist = [], MAX_FEED_HIST = 300;   // {ev, ag}: o feed é redesenhado daqui quando o filtro muda
+
+// Modo leve: renderização por software (SwiftShader, llvmpipe, softpipe, "Microsoft Basic Render") ou ?leve=1.
+// pixelRatio 1, sem antialias, no máximo 24 quadros/s, sem confete, gato e fios desligados, ícones redesenhados menos vezes.
+// ?leve=0 desliga a detecção automática. A placa é lida num canvas descartável (o contexto é liberado em seguida).
+const PARAMS = new URLSearchParams(location.search);
+function nomeDaPlaca() {
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return '';
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const nome = String((ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '');
+    const perder = gl.getExtension('WEBGL_lose_context'); if (perder) perder.loseContext();
+    return nome;
+  } catch (e) { return ''; }
+}
+const NOME_PLACA = nomeDaPlaca();
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|microsoft basic render|software/i.test(NOME_PLACA);
+const LEVE = PARAMS.get('leve') === '1' || (PARAMS.get('leve') !== '0' && SOFTWARE);
+const QUADRO_LEVE_MS = 1000 / 24;
+
+// Sons opcionais (WebAudio procedural, sem arquivos): desligados por padrão; botão 🔇/🔊 no menu (office.som).
+// O AudioContext só nasce depois de uma interação do usuário (clique ou tecla), como os navegadores exigem.
+const CHAVE_SOM = 'office.som';
+let somLigado = false;
+try { somLigado = localStorage.getItem(CHAVE_SOM) === '1'; } catch (e) {}
+let ctxAudio = null, interagiu = false;
+const ultimoSom = {};
+function garantirAudio() {
+  if (ctxAudio || !somLigado || !interagiu) return ctxAudio;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  try { ctxAudio = new AC(); } catch (e) { ctxAudio = null; }
+  return ctxAudio;
+}
+['pointerdown', 'keydown'].forEach((tipo) => window.addEventListener(tipo, () => {
+  interagiu = true;
+  if (somLigado && garantirAudio() && ctxAudio.state === 'suspended') ctxAudio.resume().catch(() => {});
+}, { passive: true }));
+function nota(ctx, freq, ini, dur, tipo = 'sine', vol = 0.07, freqFim = 0) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = tipo; o.frequency.setValueAtTime(freq, ini);
+  if (freqFim) o.frequency.exponentialRampToValueAtTime(freqFim, ini + dur);
+  g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(vol, ini + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, ini + dur);
+  o.connect(g); g.connect(ctx.destination); o.start(ini); o.stop(ini + dur + 0.03);
+}
+function tocar(tipo) {   // plim (PR pronto), fanfarra (merge/nível), bip (comando falhou), miau (gato)
+  if (!somLigado || !interagiu || replay) return;   // replay: silencioso
+  const ctx = garantirAudio(); if (!ctx || ctx.state !== 'running') return;
+  const ms = performance.now(); if (ms - (ultimoSom[tipo] || 0) < 400) return; ultimoSom[tipo] = ms;
+  const t0 = ctx.currentTime + 0.01;
+  if (tipo === 'plim') { nota(ctx, 1318.5, t0, 0.35); nota(ctx, 1760, t0 + 0.09, 0.45); }
+  else if (tipo === 'fanfarra') [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => nota(ctx, f, t0 + i * 0.11, i === 3 ? 0.45 : 0.16, 'triangle', 0.08));
+  else if (tipo === 'bip') nota(ctx, 180, t0, 0.28, 'square', 0.035);
+  else if (tipo === 'miau') nota(ctx, 720, t0, 0.38, 'sawtooth', 0.025, 430);
+}
+function aplicarSom() {
+  const b = $('btnSom'); if (!b) return;
+  b.textContent = somLigado ? '🔊 Som' : '🔇 Som';
+  b.setAttribute('aria-pressed', String(somLigado));
+  b.title = somLigado ? 'Sons ligados (PR pronto, merge, nível, comando que falhou). Clique para desligar' : 'Sons desligados. Clique para ligar';
+}
+aplicarSom();
 
 // ---------------------------------------------------------------- Cena básica
 const contCena = $('cena');
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: !MOVEL, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ antialias: !MOVEL && !LEVE, powerPreference: 'high-performance' });
 } catch (e) {
   const el = $('erro'); el.hidden = false; el.textContent = 'WebGL indisponível neste navegador.';
   throw e;
 }
-renderer.setPixelRatio(MOVEL ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setPixelRatio(MOVEL || LEVE ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
+if (LEVE && $('avisoLeve')) {
+  const av = $('avisoLeve');
+  av.textContent = SOFTWARE ? 'sem aceleração de vídeo — modo leve' : 'modo leve';
+  av.title = 'Escritório em modo leve: menos quadros por segundo, sem confete, sem gato e sem fios de arquivo. '
+    + (SOFTWARE ? 'Placa de vídeo: ' + NOME_PLACA + ' (renderização por software). ' : '') + 'Use ?leve=0 para desligar ou ?leve=1 para forçar.';
+  av.hidden = false;
+}
 renderer.shadowMap.enabled = false;
 contCena.appendChild(renderer.domElement);
 
@@ -148,7 +255,8 @@ controles.maxPolarAngle = Math.PI * 0.47;
 controles.minDistance = 5;
 controles.maxDistance = 150;
 
-cena.add(new THREE.AmbientLight(0xffffff, 0.75));
+const luzAmbiente = new THREE.AmbientLight(0xffffff, 0.75);
+cena.add(luzAmbiente);
 const sol = new THREE.DirectionalLight(0xffffff, 0.8);
 sol.position.set(-10, 25, 15);
 cena.add(sol);
@@ -202,6 +310,7 @@ function texturaPiso() {
   return t;
 }
 const LIM = { x0: -34, x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // piso ampliado: à esquerda as áreas de pausa, à frente a praça (maquete de SP no tema "sao-paulo")
+const matJanela = new THREE.MeshBasicMaterial({ color: 0x7fb7e6 });   // própria (não do cache): muda com o dia e a noite (ajustarLuz)
 (function construirAmbiente() {
   const piso = new THREE.Mesh(new THREE.PlaneGeometry(LIM.x1 - LIM.x0, LIM.z1 - LIM.z0), new THREE.MeshLambertMaterial({ map: texturaPiso() }));
   piso.rotation.x = -Math.PI / 2;
@@ -218,7 +327,7 @@ const LIM = { x0: -34, x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // piso a
   caixa(esp, alt, LIM.z1 - LIM.z0, par, LIM.x1, alt / 2, (LIM.z0 + LIM.z1) / 2, null);
   caixa(LIM.x1 - LIM.x0, 0.25, esp, mat(0x5f6b7b), (LIM.x0 + LIM.x1) / 2, 0.12, LIM.z1, null);
   // janelas decorativas no fundo
-  for (let x = -31; x <= LIM.x1 - 3; x += 6) caixa(3.4, 0.9, 0.05, mat(0x7fb7e6, 'basic'), x, 1.0, LIM.z0 + 0.18, null);
+  for (let x = -31; x <= LIM.x1 - 3; x += 6) caixa(3.4, 0.9, 0.05, matJanela, x, 1.0, LIM.z0 + 0.18, null);
 })();
 
 // Sala de reunião com paredes de vidro
@@ -451,7 +560,11 @@ bolaPP.visible = false;
   tapete(CXD, 13.6, 10.6, 9.6, 0x5a4a7a);
   caixa(3.4, 0.7, 0.8, mat(0x3a3f47), CXD, 0.35, ZTV);
   caixa(3.1, 1.75, 0.12, mat(0x0b0f14), CXD, 1.65, ZTV);
-  caixa(2.8, 1.45, 0.04, matTV, CXD, 1.65, ZTV + 0.08);
+  const telaTV = caixa(2.8, 1.45, 0.04, matTV, CXD, 1.65, ZTV + 0.08);
+  if (CONFIG.github.prs) {   // com o repositório configurado, a TV abre o painel de PRs
+    telaTV.userData.abrir = () => { if ($('prs').hidden) $('btnPrs').click(); };
+    telaTV.userData.dica = () => 'TV do descanso\nClique para ver os pull requests';
+  }
   const cb = document.createElement('canvas'); cb.width = 128; cb.height = 40;
   const gb = cb.getContext('2d'); gb.fillStyle = '#dc2626'; retArredondado(gb, 2, 2, 124, 36, 10); gb.fill(); gb.fillStyle = '#fff'; gb.font = 'bold 24px "Segoe UI", sans-serif';
   gb.textAlign = 'center'; gb.textBaseline = 'middle'; gb.fillText('● AO VIVO', 64, 21);
@@ -563,6 +676,12 @@ function animarPortasCabine(t) {
 function animarAreas(t) {
   animarPortasCabine(t);
   if (t >= tvProx) trocarCanalTV(t);
+  if (MOV_RED) {   // movimento reduzido: sem tremular, piscar nem ciclo de cores
+    matTV.color.setScalar(1);
+    if (seloAoVivo) seloAoVivo.visible = CANAIS_TV[canalTV].aoVivo;
+    matArcade.color.setHSL(0.8, 0.8, 0.5);
+    return;
+  }
   matTV.color.setScalar(0.92 + 0.08 * Math.sin(t * 3.1));
   if (seloAoVivo) seloAoVivo.visible = CANAIS_TV[canalTV].aoVivo && Math.floor(t * 1.6) % 2 === 0;   // "AO VIVO" pisca
   matArcade.color.setHSL((t * 0.4) % 1, 0.8, 0.5 + 0.1 * Math.sin(t * 8));
@@ -794,8 +913,113 @@ if (CONFIG.github.kanban) (function construirQuadroKanban() {
   caixa(w * 0.5, 0.06, 0.18, aluminio, x, y - h / 2 - 0.06, z + 0.1);     // aparador das canetas
   const tela = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texKB }));
   tela.position.set(x, y, z + 0.06); tela.userData.kanban = true; cena.add(tela);
+  tela.userData.dica = () => 'Quadro Kanban\nClique para abrir o quadro do GitHub Projects';
   desenharQuadroKanban(window.__kanban && window.__kanban.dados());
 })();
+
+// ---------------------------------------------------------------- Tela de PRs na parede, ao lado do Kanban
+// Dados do prs.js (CustomEvent 'prs') e os PRs parados da /saude; o canvas só é redesenhado quando a chave dos dados muda.
+// Com PR pronto, a moldura brilha em verde (pulsa; fixa com movimento reduzido) e o sino da mesa do líder toca quando surge um novo.
+// Sem a diretoria o piso é mais estreito: a tela fica mais perto do Kanban.
+const QUADRO_PR = { x: TEM_DIRETORIA ? 16.6 : 13.9, w: 5.6, h: 2.8, CW: 1024, CH: 512 };
+const canvasPR = document.createElement('canvas'); canvasPR.width = QUADRO_PR.CW; canvasPR.height = QUADRO_PR.CH;
+const texPR = new THREE.CanvasTexture(canvasPR); texPR.minFilter = THREE.LinearFilter; texPR.generateMipmaps = false;
+const matBrilhoPR = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0, depthWrite: false });
+let prsTela = null, prsAtualizado = '', chaveTelaPR = null, prontosTela = 0, prontosAntes = null;   // prontosAntes: Set dos números prontos
+const COR_CLASSE_PR = { pronto: '#22c55e', espera: '#64748b', bloqueado: '#ef4444' };
+function desenharTelaPrs() {
+  const lista = prsTela || [];
+  const chave = JSON.stringify([prsTela === null, prsAtualizado, lista.map((p) => [p.numero, p.classe, p.titulo, p.risco && p.risco.nivel, p.risco && p.risco.falhas]),
+    paradosAtuais.map((p) => p.numero)]);
+  if (chave === chaveTelaPR) return;
+  chaveTelaPR = chave;
+  const g = canvasPR.getContext('2d'), W = QUADRO_PR.CW, H = QUADRO_PR.CH, F = '"Segoe UI", "Segoe UI Emoji", sans-serif';
+  g.fillStyle = '#0f172a'; g.fillRect(0, 0, W, H);
+  g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = '#e2e8f0'; g.font = 'bold 40px ' + F;
+  g.fillText('🔀 Pull requests', 28, 42);
+  g.textAlign = 'right'; g.fillStyle = '#94a3b8'; g.font = '24px ' + F;
+  g.fillText(prsTela === null ? 'sem dados dos PRs' : prsAtualizado ? 'atualizado ' + String(prsAtualizado).slice(-8) : '', W - 28, 44, 420);
+  const cont = (c) => lista.filter((p) => p.classe === c).length;
+  const blocos = [['Prontos', cont('pronto'), '#22c55e'], ['Aguardando', cont('espera'), '#94a3b8'], ['Com problema', cont('bloqueado'), '#ef4444'],
+    ['Parados', paradosAtuais.length, '#f59e0b']];
+  const bw = (W - 56 - 3 * 14) / 4;
+  blocos.forEach(([rot, n, cor], i) => {
+    const x0 = 28 + i * (bw + 14);
+    g.fillStyle = '#1e293b'; retArredondado(g, x0, 80, bw, 128, 14); g.fill();
+    g.fillStyle = cor; g.fillRect(x0, 80, bw, 6);
+    g.textAlign = 'center'; g.font = 'bold 66px ' + F; g.fillText(prsTela === null && i < 3 ? '–' : String(n), x0 + bw / 2, 140);
+    g.fillStyle = '#cbd5e1'; g.font = '24px ' + F; g.fillText(rot, x0 + bw / 2, 190, bw - 12);
+  });
+  const ORD = { pronto: 0, bloqueado: 1, espera: 2 };
+  const linhas = lista.slice().sort((a, b) => (ORD[a.classe] ?? 3) - (ORD[b.classe] ?? 3) || a.numero - b.numero).slice(0, 5);
+  g.textAlign = 'left';
+  if (!linhas.length) { g.fillStyle = '#94a3b8'; g.font = '28px ' + F; g.fillText(prsTela === null ? 'esperando o painel de PRs…' : 'Nenhum PR aberto 🎉', 40, 270); }
+  linhas.forEach((p, k) => {
+    const y = 236 + k * 54, parado = paradosAtuais.some((x) => Number(x.numero) === p.numero);
+    g.fillStyle = k % 2 ? '#111c2e' : '#16223a'; g.fillRect(28, y, W - 56, 50);
+    g.fillStyle = COR_CLASSE_PR[p.classe] || '#64748b'; g.fillRect(28, y, 10, 50);
+    g.fillStyle = '#f8fafc'; g.font = 'bold 28px ' + F; g.fillText('#' + p.numero, 52, y + 26, 110);
+    const r = p.risco || {}, tag = (r.nivel === 'grande' ? 'G' : r.nivel === 'medio' ? 'M' : '') + (r.falhas ? ' ✖' + r.falhas : '') + (parado ? ' ⏸' : '');
+    g.fillStyle = '#cbd5e1'; g.font = '26px ' + F; g.fillText(String(p.titulo || ''), 170, y + 26, W - 56 - 170 - (tag ? 130 : 20));
+    if (tag) { g.textAlign = 'right'; g.fillStyle = r.nivel === 'grande' || r.falhas ? '#f87171' : parado ? '#fbbf24' : '#fbbf24'; g.font = 'bold 26px ' + F; g.fillText(tag.trim(), W - 44, y + 26, 120); g.textAlign = 'left'; }
+  });
+  if (lista.length > 5) { g.fillStyle = '#94a3b8'; g.font = '22px ' + F; g.fillText('+' + (lista.length - 5) + ' PR(s) no painel', 40, H - 8); }
+  texPR.needsUpdate = true;
+}
+if (CONFIG.github.prs) (function construirTelaPrs() {   // só com o repositório configurado (github.repo)
+  const { x, w, h } = QUADRO_PR, y = 1.6 + 0.12 + h / 2, z = LIM.z0;
+  const brilho = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.7, h + 0.7), matBrilhoPR);
+  brilho.position.set(x, y, z + 0.04); brilho.renderOrder = 1; cena.add(brilho);
+  caixa(w + 0.16, h + 0.16, 0.1, mat(0x1f2937), x, y, z);
+  const tela = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texPR }));
+  tela.position.set(x, y, z + 0.08); cena.add(tela);
+  tela.userData.abrir = () => { if ($('prs').hidden) $('btnPrs').click(); };
+  tela.userData.dica = () => 'Tela de pull requests\n' + (prsTela === null ? 'sem dados ainda' : prsTela.length + ' aberto(s), ' + prontosTela + ' pronto(s) para o seu merge')
+    + (paradosAtuais.length ? ', ' + paradosAtuais.length + ' parado(s)' : '') + '\nClique para abrir os PRs';
+})();   // o primeiro desenho fica para o fim do arquivo (paradosAtuais é declarado mais abaixo)
+// Sino na mesa do líder: aparece com PR pronto; balança e brilha (e "plim", com som ligado) quando surge um novo.
+let sino = null, sinoAte = 0;
+function garantirSino() {
+  if (sino) return sino;
+  const lider = agentes.get(LIDER); if (!lider) return null;
+  const g = new THREE.Group(); g.position.set(-1.05, 1.06, 0.55);
+  const pivo = new THREE.Group(); pivo.position.y = 0.34; g.add(pivo);
+  cilindro(0.1, 0.1, 0.03, mat(0x2b2118), 0, 0.015, 0, g, 10);
+  caixa(0.02, 0.32, 0.02, mat(0x8b95a3), 0, 0.17, 0, g);
+  const corpo = new THREE.Mesh(geoCilU, mat(0xf5c518)); corpo.scale.set(0.11, 0.16, 0.11); corpo.position.y = -0.12; pivo.add(corpo);
+  const topo = new THREE.Mesh(geoEsfU, mat(0xf5c518)); topo.scale.setScalar(0.07); topo.position.y = -0.04; pivo.add(topo);
+  const luz = new THREE.Mesh(geoEsfU, new THREE.MeshBasicMaterial({ color: 0xfff3a0, transparent: true, opacity: 0, depthWrite: false }));
+  luz.scale.setScalar(0.3); luz.position.y = -0.1; pivo.add(luz);
+  g.userData.abrir = () => { if ($('prs').hidden) $('btnPrs').click(); };
+  g.userData.dica = () => prontosTela + ' PR(s) pronto(s) para o seu merge\nClique para ver os PRs';
+  lider.mesa.grupo.add(g);
+  sino = { g, pivo, luz };
+  return sino;
+}
+function receberPrs(d) {
+  if (!d || !Array.isArray(d.prs)) return false;
+  if (replay) { replay.prsPendente = d; return true; }   // PRs ao vivo durante o replay: aplica ao sair (sem sino no meio)
+  prsTela = d.prs.filter((p) => p && Number.isFinite(Number(p.numero))).map((p) => ({ numero: Number(p.numero), titulo: String(p.titulo || '').slice(0, 120),
+    classe: String(p.classe || 'espera'), risco: p.risco && typeof p.risco === 'object' ? { nivel: String(p.risco.nivel || ''), falhas: Number(p.risco.falhas) || 0 } : null }));
+  prsAtualizado = String(d.atualizado || '');
+  prontosTela = prsTela.filter((p) => p.classe === 'pronto').length;
+  if (!d.erro) {   // lista com erro (servidor ou GitHub fora) não vira base: senão todo PR pronto pareceria novo quando voltasse
+    const prontos = new Set(prsTela.filter((p) => p.classe === 'pronto').map((p) => p.numero));
+    if (prontosAntes && [...prontos].some((n) => !prontosAntes.has(n))) { sinoAte = agora() + 4; tocar('plim'); }
+    prontosAntes = prontos;
+  }
+  const s = garantirSino(); if (s) s.g.visible = prontosTela > 0;
+  desenharTelaPrs();
+  return true;
+}
+window.addEventListener('prs', (e) => receberPrs(e.detail));
+function tickTelaPrs(t) {
+  matBrilhoPR.opacity = prontosTela ? (MOV_RED ? 0.4 : 0.28 + 0.22 * Math.sin(t * 2.6)) : 0;
+  if (!sino) return;
+  const tocando = t < sinoAte;
+  sino.pivo.rotation.z = tocando && !MOV_RED ? Math.sin(t * 16) * 0.45 * Math.min(1, sinoAte - t) : 0;
+  sino.luz.material.opacity = tocando ? (MOV_RED ? 0.45 : 0.3 + 0.3 * Math.sin(t * 10)) : 0;
+}
 
 // ---------------------------------------------------------------- Sala da diretoria (opcional: "sala": "diretoria")
 // Sala fechada pequena: paredes de madeira (parte de baixo) e vidro (em cima, para ver lá dentro), porta na parede oeste,
@@ -930,7 +1154,7 @@ function criarMesa(indice, nome, cor, dir = false) {   // dir: mesa dentro da di
   caixa(0.7, 0.05, 0.7, pe, 0, 0.03, 0, cad);
   // faixa colorida do agente na frente da mesa
   caixa(largura - 0.3, 0.1, 0.04, mat(cor, 'basic'), 0, 0.98 - 0.02, prof / 2 + 0.02, g);
-  const mesa = { indice, x, cor, kind, monitores, teclas, assento: new THREE.Vector3(x, 0, z0 + 1.6), visita: new THREE.Vector3(x + 1.2, 0, 3.0) };
+  const mesa = { indice, x, cor, kind, monitores, teclas, grupo: g, largura, prof, assento: new THREE.Vector3(x, 0, z0 + 1.6), visita: new THREE.Vector3(x + 1.2, 0, 3.0) };
   // Rotas: saida = do assento até o corredor; entrada = o inverso; acesso = do corredor até o ponto de visita.
   // Mesa comum: reta pelo corredor. Diretoria: pela porta da parede oeste.
   mesa.saida = [new THREE.Vector3(x, 0, Z_CORREDOR)]; mesa.entrada = mesa.saida;
@@ -979,6 +1203,113 @@ function posturaSentado(f, sentado) {
   f.pernaE.rotation.x = f.pernaD.rotation.x = sentado ? -Math.PI / 2 : 0;
 }
 
+// ---------------------------------------------------------------- Sinais de estado (legíveis de longe)
+// Anel no chão na cor do estado, ícone do que o agente faz (tamanho fixo na tela, só na visão de longe ou com comando
+// longo / círculo) e a seta laranja de "andando em círculos" (GET /saude). Geometrias e materiais compartilhados;
+// o canvas do ícone só é redesenhado quando muda (no comando longo, no máximo 1 vez por segundo).
+const geoAnel = new THREE.RingGeometry(0.62, 0.86, 28);
+const geoArcoCirculo = new THREE.RingGeometry(1.0, 1.16, 24, 1, 0, Math.PI * 1.5);
+const geoPontaCirculo = new THREE.CircleGeometry(0.26, 3);
+const matCirculo = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+const COR_CIRCULO = '#f97316';
+const LONGE_ENTRA = 32, LONGE_SAI = 28;   // distância câmera-alvo: a partir daqui some o nome e aparece o ícone (com histerese)
+let longe = true;
+const ESC_ICONE = (COMPACTO ? 0.062 : 0.05);   // fração da altura da tela (sizeAttenuation: false)
+const OCIOSO_ZZZ_MS = 10 * 60 * 1000;
+const RE_BUILD = /\b(build|compil|msbuild|cmake|ninja|make|gradle|mvn|cargo|go build|tsc|webpack|vite|pytest|jest|vitest|ctest|unittest|test)/i;
+function criarSinais(a) {
+  const anel = new THREE.Mesh(geoAnel, new THREE.MeshBasicMaterial({ color: 0x6b7280, transparent: true, opacity: 0.9, depthWrite: false }));
+  anel.rotation.x = -Math.PI / 2; anel.position.y = 0.05; anel.renderOrder = 1;
+  a.fig.raiz.add(anel);
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, sizeAttenuation: false }));
+  sp.scale.set(ESC_ICONE, ESC_ICONE, 1); sp.renderOrder = 11; sp.visible = false;
+  a.fig.raiz.add(sp);
+  anel.userData.agente = a; sp.userData.agente = a;
+  a.sinal = { anel, sp, ctx: c.getContext('2d'), tex, chave: '', corAnel: '', arco: null, proxGesto: 0 };
+}
+const COR_FALHAS = '#f59e0b', SEQ_FALHAS = 3, JANELA_FALHAS_MS = 30 * 60 * 1000;
+// 3+ comandos seguidos falhando (o último há menos de 30 min): anel âmbar e ⚠️
+const emSequencia = (a) => (a.falhasSeguidas || 0) >= SEQ_FALHAS && !!a.ultimoComando && relogioMs() - a.ultimoComando.ms < JANELA_FALHAS_MS;
+function textoFalha(a) {   // "✖ último comando falhou (exit 3)" ou ''
+  const c = a.ultimoComando;
+  if (!c || c.ok) return '';
+  const extra = c.erro && !/^exit code \d+$/i.test(c.erro) ? ': ' + c.erro : '';
+  return '✖ último comando falhou' + (c.codigo != null ? ' (exit ' + c.codigo + ')' : '') + extra
+    + (emSequencia(a) ? ' · ⚠️ falhando em sequência (' + a.falhasSeguidas + ' seguidos)' : '');
+}
+function iconeAtual(a) {   // {icone, cor, p (0..1 do comando longo), texto} ou null
+  const est = String(a.estado || 'ocioso').split(' · ')[0], cor = CORES_ESTADO[est] || '#6b7280';
+  if (a.resultado && agora() < a.resultado.ate) return a.resultado.ok
+    ? { icone: '✔', cor: '#22c55e', corTexto: '#4ade80', flash: true } : { icone: '✖', cor: '#ef4444', corTexto: '#f87171', flash: true };
+  if (a.circulo) return { icone: '🔁', cor: COR_CIRCULO };
+  if (rodandoComando(a)) {
+    const f = a.agoraFaz || {}, dec = Math.max(0, (relogioMs() - a.inicioComandoMs) / 1000);
+    const total = Math.max(1, dec + Math.max(0, a.ocupadoAte - agora()));
+    const m = Math.floor(dec / 60);
+    return { icone: RE_BUILD.test(String(f.detalhe || '') + ' ' + String(f.resumo || '')) ? '⚙️' : '⏳', cor,
+      p: Math.min(1, dec / total), texto: m ? m + ' min' : Math.floor(dec) + ' s', seg: Math.floor(dec) };
+  }
+  if (emSequencia(a)) return { icone: '⚠️', cor: COR_FALHAS, aviso: true };
+  if (est === 'trabalhando') return { icone: iconeDe(a.agoraFaz && a.agoraFaz.ferramenta), cor };
+  if (est === 'conversando') return { icone: '💬', cor };
+  if (est === 'em reunião') return { icone: '👥', cor };
+  if (est === 'em pausa') return { icone: '☕', cor };
+  if (a.ultimoEventoMs && relogioMs() - a.ultimoEventoMs > OCIOSO_ZZZ_MS) return { icone: '💤', cor };
+  return null;
+}
+function desenharIcone(s, ic) {
+  const g = s.ctx, W = 128;
+  g.clearRect(0, 0, W, W);
+  g.fillStyle = 'rgba(15,20,25,0.88)'; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill();
+  g.lineWidth = 7; g.strokeStyle = ic.cor; g.beginPath(); g.arc(64, 64, 56, 0, 7); g.stroke();
+  if (ic.p != null) {   // tempo do comando contra o limite (espera_s): verde, âmbar acima de 80%
+    g.lineWidth = 9; g.strokeStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.arc(64, 64, 44, 0, 7); g.stroke();
+    g.strokeStyle = ic.p > 0.8 ? '#f59e0b' : '#22c55e'; g.lineCap = 'round';
+    g.beginPath(); g.arc(64, 64, 44, -Math.PI / 2, -Math.PI / 2 + Math.max(0.05, ic.p) * Math.PI * 2); g.stroke(); g.lineCap = 'butt';
+  }
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = ic.corTexto || '#fff';
+  g.font = ic.corTexto ? 'bold 64px "Segoe UI Symbol", "Segoe UI", sans-serif' : (ic.texto ? 40 : 56) + 'px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+  g.fillText(ic.icone, 64, ic.texto ? 52 : 66);
+  if (ic.texto) { g.font = 'bold 22px "Segoe UI", sans-serif'; g.fillText(ic.texto, 64, 88, 80); }
+  s.tex.needsUpdate = true;
+}
+function atualizarSinais(a, t, dt) {
+  const s = a.sinal; if (!s) return;
+  const visivel = a.fig.dentro.visible;
+  const est = String(a.estado || 'ocioso').split(' · ')[0];
+  const corAnel = a.circulo ? COR_CIRCULO : emSequencia(a) ? COR_FALHAS : (CORES_ESTADO[est] || '#6b7280');
+  if (corAnel !== s.corAnel) { s.anel.material.color.set(corAnel); s.corAnel = corAnel; }
+  s.anel.visible = visivel;
+  s.anel.scale.setScalar(longe ? 1.6 : 1);   // de longe o anel cresce para ser visto
+  // seta girando em volta de quem anda em círculos
+  if (a.circulo && !s.arco) {
+    s.arco = new THREE.Group(); s.arco.position.y = 0.07;
+    const arco = new THREE.Mesh(geoArcoCirculo, matCirculo); arco.rotation.x = -Math.PI / 2; s.arco.add(arco);
+    const ponta = new THREE.Mesh(geoPontaCirculo, matCirculo); ponta.rotation.x = -Math.PI / 2; ponta.position.set(1.08, 0, 0.05);
+    ponta.rotation.z = -Math.PI / 2; s.arco.add(ponta);
+    a.fig.raiz.add(s.arco);
+  } else if (!a.circulo && s.arco) { a.fig.raiz.remove(s.arco); s.arco = null; }
+  if (s.arco) { s.arco.visible = visivel; if (!MOV_RED) s.arco.rotation.y += dt * 1.6; }
+  // ícone: de longe sempre (no lugar do nome); de perto só comando longo e círculo
+  const ic = iconeAtual(a);
+  const mostra = !!ic && visivel && (longe || ic.p != null || ic.icone === '🔁' || ic.flash || ic.aviso);
+  s.sp.visible = mostra;
+  if (mostra) {
+    const chave = ic.icone + ic.cor + (ic.p != null ? '|' + (LEVE ? Math.floor(ic.seg / 5) : ic.seg) + '|' + (ic.p > 0.8) : '');   // leve: 1 redesenho a cada 5 s
+    if (chave !== s.chave) { desenharIcone(s, ic); s.chave = chave; }
+    s.sp.position.y = longe ? 3.0 : 2.4;
+  }
+  a.nomeSp.sprite.visible = !longe || !mostra;   // sem ícone (ocioso recente, sem eventos): o nome continua
+  // andando em círculos: de vez em quando coça a cabeça e diz quantas vezes editou o arquivo
+  if (a.circulo && a.sentado && !a.atual && t >= s.proxGesto) {
+    s.proxGesto = t + 20;
+    a.gesto = { tipo: 'coca', ate: t + 2.4 };
+    if (!a.balao && a.circulo.arquivo) a.balao = { texto: 'edita ' + a.circulo.arquivo + ' pela ' + a.circulo.edicoes + 'ª vez', icone: '🔁', ate: t + 5 };
+  }
+}
+
 // ---------------------------------------------------------------- Agentes
 const agentes = new Map();   // nome -> agente
 const ordemAgentes = [];
@@ -1023,6 +1354,8 @@ function garantirAgente(nome) {
     pausa: null, ociosoDesde: null, proxPausa: agora() + PAUSA_OCIOSO_MIN + Math.random() * 35,
   };
   fig.raiz.traverse((o) => { o.userData.agente = a; });
+  mesa.grupo.traverse((o) => { o.userData.agente = a; });   // clicar na mesa ou no monitor também abre a ficha
+  criarSinais(a);
   fig.raiz.position.copy(a.pos); fig.raiz.rotation.y = a.yaw; posturaSentado(fig, true);
   agentes.set(nome, a); ordemAgentes.push(a);
   criarLinhaPainel(a);
@@ -1093,6 +1426,8 @@ function itemMao(tipo) {
   else if (tipo === 'pastel') { caixa(0.28, 0.015, 0.18, branco, 0, 0.01, 0, g); const m = caixa(0.24, 0.05, 0.12, mat(0xd9a441), 0, 0.045, 0, g); m.rotation.y = 0.3; }
   else if (tipo === 'sanduiche') { caixa(0.2, 0.04, 0.14, mat(0xd9a066), 0, 0.03, 0, g); caixa(0.2, 0.02, 0.14, mat(0xc0392b), 0, 0.06, 0, g);
     caixa(0.21, 0.015, 0.15, mat(0x5aa84a), 0, 0.077, 0, g); caixa(0.2, 0.05, 0.14, mat(0xd9a066), 0, 0.11, 0, g); }
+  else if (tipo === 'envelope') { caixa(0.3, 0.2, 0.025, mat(0xf8f4e8), 0, 0.12, 0.06, g); caixa(0.07, 0.07, 0.03, mat(0xc0392b), 0, 0.12, 0.08, g); }
+  else if (tipo === 'pasta') { caixa(0.36, 0.27, 0.05, mat(0xd9b56b), 0, 0.15, 0.06, g); caixa(0.32, 0.03, 0.04, mat(0xf2f4f7), 0, 0.29, 0.06, g); }
   else if (tipo === 'raquete') { caixa(0.03, 0.12, 0.03, mat(0x8b5a2b), 0, 0.06, 0, g); const d = cilM(g, 0.12, 0.02, mat(0xdc2626), 0, 0.2, 0); d.rotation.x = Math.PI / 2; }
   return g;
 }
@@ -1312,12 +1647,23 @@ function aplicarInterrupcao(a) {
   a.gesto = null;
 }
 
-function falar(a, destino, resumo, ferr) {
+// Uma linha da mensagem para o balão do destinatário (texto do evento; sem ele, o resumo)
+function linhaMensagem(texto, resumo) {
+  const l = String(texto || '').split(/\r?\n/).map((x) => x.trim()).find(Boolean) || String(resumo || '').trim();
+  return l.length > 60 ? l.slice(0, 59) + '…' : l;
+}
+function falar(a, destino, resumo, ferr, texto) {
   if (!destino || destino === a) { balao(a, resumo, ferr, TEMPO_FALA + 1); return; }
   interromperPausa(destino);
   const pts = caminhoMesaAMesa(a, destino.mesa);
   const dirOlhar = yawPara(destino.mesa.visita, destino.mesa.assento);
+  const linha = linhaMensagem(texto, resumo);
+  enfileirar(a, { t: 'fn', fn: () => pegarItem(a, 'envelope') });   // leva o envelope até a mesa do destinatário
   enfileirar(a, { t: 'caminho', pts, estado: 'conversando', yawFinal: dirOlhar });
+  enfileirar(a, { t: 'fn', fn: () => {   // entrega: o destinatário mostra uma linha da mensagem
+    soltarItem(a);
+    if (linha) destino.balao = { texto: linha, icone: '✉️', ate: agora() + TEMPO_FALA + 1.5 };
+  } });
   enfileirar(a, { t: 'esperar', dur: TEMPO_FALA, estado: 'conversando', balao: { texto: resumo, icone: iconeDe(ferr, 'sendmessage') } });
   enfileirar(a, { t: 'caminho', pts: caminhoVoltar(a, destino.mesa), estado: 'conversando', sentarAoFinal: true, yawFinal: Math.PI });
   enfileirar(a, acaoFim(a));
@@ -1325,9 +1671,11 @@ function falar(a, destino, resumo, ferr) {
 function reuniao(participantes, falante, resumo, ferr) {
   participantes.forEach(interromperPausa);
   participantes.forEach((a, i) => {
+    if (a === falante) enfileirar(a, { t: 'fn', fn: () => pegarItem(a, 'pasta') });   // quem convoca leva a pasta da pauta
     enfileirar(a, { t: 'caminho', pts: caminhoParaSala(a, i), estado: 'em reunião', yawFinal: yawPara(pontoAssento(i), new THREE.Vector3(SALA.cx, 0, SALA.cz)) });
     enfileirar(a, { t: 'esperar', dur: TEMPO_REUNIAO, estado: 'em reunião',
       balao: { texto: a === falante ? resumo : '…', icone: a === falante ? iconeDe(ferr, 'sendmessage') : '👥' } });
+    if (a === falante) enfileirar(a, { t: 'fn', fn: () => soltarItem(a) });
     enfileirar(a, { t: 'caminho', pts: caminhoDaSala(a, i), estado: 'em reunião', sentarAoFinal: true, yawFinal: Math.PI });
     enfileirar(a, acaoFim(a));
   });
@@ -1355,6 +1703,7 @@ const confete = new THREE.Points(confGeo, new THREE.PointsMaterial({ size: 0.22,
 confete.frustumCulled = false; confete.visible = false; cena.add(confete);
 const CORES_CONFETE = ['#ef4444', '#f59e0b', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'].map((c) => new THREE.Color(c));
 function soltarConfete(x, z, n = MOVEL ? 16 : 45) {
+  if (MOV_RED || LEVE) return;   // movimento reduzido ou modo leve: a festa fica no balão e nos braços para cima
   let k = 0;
   for (let i = 0; i < N_CONFETE && k < n; i++) {
     if (confVida[i] > 0) continue;
@@ -1384,15 +1733,93 @@ function tickConfete(dt) {
 }
 function xpDefinir(nome, info) {   // info: {nivel, titulo, xp, xp_base, xp_proximo} ou null
   const a = agentes.get(normalizarNome(nome)); if (!a) return false;
+  const antes = a.xp ? a.xp.nivel : null;
   a.xp = info || null;
   desenharNome(a.nomeSp, a.titulo, a.cor, a.funcao, a.xp);
+  decorarMesa(a, a.xp ? a.xp.nivel : 0, antes != null && a.xp && a.xp.nivel > antes);
+  return true;
+}
+
+// Mesa que evolui com o nível: gaveteiro ao lado da mesa com caneca (1), planta (2), livros (3), troféu de bronze (4) e de ouro (5).
+// Malhas estáticas com geometrias e materiais compartilhados; o objeto novo "cai" no gaveteiro quando o agente sobe de nível.
+const geoCilU = new THREE.CylinderGeometry(1, 1, 1, 10), geoEsfU = new THREE.SphereGeometry(1, 10, 8);
+function cilU(r, h, material, x, y, z, pai, rTopo) {
+  const m = new THREE.Mesh(geoCilU, material); m.scale.set(r, h, r); m.position.set(x, y, z); pai.add(m);
+  if (rTopo) m.scale.x = m.scale.z = rTopo;
+  return m;
+}
+const quedas = [];   // {obj, y, t0}
+function decorarMesa(a, nivel, animar) {
+  const mesa = a.mesa; nivel = Math.max(0, Math.min(5, Number(nivel) || 0));
+  if (mesa.nivelProps === nivel) return;
+  if (mesa.props) mesa.grupo.remove(mesa.props);
+  mesa.props = null; mesa.nivelProps = nivel;
+  if (!nivel) return;
+  const g = new THREE.Group(); g.position.set(mesa.largura / 2 + 0.45, 0, -0.1);
+  caixa(0.62, 0.9, 0.62, mat(0x3a4250), 0, 0.45, 0, g);                       // gaveteiro
+  for (const y of [0.3, 0.62]) caixa(0.5, 0.02, 0.02, mat(0x8b95a3), 0, y, 0.315, g);
+  const itens = [];
+  const caneca = new THREE.Group(); caneca.position.set(0.16, 0.9, 0.16); g.add(caneca);
+  cilU(0.08, 0.17, mat(0xf2f4f7), 0, 0.085, 0, caneca); caixa(0.03, 0.08, 0.06, mat(0xf2f4f7), 0.09, 0.09, 0, caneca);
+  caixa(0.12, 0.012, 0.12, mat(a.cor), 0, 0.172, 0, caneca);
+  itens.push(caneca);
+  if (nivel >= 2) {
+    const planta = new THREE.Group(); planta.position.set(-0.16, 0.9, 0.16); g.add(planta);
+    cilU(0.1, 0.16, mat(0xb45a3c), 0, 0.08, 0, planta, 0.12);
+    const folha = new THREE.Mesh(geoEsfU, mat(0x2f8f46)); folha.scale.set(0.17, 0.2, 0.17); folha.position.y = 0.3; planta.add(folha);
+    itens.push(planta);
+  }
+  if (nivel >= 3) {
+    const livros = new THREE.Group(); livros.position.set(-0.14, 0.9, -0.15); g.add(livros);
+    caixa(0.26, 0.06, 0.2, mat(0x1e3a8a), 0, 0.03, 0, livros); caixa(0.24, 0.06, 0.18, mat(0x7f1d1d), 0.01, 0.09, 0, livros);
+    caixa(0.22, 0.05, 0.19, mat(0x14532d), -0.01, 0.145, 0, livros);
+    itens.push(livros);
+  }
+  if (nivel >= 4) {
+    const metal = mat(nivel >= 5 ? 0xf5c518 : 0xcd7f32);
+    const trofeu = new THREE.Group(); trofeu.position.set(0.15, 0.9, -0.15); g.add(trofeu);
+    caixa(0.2, 0.07, 0.2, mat(0x2b2118), 0, 0.035, 0, trofeu);
+    cilU(0.03, 0.14, metal, 0, 0.14, 0, trofeu);
+    cilU(0.11, 0.18, metal, 0, 0.3, 0, trofeu, 0.12);
+    if (nivel >= 5) { const e = new THREE.Mesh(geoEsfU, mat(0xfff3a0, 'basic')); e.scale.setScalar(0.05); e.position.y = 0.45; trofeu.add(e); }
+    itens.push(trofeu);
+  }
+  g.userData.abrir = () => { abaFicha = 'xp'; focarAgente(a); abrirFicha(a); };
+  g.userData.dica = () => {
+    const x = a.xp;
+    return a.titulo + ' — ' + (x ? estrelas(x.nivel) + ' ' + x.titulo + ' · ' + x.xp + ' XP' : 'sem nível') + '\nClique para ver o XP';
+  };
+  mesa.grupo.add(g); mesa.props = g;
+  if (animar && !MOV_RED) { const o = itens[itens.length - 1]; quedas.push({ obj: o, y: o.position.y, t0: agora() }); o.position.y += 2.5; }
+}
+function tickQuedas(t) {
+  for (let k = quedas.length - 1; k >= 0; k--) {
+    const q = quedas[k], u = Math.min(1, (t - q.t0) / 0.6);
+    q.obj.position.y = q.y + 2.5 * (1 - u * u);
+    if (u >= 1) quedas.splice(k, 1);
+  }
+}
+// Merge: festa curta do dono do PR (o nível novo continua com a festa grande do comemorar)
+function merge(nome, pr, pontos, n = 1, doReplay = false) {
+  if (replay && !doReplay) return false;   // merge ao vivo durante o replay não se mistura à linha do tempo
+  const a = agentes.get(normalizarNome(nome)); if (!a) return false;
+  const t = agora(), num = Number(pr), pts = Number(pontos), qt = Math.max(1, Number(n) || 1);
+  let txt = (Number.isFinite(num) && num > 0 ? 'PR #' + num : 'PR') + ' entrou';
+  if (qt > 1) txt += ' (e mais ' + (qt - 1) + ')';
+  if (Number.isFinite(pts) && pontos != null) txt += ' · ' + (pts > 0 ? '+' : '') + pts + ' XP';
+  a.festa = { ate: t + 2.5 };
+  a.balao = { texto: txt + '!', icone: '🔀', ate: t + 5 };
+  tocar('fanfarra');
+  soltarConfete(a.pos.x, a.pos.z, MOVEL ? 8 : 20);
   return true;
 }
 function comemorar(nome, titulo) {
+  if (replay) return false;
   const a = agentes.get(normalizarNome(nome)); if (!a) return false;
   const t = agora(), tit = titulo || (a.xp && a.xp.titulo) || 'um novo nível';
   a.festa = { ate: t + TEMPO_FESTA };
   a.balao = { texto: 'subiu para ' + tit + '!', icone: '🎉', ate: t + TEMPO_FESTA };
+  tocar('fanfarra');
   soltarConfete(a.pos.x, a.pos.z);
   return true;
 }
@@ -1423,6 +1850,25 @@ function removerSubagente(s) {
   s.bal.tex.dispose(); s.bal.sprite.material.dispose();
 }
 
+// Pose sentada de trabalho conforme a ferramenta do último evento (ev.ferramenta) e o comando longo em andamento.
+const CAT_FERR = { read: 'ler', grep: 'ler', glob: 'ler', webfetch: 'ler', websearch: 'ler', notebookread: 'ler', ls: 'ler',
+  task: 'delegar', agent: 'delegar', skill: 'delegar', sendmessage: 'delegar', todowrite: 'delegar' };
+function poseTrabalho(a, f, t, M, i) {
+  const cat = CAT_FERR[String((a.agoraFaz && a.agoraFaz.ferramenta) || '').toLowerCase()] || 'editar';
+  if (rodandoComando(a)) {   // esperando o comando: recosta, mãos no colo, olha a tela
+    f.bracoE.rotation.x = f.bracoD.rotation.x = -0.7;
+    f.dentro.rotation.x = -0.1; f.cabeca.rotation.x = -0.06 + M * Math.sin(t * 1.5 + i) * 0.04;
+  } else if (cat === 'ler') {   // lendo: mão no mouse rolando a tela, a outra apoiada
+    f.bracoE.rotation.x = -0.35; f.bracoD.rotation.x = -1.0 + M * Math.sin(t * 2.2 + i) * 0.07;
+    f.dentro.rotation.x = -0.04; f.cabeca.rotation.x = 0.12 + M * Math.sin(t * 0.7 + i) * 0.05;
+  } else if (cat === 'delegar') {   // delegando ou chamando uma skill: aponta para o lado
+    f.bracoD.rotation.x = -1.55 + M * Math.sin(t * 2 + i) * 0.12; f.bracoE.rotation.x = -0.9;
+    f.dentro.rotation.x = 0.02; f.cabeca.rotation.x = 0;
+  } else {   // editando: digita
+    f.bracoE.rotation.x = -1.1 + M * Math.sin(t * 17 + 1) * 0.08; f.bracoD.rotation.x = -1.1 + M * Math.sin(t * 15) * 0.08;
+    f.dentro.rotation.x = 0.08; f.cabeca.rotation.x = 0.05;
+  }
+}
 function atualizarAgente(a, dt, t) {
   const f = a.fig;
   // fila
@@ -1468,42 +1914,50 @@ function atualizarAgente(a, dt, t) {
     f.bracoE.rotation.x = -Math.sin(w) * 0.6; f.bracoD.rotation.x = Math.sin(w) * 0.6;
     f.dentro.position.y = Math.abs(Math.sin(w)) * 0.06; f.dentro.rotation.x = 0;
   } else if (a.sentado) {
-    if (a.base === 'trabalhando') {
-      f.bracoE.rotation.x = -1.1 + Math.sin(t * 17 + 1) * 0.08; f.bracoD.rotation.x = -1.1 + Math.sin(t * 15) * 0.08;
-      f.dentro.rotation.x = 0.08; f.cabeca.rotation.x = 0.05;
-    } else { // relaxado: recosta e balança de leve
+    const M = MOV_RED ? 0 : 1, i = a.mesa.indice;
+    if (a.base === 'trabalhando') poseTrabalho(a, f, t, M, i);
+    else { // relaxado: recosta e balança de leve
       f.bracoE.rotation.x = f.bracoD.rotation.x = -0.2;
-      f.dentro.rotation.x = -0.14 + Math.sin(t * 1.2 + a.mesa.indice) * 0.02; f.cabeca.rotation.x = -0.12;
+      f.dentro.rotation.x = -0.14 + M * Math.sin(t * 1.2 + i) * 0.02; f.cabeca.rotation.x = -0.12;
     }
     f.dentro.position.y = -0.1;
   } else {
     f.pernaE.rotation.x = f.pernaD.rotation.x = 0; f.bracoE.rotation.x = f.bracoD.rotation.x = 0; f.dentro.rotation.x = 0;
-    f.dentro.position.y = Math.sin(t * 2 + a.mesa.indice) * 0.01;
-    if (x && x.t === 'esperar') f.bracoD.rotation.x = -0.8 + Math.sin(t * 6) * 0.25; // gesticula
+    f.dentro.position.y = MOV_RED ? 0 : Math.sin(t * 2 + a.mesa.indice) * 0.01;
+    if (x && x.t === 'esperar') f.bracoD.rotation.x = -0.8 + (MOV_RED ? 0 : Math.sin(t * 6) * 0.25); // gesticula
   }
   // item na mão (levar à boca de vez em quando / raquete) e gestos de conversa
   f.cabeca.rotation.z = 0;
   if (a.mao) {
     let ang = -1.2;
     if (a.maoTipo === 'raquete') ang = -1.0 - 0.9 * (a.swing || 0);
+    else if (a.maoTipo === 'envelope' || a.maoTipo === 'pasta') ang = -0.55;   // leva à frente, sem levar à boca
     else { const ph = (t + a.mesa.indice * 1.7) % 7; if (ph < 1.4) ang -= 1.1 * Math.sin(Math.PI * ph / 1.4); }
     f.bracoD.rotation.x = ang; a.mao.rotation.x = -ang;
     const v = a.mao.userData.vapor; if (v) v.position.y = 0.2 + ((t * 0.5) % 1) * 0.12;
   }
   const g = a.gesto;
   if (g && t < g.ate && !andando) {
-    if (g.tipo === 'fala') { f.bracoE.rotation.x = -0.9 + Math.sin(t * 8) * 0.45; f.cabeca.rotation.z = Math.sin(t * 6) * 0.1; }
-    else f.cabeca.rotation.x += Math.sin(t * 5) * 0.08;
-    if (g.riso) f.dentro.position.y += Math.abs(Math.sin(t * 13)) * 0.08;
+    if (g.tipo === 'fala') { const M = MOV_RED ? 0 : 1; f.bracoE.rotation.x = -0.9 + Math.sin(t * 8) * 0.45 * M; f.cabeca.rotation.z = Math.sin(t * 6) * 0.1 * M; }
+    else if (g.tipo === 'coca') {   // andando em círculos: mão na cabeça, cabeça inclinada
+      f.bracoD.rotation.x = -2.75 + (MOV_RED ? 0 : Math.sin(t * 9) * 0.12); f.cabeca.rotation.z = 0.18; f.cabeca.rotation.x = 0.1;
+    } else if (g.tipo === 'soco') {   // comando terminou bem: soquinho no ar
+      f.bracoD.rotation.x = -2.7 + Math.abs(Math.sin(t * 9)) * 0.35; f.cabeca.rotation.x = -0.1;
+    } else if (g.tipo === 'maos') {   // comando falhou: mãos na cabeça
+      f.bracoE.rotation.x = f.bracoD.rotation.x = -2.8; f.cabeca.rotation.x = 0.18;
+    } else if (!MOV_RED) f.cabeca.rotation.x += Math.sin(t * 5) * 0.08;
+    if (g.riso && !MOV_RED) f.dentro.position.y += Math.abs(Math.sin(t * 13)) * 0.08;
   }
   if (a.festa) {   // comemoração: pulinhos com os braços para cima
     if (t < a.festa.ate) {
-      f.dentro.position.y += Math.abs(Math.sin(t * 8)) * 0.45;
-      f.bracoE.rotation.x = f.bracoD.rotation.x = -2.9 + Math.sin(t * 16) * 0.3;
+      if (!MOV_RED) f.dentro.position.y += Math.abs(Math.sin(t * 8)) * 0.45;
+      f.bracoE.rotation.x = f.bracoD.rotation.x = -2.9 + (MOV_RED ? 0 : Math.sin(t * 16) * 0.3);
     } else a.festa = null;
   }
   // pausas: atende pedido de volta e decide quando um agente ocioso vai descansar
   if (a.pausa && a.pausa.pedirVolta && (a.atual || !a.fila.some((i) => i.pausa))) aplicarInterrupcao(a);
+  // envelope/pasta que sobrou na mão (fila cortada pelo limite de 14 ações): larga ao sentar com a fila vazia
+  if ((a.maoTipo === 'envelope' || a.maoTipo === 'pasta') && !a.atual && !a.fila.length && a.sentado) soltarItem(a);
   const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado;
   if (!livre) a.ociosoDesde = null;
   else {
@@ -1517,15 +1971,16 @@ function atualizarAgente(a, dt, t) {
   // monitores
   const acende = a.base === 'trabalhando';
   for (const m of a.mesa.monitores) {
-    if (acende) m.color.setHex(a.cor).multiplyScalar(0.55 + 0.45 * Math.sin(t * 7 + a.mesa.indice * 2) * 0.5 + 0.22);
+    if (acende) m.color.setHex(a.cor).multiplyScalar(MOV_RED ? 0.77 : 0.55 + 0.45 * Math.sin(t * 7 + a.mesa.indice * 2) * 0.5 + 0.22);
     else m.color.setHex(0x161e2b);
   }
   // teclas piscam de leve enquanto trabalha
   a.mesa.teclas.color.setHex(COR_TECLAS);
-  if (acende && a.sentado) a.mesa.teclas.color.lerp(corTmp.setHex(a.cor), 0.45 * (0.5 + 0.5 * Math.sin(t * 19 + a.mesa.indice)));
+  if (acende && a.sentado) a.mesa.teclas.color.lerp(corTmp.setHex(a.cor), MOV_RED ? 0.22 : 0.45 * (0.5 + 0.5 * Math.sin(t * 19 + a.mesa.indice)));
   // balão
   const b = a.balaoSp;
-  if (a.balao && t < a.balao.ate) {
+  if (a.balao && t < a.balao.ate && longe && a.balao.trab) b.sprite.visible = false;   // de longe o ícone já diz a ferramenta
+  else if (a.balao && t < a.balao.ate) {
     const chave = a.balao.texto + a.balao.icone;
     if (a.balaoDesenhado !== chave) { desenharBalao(b, a.balao.texto, a.balao.icone, a.cor); a.balaoDesenhado = chave; }
     b.sprite.visible = true;
@@ -1545,13 +2000,14 @@ function criarLinhaPainel(a) {
   li.tabIndex = 0; li.setAttribute('role', 'button');   // teclado: Enter/Espaço abre a ficha
   li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); focarAgente(a); abrirFicha(a); } });
   ulAgentes.appendChild(li);
+  setTimeout(() => { esmaecer(a); atualizarChips(); }, 0);   // depois de criarSinais e de entrar em ordemAgentes
   a.li = li; a.liPonto = li.querySelector('.ponto'); a.liSub = li.querySelector('.sub'); a.liHora = li.querySelector('.hora');
   a.liRel = li.querySelector('.hora .rel'); a.liHoraSr = li.querySelector('.hora .so-leitor');
   a.ultimaLinha = '';
 }
 // "há 3 min" a partir de um instante (ms); o painel muda o texto a cada 30 s sem recriar a linha
 function haQuanto(ms) {
-  const s = Math.max(0, (Date.now() - ms) / 1000);
+  const s = Math.max(0, (relogioMs() - ms) / 1000);
   if (s < 60) return 'agora';
   if (s < 3600) return `há ${Math.floor(s / 60)} min`;
   if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
@@ -1571,7 +2027,7 @@ function linhaAgente(a) {
   return { sub: est === 'trabalhando' ? (resumo || e) : e + (resumo ? ' · ' + resumo : ''), rel: haQuanto(a.ultimoEventoMs), exata };
 }
 function atualizarPainel() {
-  const fatia = Math.floor(Date.now() / 30000);   // tempo relativo: refaz o texto a cada 30 s
+  const fatia = Math.floor(relogioMs() / 30000);   // tempo relativo: refaz o texto a cada 30 s
   for (const a of ordemAgentes) {
     const e = a.estado, chave = e + '|' + a.ultimoEventoMs + '|' + (a.agoraFaz && a.agoraFaz.resumo) + '|' + rodandoComando(a) + '|' + fatia;
     if (a.ultimaLinha !== chave) {
@@ -1596,17 +2052,94 @@ function horaDe(ev) {
   const m = /(\d{2}:\d{2}:\d{2})/.exec(String(ev && ev.ts || ''));
   return m ? m[1] : new Date().toTimeString().slice(0, 8);
 }
-function adicionarFeed(ev, ag) {
+function tipoFeed(ev) {
+  const t = String(ev.tipo || 'trabalho').toLowerCase();
+  if (t === 'fala' || t === 'reuniao') return 'fala';
+  if (t === 'ocioso') return 'ocioso';
+  return ev.ok === false ? 'falha' : 'trabalho';
+}
+function passaFiltro(ev) {
+  if (filtro.agentes.size) {
+    const para = Array.isArray(ev.para) ? ev.para.map(normalizarNome) : [];
+    if (!filtro.agentes.has(normalizarNome(ev.agente)) && !para.some((n) => filtro.agentes.has(n))) return false;
+  }
+  if (filtro.tipos.size) {
+    const tf = tipoFeed(ev);
+    if (!filtro.tipos.has(tf) && !(tf === 'falha' && filtro.tipos.has('trabalho'))) return false;
+  }
+  return true;
+}
+function liFeed(ev, ag) {
   const li = document.createElement('li');
   const cor = ag ? corCss(ag.cor) : '#666';
   li.style.borderLeftColor = cor;
   const t = document.createElement('span'); t.className = 't'; t.textContent = horaDe(ev);
   const n = document.createElement('b'); n.style.color = cor; n.textContent = String(ev.agente || '?').replace(/_/g, ' ');
   const para = Array.isArray(ev.para) && ev.para.length ? ' → ' + ev.para.join(', ') : '';
-  const rest = document.createTextNode(` ${iconeDe(ev.ferramenta)}${para}: ${String(ev.resumo || ev.tipo || '').slice(0, 120)}`);
+  const falhou = ev.ok === false ? ' ✖' : '';
+  const rest = document.createTextNode(` ${iconeDe(ev.ferramenta)}${falhou}${para}: ${String(ev.resumo || ev.tipo || '').slice(0, 120)}`);
   li.append(t, n, rest);
-  olFeed.prepend(li);
+  if (ev.ok === false) li.classList.add('falhou');
+  return li;
+}
+function adicionarFeed(ev, ag, mostrar = true) {
+  feedHist.push({ ev, ag });
+  if (feedHist.length > MAX_FEED_HIST) feedHist.splice(0, feedHist.length - MAX_FEED_HIST);
+  if (!mostrar || !passaFiltro(ev)) return;
+  const vazio = olFeed.querySelector('li.vazio'); if (vazio) vazio.remove();
+  olFeed.prepend(liFeed(ev, ag));
   while (olFeed.children.length > MAX_FEED) olFeed.lastChild.remove();
+}
+function renderizarFeed() {
+  olFeed.textContent = '';
+  for (let k = feedHist.length - 1; k >= 0 && olFeed.children.length < MAX_FEED; k--) {
+    const x = feedHist[k];
+    if (passaFiltro(x.ev)) olFeed.append(liFeed(x.ev, x.ag));
+  }
+  if (!olFeed.children.length && feedHist.length) { const li = document.createElement('li'); li.className = 'vazio'; li.textContent = 'Nenhum evento recente com este filtro.'; olFeed.append(li); }
+}
+function salvarFiltro() {
+  try { localStorage.setItem(CHAVE_FILTRO, JSON.stringify({ agentes: [...filtro.agentes], tipos: [...filtro.tipos] })); } catch (e) {}
+}
+function esmaecer(a) {   // fora do filtro: rótulos, balão, ícone e anel quase transparentes (sem custo por quadro)
+  const fora = filtro.agentes.size > 0 && !filtro.agentes.has(a.nome);
+  if (a.fora === fora) return;
+  a.fora = fora;
+  for (const m of [a.nomeSp.sprite.material, a.balaoSp.sprite.material, a.sinal && a.sinal.sp.material]) if (m) m.opacity = fora ? 0.22 : 1;
+  if (a.sinal) { a.sinal.anel.material.opacity = fora ? 0.15 : 0.9; a.sinal.sp.scale.set(ESC_ICONE * (fora ? 0.6 : 1), ESC_ICONE * (fora ? 0.6 : 1), 1); }
+  if (a.li) a.li.classList.toggle('esmaecido', fora);
+}
+function atualizarChips() {
+  const caixaAg = $('filtroAgentes'); if (!caixaAg) return;
+  caixaAg.textContent = '';
+  for (const a of ordemAgentes) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = a.titulo; b.style.setProperty('--cor', corCss(a.cor));
+    b.setAttribute('aria-pressed', String(filtro.agentes.has(a.nome)));
+    b.addEventListener('click', () => { if (filtro.agentes.has(a.nome)) filtro.agentes.delete(a.nome); else filtro.agentes.add(a.nome); aplicarFiltro(); });
+    caixaAg.append(b);
+  }
+  document.querySelectorAll('#filtroTipos button').forEach((b) => b.setAttribute('aria-pressed', String(filtro.tipos.has(b.dataset.tipo))));
+  const bt = $('btnFiltro');
+  if (bt) {
+    const partes = [...filtro.agentes].map((n) => { const a = agentes.get(n); return a ? a.titulo : n; });
+    if (filtro.tipos.size) partes.push([...filtro.tipos].join('/'));
+    bt.textContent = partes.length ? '🔎 Filtro: ' + partes.join(', ') : '🔎 Filtrar';
+    bt.title = partes.length ? 'Filtro ativo: ' + partes.join(', ') : 'Filtrar o feed e a cena por agente e por tipo de evento';
+    bt.classList.toggle('ativo', partes.length > 0);
+  }
+  const so = $('fichaSo');
+  if (so && fichaAberta) {
+    const sim = filtro.agentes.size === 1 && filtro.agentes.has(fichaAberta.nome);
+    so.textContent = sim ? '👁 Todos' : '👁 Só este'; so.setAttribute('aria-pressed', String(sim));
+    so.title = sim ? 'Voltar a mostrar todos os agentes' : 'Mostrar só este agente (esmaece os outros e filtra o feed)';
+  }
+}
+function aplicarFiltro() {
+  salvarFiltro();
+  for (const a of ordemAgentes) esmaecer(a);
+  atualizarChips();
+  renderizarFeed();
 }
 
 // ---------------------------------------------------------------- Ficha do agente (clique no painel ou no boneco)
@@ -1617,8 +2150,8 @@ function guardarHist(a, ev, papel) {
   a.hist.push({ ev, papel });
   if (a.hist.length > MAX_HIST) a.hist.splice(0, a.hist.length - MAX_HIST);
 }
-function abrirFicha(a) { fichaAberta = a; fichaEl.hidden = false; desenharFicha(); }
-function fecharFicha() { fichaAberta = null; fichaEl.hidden = true; }
+function abrirFicha(a) { fichaAberta = a; fichaEl.hidden = false; desenharFicha(); atualizarBotaoSeguir(); atualizarChips(); }
+function fecharFicha() { fichaAberta = null; fichaEl.hidden = true; pararSeguir(); }   // fechou a ficha: a câmera para de seguir
 function el(tag, cls, texto) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -1629,7 +2162,8 @@ function estadoFicha(a) {   // "trabalhando · rodando há 9 min · último even
   const l = linhaAgente(a), est = String(a.estado || '');
   // "há N min" sempre diz do quê: do comando em andamento ou do último evento (em pausa, a pausa não tem início conhecido)
   const rel = !a.ultimoEventoMs || l.rel.startsWith('rodando') || l.rel.startsWith('ocioso') ? l.rel : 'último evento ' + l.rel;
-  $('fichaEstado').textContent = (l.rel.startsWith('ocioso') ? '' : est + ' · ') + rel + (a.ultimoEventoMs ? ' (' + l.exata + ')' : '');
+  const falha = textoFalha(a);
+  $('fichaEstado').textContent = (l.rel.startsWith('ocioso') ? '' : est + ' · ') + rel + (a.ultimoEventoMs ? ' (' + l.exata + ')' : '') + (falha ? ' · ' + falha : '');
 }
 function desenharFicha() {
   const a = fichaAberta; if (!a) return;
@@ -1655,7 +2189,8 @@ function desenharFicha() {
       const quem = papel === 'fez' ? '→ ' + ((ev.para || []).join(', ') || 'todos') : '← ' + String(ev.agente || '?');
       topo.append(el('b', null, (ev.tipo === 'reuniao' ? '👥 reunião ' : '💬 ') + quem.replace(/_/g, ' ')));
     } else {
-      topo.append(el('b', null, iconeDe(ev.ferramenta) + ' ' + (ev.ferramenta || ev.tipo || '')));
+      const res = ev.ok === false ? ' ✖ falhou' + (ev.codigo != null && ev.codigo !== '' && Number.isFinite(Number(ev.codigo)) ? ' (exit ' + Number(ev.codigo) + ')' : '') : ev.ok === true ? ' ✔' : '';
+      topo.append(el('b', ev.ok === false ? 'falhou' : null, iconeDe(ev.ferramenta) + ' ' + (ev.ferramenta || ev.tipo || '') + res));
     }
     li.append(topo, el('div', 'resumo', ev.resumo || ''));
     const extra = conversa(item) ? ev.texto : ev.detalhe;
@@ -1753,13 +2288,9 @@ el3d.addEventListener('pointerup', (e) => {
   if (!a || outro) return;
   if (Math.hypot(e.clientX - a.x, e.clientY - a.y) > (a.toque ? 12 : 5) || performance.now() - a.t > 700) return;
   const r = el3d.getBoundingClientRect();
-  ponteiro.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-  raio.setFromCamera(ponteiro, camera);
-  const visivel = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
-  const acertos = raio.intersectObjects(cena.children, true).filter((i) => visivel(i.object));   // o raio do three acerta até o invisível
-  let ag = (acertos.find((i) => i.object.userData.agente) || {}).object;
-  ag = ag && ag.userData.agente;
-  if (!ag && a.toque) {   // dedo gordo: o boneco mais perto do toque (até 40 px), medido na cabeça
+  const alvo = alvoNoPonto(e.clientX, e.clientY, true);
+  let ag = alvo && alvo.agente;
+  if (!alvo && a.toque) {   // dedo gordo: o boneco mais perto do toque (até 40 px), medido na cabeça
     let melhor = 40;
     for (const x of ordemAgentes) {
       if (!x.fig || !x.fig.dentro || !x.fig.dentro.visible) continue;
@@ -1769,22 +2300,183 @@ el3d.addEventListener('pointerup', (e) => {
     }
   }
   if (ag) { focarAgente(ag); abrirFicha(ag); }
-  else if (acertos.length && acertos[0].object.userData.kanban && window.__kanban) window.__kanban.abrir();   // quadro da parede
+  else if (alvo && alvo.abrir) alvo.abrir();   // quadro Kanban da parede, TV, pilha de PRs parados, gaveteiro do nível
 });
+// O que está sob o ponteiro: o objeto acertado mais perto que tenha alvo (sobe pelos pais): {agente} ou {abrir, dica}.
+// O raio do three acerta até o invisível; vidro, piso e paredes sem alvo não bloqueiam.
+const visivel = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+function alvoDe(obj) {
+  for (let o = obj; o; o = o.parent) {
+    const u = o.userData;
+    if (u.agente) return { agente: u.agente };
+    if (u.kanban) return { abrir: () => window.__kanban && window.__kanban.abrir(), dica: u.dica };
+    if (u.abrir || u.dica) return { abrir: u.abrir, dica: u.dica };   // TV, pilha, gaveteiro, sino, gato, fio de arquivo
+  }
+  return null;
+}
+function alvoNoPonto(cx, cy, clique = false) {
+  const r = el3d.getBoundingClientRect();
+  ponteiro.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raio.setFromCamera(ponteiro, camera);
+  for (const i of raio.intersectObjects(cena.children, true)) {
+    if (!visivel(i.object)) continue;
+    const x = alvoDe(i.object);
+    if (x && clique && !x.agente && !x.abrir) continue;   // fio/rótulo só têm dica: o clique passa para o que está atrás
+    if (x) return x;
+  }
+  return null;
+}
+// Dica ao passar o mouse (só mouse; no toque o clique já abre a ficha). Raycast no máximo a cada 90 ms.
+const dica3d = document.createElement('div'); dica3d.id = 'dica3d'; dica3d.hidden = true; dica3d.setAttribute('role', 'tooltip');
+document.body.append(dica3d);
+let ultimoHover = 0;
+function textoDicaAgente(x) {
+  const l = linhaAgente(x), linhas = [x.titulo + (x.funcao ? ' — ' + x.funcao : ''), l.sub + ' · ' + l.rel];
+  if (x.circulo) linhas.push('🔁 andando em círculos: edita ' + x.circulo.arquivo + ' ' + x.circulo.edicoes + '× e roda o mesmo comando ' + x.circulo.comandos + '×');
+  if (rodandoComando(x)) {
+    const dec = (relogioMs() - x.inicioComandoMs) / 1000, lim = dec + Math.max(0, x.ocupadoAte - agora());
+    linhas.push('⏳ comando há ' + Math.floor(dec / 60) + ' min (limite ' + Math.round(lim / 60) + ' min)');
+  }
+  const falha = textoFalha(x); if (falha) linhas.push(falha);
+  if (x.xp) linhas.push(estrelas(x.xp.nivel) + ' ' + x.xp.titulo + ' · ' + x.xp.xp + ' XP');
+  linhas.push('Clique para abrir a ficha');
+  return linhas.join('\n');
+}
+function esconderDica3d() { if (!dica3d.hidden) dica3d.hidden = true; el3d.style.cursor = ''; }
+el3d.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' || e.buttons) { esconderDica3d(); return; }
+  const agoraMs = performance.now(); if (agoraMs - ultimoHover < (LEVE ? 250 : 90)) return; ultimoHover = agoraMs;
+  const alvo = alvoNoPonto(e.clientX, e.clientY);
+  const txt = alvo ? (alvo.agente ? textoDicaAgente(alvo.agente) : typeof alvo.dica === 'function' ? alvo.dica() : alvo.dica || '') : '';
+  if (!txt) { esconderDica3d(); return; }
+  el3d.style.cursor = 'pointer';
+  dica3d.textContent = txt; dica3d.hidden = false;
+  const w = dica3d.offsetWidth, h = dica3d.offsetHeight;
+  dica3d.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, e.clientX + 14)) + 'px';
+  dica3d.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, e.clientY + 16)) + 'px';
+});
+el3d.addEventListener('pointerleave', esconderDica3d);
+el3d.addEventListener('pointerdown', esconderDica3d);
 
-// Foco de câmera
-let foco = null;
+// Foco de câmera (instantâneo com movimento reduzido) e "Seguir" (a câmera acompanha o boneco até o usuário arrastar)
+let foco = null, seguindo = null;
 function focarAgente(a) {
   const alvo = a.mesa.foco.clone();
   iniciarFoco(alvo, alvo.clone().add(new THREE.Vector3(0, 6, 9)));
 }
-function iniciarFoco(alvo, pos) {
+function iniciarFoco(alvo, pos, manterSeguir = false) {
+  if (!manterSeguir) pararSeguir();
+  if (MOV_RED) { camera.position.copy(pos); controles.target.copy(alvo); foco = null; return; }
   foco = { t0: agora(), de: camera.position.clone(), deAlvo: controles.target.clone(), pos, alvo };
+}
+const btnSeguir = $('fichaSeguir');
+function atualizarBotaoSeguir() {
+  if (!btnSeguir) return;
+  const sim = !!seguindo && seguindo === fichaAberta;
+  btnSeguir.textContent = sim ? '📍 Seguindo' : '📍 Seguir';
+  btnSeguir.classList.toggle('ativo', sim); btnSeguir.setAttribute('aria-pressed', String(sim));
+}
+function seguir(a) {
+  if (!a) { pararSeguir(); return false; }
+  const alvo = new THREE.Vector3(a.pos.x, 1, a.pos.z);
+  iniciarFoco(alvo, alvo.clone().add(new THREE.Vector3(0, 7, 10)));
+  seguindo = a; atualizarBotaoSeguir();
+  return true;
+}
+function pararSeguir() { if (seguindo) { seguindo = null; atualizarBotaoSeguir(); } }
+controles.addEventListener('start', pararSeguir);   // arrastar, girar ou dar zoom devolve a câmera ao usuário
+if (btnSeguir) btnSeguir.addEventListener('click', () => { if (seguindo && seguindo === fichaAberta) pararSeguir(); else if (fichaAberta) seguir(fichaAberta); });
+const vSeg = new THREE.Vector3();
+function tickSeguir(dt) {
+  if (!seguindo || foco) return;
+  vSeg.set(seguindo.pos.x, 1, seguindo.pos.z).sub(controles.target);
+  const k = MOV_RED ? 1 : Math.min(1, dt * 4);
+  controles.target.addScaledVector(vSeg, k); camera.position.addScaledVector(vSeg, k);
+}
+
+// ---------------------------------------------------------------- Saúde do time (GET /saude a cada 60 s)
+// círculos: seta laranja, anel laranja, gesto e balão no agente; parados: pilha de papéis na mesa do líder (clique abre os PRs).
+const INTERVALO_SAUDE = 60000;
+let saudeEm = 0, paradosAtuais = [], chavePilha = '';
+const matPapel = mat(0xe8e2cc), matPapelVelho = mat(0xb9b39a);
+let ultimaSaude = null;
+function aplicarSaude(d) {
+  if (!d || typeof d !== 'object' || d.erro) return false;
+  ultimaSaude = d;
+  if (replay) return true;   // no replay os círculos vêm da linha do tempo; reaplica ao sair
+  const ign = d.ignorados && typeof d.ignorados === 'object' && !Array.isArray(d.ignorados) ? d.ignorados : {};   // ignorados no painel Saúde
+  const com = new Set();
+  for (const c of Array.isArray(d.circulos) ? d.circulos : []) {
+    if (!c || ign['circulo:' + c.agente + ':' + c.arquivo]) continue;
+    const a = agentes.get(normalizarNome(c.agente));
+    if (!a) continue;
+    com.add(a);
+    a.circulo = { arquivo: String(c.arquivo || '').slice(0, 60), edicoes: Number(c.edicoes) || 0, comandos: Number(c.comandos) || 0 };
+  }
+  for (const a of ordemAgentes) if (!com.has(a)) a.circulo = null;
+  const dups = d.duplicados && Array.isArray(d.duplicados.fortes) ? d.duplicados.fortes : [];
+  const dupsAbertos = dups.filter((x) => x && !ign['dup:' + (Array.isArray(x.branches) ? x.branches.map(String).sort().join(',') : '')]);
+  gatoAgitado = com.size > 0 || dupsAbertos.length > 0;   // o gato fica agitado com círculo ou duplicado não ignorado
+  if (Array.isArray(d.parados)) paradosAtuais = d.parados.filter((p) => p && Number.isFinite(Number(p.numero)) && !ign['parado:' + p.numero]);
+  else if (!d.sem_prs) paradosAtuais = [];   // sem_prs: GitHub fora do ar, mantém a pilha anterior
+  desenharPilhaParados();
+  desenharTelaPrs();
+  return true;
+}
+function desenharPilhaParados() {
+  const lider = agentes.get(LIDER); if (!lider) return;
+  const chave = paradosAtuais.map((p) => p.numero + ((Number(p.horas) || 0) >= 72 ? 'v' : '')).join(',');
+  if (chave === chavePilha) return;
+  chavePilha = chave;
+  const m = lider.mesa;
+  if (m.pilha) { m.grupo.remove(m.pilha); m.pilha = null; }
+  if (!paradosAtuais.length) return;
+  const g = new THREE.Group(); g.position.set(m.largura / 2 - 0.4, 1.06, 0.45);
+  const n = Math.min(8, paradosAtuais.length);
+  for (let i = 0; i < n; i++) {
+    const folha = caixa(0.5, 0.028, 0.36, (Number(paradosAtuais[i].horas) || 0) >= 72 ? matPapelVelho : matPapel, 0, 0.014 + i * 0.032, 0, g);
+    folha.rotation.y = ((i * 37) % 11 - 5) * 0.03;
+  }
+  g.userData.abrir = () => { if ($('prs').hidden) $('btnPrs').click(); };
+  g.userData.dica = () => paradosAtuais.length + ' PR(s) parado(s) há mais de 24 h\n'
+    + paradosAtuais.slice(0, 6).map((p) => '#' + Number(p.numero) + ' · ' + (Number(p.horas) || 0) + ' h · ' + String(p.titulo || '').slice(0, 50)).join('\n')
+    + '\nClique para ver os PRs';
+  m.grupo.add(g); m.pilha = g;
+}
+let timerSaude = null;
+async function pollSaude() {
+  clearTimeout(timerSaude);
+  if (!document.hidden) {
+    try {
+      const r = await fetch('/saude', { cache: 'no-store' });
+      if (r.ok) { aplicarSaude(await r.json()); saudeEm = Date.now(); }
+    } catch (e) { /* servidor fora: mantém o último estado */ }
+  }
+  timerSaude = setTimeout(pollSaude, INTERVALO_SAUDE);
+}
+
+// ---------------------------------------------------------------- Dia e noite pelo relógio local
+// Só cores e intensidades das 2 luzes que já existem, do fundo e das janelas; recalculado 1 vez por minuto.
+const LUZ_HORAS = [   // hora, fundo, janela, ambiente, sol, cor do sol
+  [0, 0x0b1220, 0x1c2a4a, 0.55, 0.35, 0x9fb2e0], [5.5, 0x0f1726, 0x24324f, 0.55, 0.35, 0x9fb2e0],
+  [7, 0x2a2633, 0xf2b880, 0.65, 0.6, 0xffc89a], [9, 0x1b2430, 0x7fb7e6, 0.75, 0.8, 0xffffff],
+  [16.5, 0x1b2430, 0x7fb7e6, 0.75, 0.8, 0xffffff], [18, 0x2b2230, 0xf59e6b, 0.65, 0.6, 0xffb27a],
+  [19.5, 0x111a2a, 0x2a3a62, 0.55, 0.38, 0xa8b8e8], [24, 0x0b1220, 0x1c2a4a, 0.55, 0.35, 0x9fb2e0]];
+let horaForcada = null, luzEm = -1;
+const cA = new THREE.Color(), cB = new THREE.Color();
+function ajustarLuz() {
+  const d = new Date(), h = horaForcada != null ? horaForcada : d.getHours() + d.getMinutes() / 60;
+  let k = 0; while (k < LUZ_HORAS.length - 2 && h >= LUZ_HORAS[k + 1][0]) k++;
+  const A = LUZ_HORAS[k], B = LUZ_HORAS[k + 1], u = Math.max(0, Math.min(1, (h - A[0]) / (B[0] - A[0] || 1)));
+  const mix = (i) => cA.setHex(A[i]).lerp(cB.setHex(B[i]), u);
+  cena.background.copy(mix(1)); matJanela.color.copy(mix(2));
+  luzAmbiente.intensity = A[3] + (B[3] - A[3]) * u; sol.intensity = A[4] + (B[4] - A[4]) * u; sol.color.copy(mix(5));
+  return h;
 }
 $('btnVisao').addEventListener('click', () => iniciarFoco(VISAO_GERAL.alvo.clone(), posVisaoGeral()));
 
 // ---------------------------------------------------------------- Eventos
-function processar(ev, animar = true) {
+function processar(ev, animar = true, silencioso = false) {   // silencioso: avanço rápido do replay (sem feed nem ficha)
   if (!ev || typeof ev !== 'object') return;
   const nome = normalizarNome(ev.agente) || 'Desconhecido';
   const tipo = String(ev.tipo || 'trabalho').toLowerCase();
@@ -1793,11 +2485,11 @@ function processar(ev, animar = true) {
   const ferr = String(ev.ferramenta || ''), resumo = String(ev.resumo || '').trim();
   const a = garantirAgente(nome);
   para.filter((p) => p !== '*').forEach(garantirAgente);
-  adicionarFeed(ev, a);
+  adicionarFeed(ev, a, !silencioso);
   if (!a) return;
   a.ultimoEvento = horaDe(ev);
   const msEv = Date.parse(ev.ts);
-  a.ultimoEventoMs = Number.isFinite(msEv) ? Math.min(msEv, Date.now()) : Date.now();
+  a.ultimoEventoMs = Number.isFinite(msEv) ? Math.min(msEv, relogioMs()) : relogioMs();
   a.ultimoResumo = resumo || (tipo !== 'ocioso' ? tipo : a.ultimoResumo);
   guardarHist(a, ev, 'fez');
   if (tipo === 'trabalho') a.agoraFaz = ev;
@@ -1805,18 +2497,31 @@ function processar(ev, animar = true) {
   // comando longo em andamento (PreToolUse, `inicio`): o PostToolUse só chega no fim; até lá o agente segue trabalhando.
   // Qualquer outro evento do agente (o fim do comando, ocioso) encerra a espera.
   if (ev.inicio) {
-    const resta = Math.min(Number(ev.espera_s) || 120, MAX_COMANDO) - (Date.now() - Date.parse(ev.ts)) / 1000;
+    const resta = Math.min(Number(ev.espera_s) || 120, MAX_COMANDO) - (relogioMs() - Date.parse(ev.ts)) / 1000;
     a.ocupadoAte = resta > 0 && resta <= MAX_COMANDO ? agora() + resta : 0;
     a.inicioComandoMs = a.ultimoEventoMs;   // painel: "rodando há N min"
   } else { a.ocupadoAte = 0; a.inicioComandoMs = 0; }
   if (!animar && a.ocupadoAte) { a.base = 'trabalhando'; a.ultimoTrabalho = agora(); a.estado = 'trabalhando'; }
+  // fim de comando Bash/PowerShell com resultado medido (`ok`); evento sem `ok` (antigo) é neutro
+  const temResultado = tipo === 'trabalho' && !ev.inicio && typeof ev.ok === 'boolean';
+  if (temResultado) {
+    const cod = ev.codigo == null || ev.codigo === '' ? null : Number(ev.codigo);
+    a.ultimoComando = { ok: ev.ok, codigo: Number.isFinite(cod) ? cod : null, erro: String(ev.erro || '').replace(/\s+/g, ' ').slice(0, 80), ms: a.ultimoEventoMs };
+    a.falhasSeguidas = ev.ok ? 0 : (a.falhasSeguidas || 0) + 1;
+  }
+  if (tipo === 'trabalho') registrarEdicao(a, ev);
   const recebem = para.includes('*') ? ordemAgentes.filter((x) => x !== a)
     : para.map((n) => agentes.get(n)).filter((x) => x && x !== a);
   if (tipo === 'fala' || tipo === 'reuniao') recebem.forEach((r) => guardarHist(r, ev, 'recebeu'));
-  if (fichaAberta && (fichaAberta === a || recebem.includes(fichaAberta))) desenharFicha();
+  if (!silencioso && fichaAberta && (fichaAberta === a || recebem.includes(fichaAberta))) desenharFicha();
   if (!animar) return;
   const t = agora();
   if (tipo !== 'ocioso') interromperPausa(a);   // evento real: quem está em pausa volta à mesa antes de agir
+  if (temResultado) {   // ✔/✖ por ~4 s e gesto (movimento reduzido: só o ícone)
+    a.resultado = { ok: ev.ok, ate: t + 4 };
+    if (!MOV_RED) a.gesto = { tipo: ev.ok ? 'soco' : 'maos', ate: t + (ev.ok ? 1.3 : 2.2) };
+    if (!ev.ok) tocar('bip');
+  }
 
   if (tipo === 'ocioso') {
     enfileirar(a, { t: 'fn', fn: () => { a.base = 'ocioso'; a.balao = null; if (!a.atual) a.estado = 'ocioso'; } });
@@ -1846,17 +2551,488 @@ function processar(ev, animar = true) {
       reuniao([a, ...a.convocados.map((c) => c.dest)], a, resumo || 'reunião', ferr);
       a.convocados = [];
     } else {
-      falar(a, dest, resumo || 'mensagem', ferr);
+      falar(a, dest, resumo || 'mensagem', ferr, ev.texto);
     }
   } else { // trabalho (e qualquer tipo desconhecido)
     const ultimo = a.fila[a.fila.length - 1];
     const acao = { t: 'fn', trab: true, fn: () => {
       a.base = 'trabalhando'; a.ultimoTrabalho = agora(); if (!a.atual) a.estado = 'trabalhando';
-      balao(a, resumo || ferr || 'trabalhando', ferr);
+      balao(a, resumo || ferr || 'trabalhando', ferr); a.balao.trab = true;
     } };
     if (ultimo && ultimo.trab) a.fila[a.fila.length - 1] = acao; else enfileirar(a, acao);
   }
 }
+
+// ---------------------------------------------------------------- Dois agentes no mesmo arquivo
+// Edição (Edit/Write/MultiEdit/NotebookEdit) guarda arquivo -> {agente: ms}; dois agentes no mesmo arquivo em menos de 10 min
+// ligam as mesas com um fio vermelho e o nome do arquivo. O fio some 10 min depois da última edição. Até MAX_FIOS ao mesmo tempo.
+const JANELA_ARQ_MS = 10 * 60 * 1000, MAX_FIOS = 4;
+const FERR_EDICAO = new Set(['edit', 'write', 'multiedit', 'notebookedit']);
+const edicoesArq = new Map();   // caminho normalizado -> {nome, por: Map(agente -> ms)}
+const fios = new Map();         // "A|B|caminho" -> {a, b, nome, ms, malha, rot}
+const matFio = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+let fiosEm = 0;
+function arquivoDoEvento(ev) {   // detalhe "file_path: C:\x\y.cpp" (registrar_evento.detalhe_de)
+  const m = /(?:^|\n)(?:file_path|notebook_path): *([^\n]+)/.exec(String(ev.detalhe || ''));
+  if (!m) return null;
+  const bruto = m[1].trim().replace(/\\/g, '/');
+  return bruto ? { chave: bruto.toLowerCase(), nome: bruto.split('/').pop().slice(0, 48) } : null;
+}
+function registrarEdicao(a, ev) {
+  if (LEVE || ev.inicio || !FERR_EDICAO.has(String(ev.ferramenta || '').toLowerCase())) return;
+  const arq = arquivoDoEvento(ev); if (!arq) return;
+  const ms = a.ultimoEventoMs || relogioMs();
+  if (relogioMs() - ms > JANELA_ARQ_MS) return;
+  let e = edicoesArq.get(arq.chave);
+  if (!e) { e = { nome: arq.nome, por: new Map() }; edicoesArq.set(arq.chave, e); }
+  e.por.set(a.nome, Math.max(ms, e.por.get(a.nome) || 0));
+  for (const [outro, ms2] of e.por) {
+    if (outro === a.nome || Math.abs(ms - ms2) > JANELA_ARQ_MS) continue;
+    const b = agentes.get(outro);
+    if (b) ligarFio(a, b, arq, Math.max(ms, ms2));
+  }
+}
+function pontoFio(m) { return new THREE.Vector3(m.grupo.position.x, 2.55, m.grupo.position.z - 0.35); }
+function removerFio(k) {
+  const f = fios.get(k); if (!f) return;
+  cena.remove(f.malha); cena.remove(f.rot.sprite);
+  f.malha.geometry.dispose(); f.rot.tex.dispose(); f.rot.sprite.material.dispose();
+  fios.delete(k);
+}
+function ligarFio(a, b, arq, ms) {
+  const [x, y] = [a, b].sort((p, q) => (p.nome < q.nome ? -1 : 1));
+  const k = x.nome + '|' + y.nome + '|' + arq.chave;
+  const f = fios.get(k);
+  if (f) { f.ms = Math.max(f.ms, ms); return; }
+  if (fios.size >= MAX_FIOS) {   // tira o mais antigo
+    let velho = null; for (const [kk, ff] of fios) if (!velho || ff.ms < fios.get(velho).ms) velho = kk;
+    removerFio(velho);
+  }
+  const pA = pontoFio(x.mesa), pB = pontoFio(y.mesa);
+  const meio = pA.clone().lerp(pB, 0.5); meio.y += 1.2 + pA.distanceTo(pB) * 0.08;
+  const curva = new THREE.QuadraticBezierCurve3(pA, meio, pB);
+  const malha = new THREE.Mesh(new THREE.TubeGeometry(curva, 24, 0.05, 5, false), matFio);
+  malha.userData.dica = () => x.titulo + ' e ' + y.titulo + ' editaram ' + arq.nome + ' nos últimos 10 min\nRisco de conflito: combinem quem segue';
+  cena.add(malha);
+  const rot = criarSprite(512, 96, 1, 1);
+  rot.sprite.material.sizeAttenuation = false; rot.sprite.scale.set(0.032 * 512 / 96, 0.032, 1);
+  const g = rot.ctx; g.font = 'bold 34px "Segoe UI", "Segoe UI Emoji", sans-serif';
+  const w = Math.min(500, g.measureText('📄 ' + arq.nome).width + 40);
+  g.fillStyle = 'rgba(127,29,29,0.92)'; retArredondado(g, (512 - w) / 2, 10, w, 76, 22); g.fill();
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('📄 ' + arq.nome, 256, 49, 480);
+  rot.tex.needsUpdate = true;
+  rot.sprite.position.copy(curva.getPoint(0.5)).add(new THREE.Vector3(0, 0.35, 0));
+  rot.sprite.userData.dica = malha.userData.dica;
+  cena.add(rot.sprite);
+  fios.set(k, { a: x, b: y, nome: arq.nome, ms, malha, rot });
+}
+function tickFios(t) {   // a cada 5 s: fios vencidos saem; o mapa de edições não cresce sem limite
+  if (t - fiosEm < 5) return;
+  fiosEm = t;
+  const agoraMs = relogioMs();
+  for (const [k, f] of [...fios]) if (agoraMs - f.ms > JANELA_ARQ_MS) removerFio(k);
+  for (const [k, e] of [...edicoesArq]) {
+    for (const [n, ms] of [...e.por]) if (agoraMs - ms > JANELA_ARQ_MS) e.por.delete(n);
+    if (!e.por.size) edicoesArq.delete(k);
+  }
+}
+
+// ---------------------------------------------------------------- Gato do escritório
+// Poucas caixas com materiais compartilhados. Passeia pelo corredor, dorme no sofá, visita quem está ocioso há mais tempo e
+// fica agitado ("miau?") com círculo ou duplicado não ignorado na /saude. Clique: miado. Desligado no modo leve.
+// Movimento reduzido: anda mais devagar, sem pulinho, e dorme no tapete ao lado do sofá (sem subir).
+let gatoAgitado = false, gato = null;
+const ZC_GATO = Z_CORREDOR + 0.7;
+function criarGato() {
+  const pelo = mat(0xd9893b), escuro = mat(0x2b1d12), rosa = mat(0xf2a3b3), listra = mat(0xb86a24);
+  const raiz = new THREE.Group(), corpo = new THREE.Group(); raiz.add(corpo);
+  caixa(0.32, 0.26, 0.62, pelo, 0, 0.36, 0, corpo);
+  caixa(0.33, 0.05, 0.1, listra, 0, 0.47, -0.1, corpo); caixa(0.33, 0.05, 0.1, listra, 0, 0.47, 0.1, corpo);
+  const cabeca = new THREE.Group(); cabeca.position.set(0, 0.54, 0.36); corpo.add(cabeca);
+  caixa(0.3, 0.26, 0.26, pelo, 0, 0, 0, cabeca);
+  caixa(0.08, 0.1, 0.05, pelo, -0.09, 0.17, 0, cabeca); caixa(0.08, 0.1, 0.05, pelo, 0.09, 0.17, 0, cabeca);
+  caixa(0.05, 0.05, 0.02, escuro, -0.07, 0.03, 0.135, cabeca); caixa(0.05, 0.05, 0.02, escuro, 0.07, 0.03, 0.135, cabeca);
+  caixa(0.05, 0.035, 0.02, rosa, 0, -0.05, 0.135, cabeca);
+  const rabo = new THREE.Group(); rabo.position.set(0, 0.44, -0.3); corpo.add(rabo);
+  caixa(0.06, 0.06, 0.42, pelo, 0, 0, -0.2, rabo); rabo.rotation.x = 0.8;
+  const pernas = [[-0.1, 0.2], [0.1, 0.2], [-0.1, -0.2], [0.1, -0.2]].map(([x, z]) => {
+    const p = new THREE.Group(); p.position.set(x, 0.24, z); corpo.add(p); caixa(0.07, 0.24, 0.07, pelo, 0, -0.12, 0, p); return p;
+  });
+  const bal = criarSprite(640, 220, 4.2, 1.45); bal.sprite.position.y = 1.7; bal.sprite.visible = false; raiz.add(bal.sprite);
+  raiz.userData.abrir = () => miar(true);
+  raiz.userData.dica = () => 'Gato do escritório' + (gatoAgitado ? ' (agitado: tem agente em círculos ou trabalho duplicado)' : '') + '\nClique para fazer carinho';
+  raiz.position.set(-8.6, 0, 11.4);
+  cena.add(raiz);
+  return { raiz, corpo, cabeca, rabo, pernas, bal, pos: raiz.position, yaw: 0, pts: [], estado: 'parado', ate: agora() + 3,
+    balao: null, desenhado: '', proxMiau: 0, pulo: 0, alvo: null, saida: [vGato(-10.8, 11.4)] };   // nasce no descanso: sai pelo lado da TV
+}
+function gatoBalao(texto, icone, dur) { if (gato) gato.balao = { texto, icone, ate: agora() + dur }; }
+function miar(clicou) {
+  if (!gato) return;
+  gatoBalao(clicou ? 'miau! 💕' : 'miau?', clicou ? '😺' : '🙀', 3);
+  if (clicou) tocar('miau');   // o miado agitado é só o balão (sem som repetido a cada 15 s)
+  if (clicou && !MOV_RED) gato.pulo = agora();
+}
+const vGato = (x, z, y = 0) => new THREE.Vector3(x, y, z);
+function rotaGato(dest, entrada) {   // volta ao corredor pelo caminho de saída do lugar atual, anda nele e entra pelo destino
+  const pts = (gato.saida || []).map((p) => p.clone());
+  const ult = pts.length ? pts[pts.length - 1] : gato.pos;
+  if (Math.abs(ult.z - ZC_GATO) > 0.3) pts.push(vGato(ult.x, ZC_GATO));
+  pts.push(vGato(entrada.length ? entrada[0].x : dest.x, ZC_GATO), ...entrada, dest);
+  gato.saida = entrada.slice().reverse();
+  return pts;
+}
+function decidirGato(t) {
+  const livres = ordemAgentes.filter((a) => a.mesa.kind !== 'diretoria' && a.sentado && !a.atual && !a.fila.length && !a.pausa);
+  const emCirculo = ordemAgentes.find((a) => a.circulo && a.mesa.kind !== 'diretoria');
+  const ocioso = livres.filter((a) => a.base === 'ocioso').sort((a, b) => (a.ultimoEventoMs || 0) - (b.ultimoEventoMs || 0))[0];
+  const r = Math.random();
+  const visitar = (a) => {
+    const x = a.mesa.x - (a.mesa.largura || 3.2) / 2 + 0.5;   // lado oposto ao da visita (mesa.visita fica à direita)
+    gato.pts = rotaGato(vGato(x, 2.5), []); gato.estado = 'visitar'; gato.alvo = a;
+  };
+  if (gatoAgitado && emCirculo && r < 0.7) return visitar(emCirculo);
+  if (!gatoAgitado && r < 0.4) {   // soneca no sofá (reduzido: no tapete ao lado)
+    const sofa = MOV_RED ? vGato(-8.6, 12.2) : vGato(-8.6, 13.25, 0.52);
+    gato.pts = rotaGato(sofa, [vGato(-10.8, 11.4), vGato(-8.6, 11.4)]);
+    gato.estado = 'dormir'; gato.alvo = null; return;
+  }
+  if (ocioso && r < 0.75) return visitar(ocioso);
+  if (CONFIG.github.prs && r < 0.88) { gato.pts = rotaGato(vGato(QUADRO_PR.x - 2, -3.6), []); gato.estado = 'tela'; gato.alvo = null; return; }   // olha a tela de PRs
+  gato.pts = rotaGato(vGato(-28 + Math.random() * 42, ZC_GATO), []); gato.estado = 'parado'; gato.alvo = null;
+}
+function tickGato(t, dt) {
+  if (LEVE) return;
+  if (!gato) gato = criarGato();
+  const G = gato, f = G;
+  let andando = false;
+  if (G.pts.length) {
+    const alvo = G.pts[0], dx = alvo.x - G.pos.x, dz = alvo.z - G.pos.z, d = Math.hypot(dx, dz);
+    const v = (MOV_RED ? 0.8 : gatoAgitado ? 2.1 : 1.5) * dt;
+    if (d <= v) {
+      G.pos.set(alvo.x, alvo.y, alvo.z); G.pts.shift();
+      if (!G.pts.length) {   // chegou
+        G.ate = t + (G.estado === 'dormir' ? 25 + Math.random() * 20 : G.estado === 'visitar' ? 12 : 8) * (gatoAgitado ? 0.6 : 1);
+        if (G.estado === 'visitar' && G.alvo) G.yaw = Math.atan2(G.alvo.pos.x - G.pos.x, G.alvo.pos.z - G.pos.z);
+        if (G.estado === 'visitar') gatoBalao(gatoAgitado ? 'miau?' : 'prrr…', gatoAgitado ? '🙀' : '😺', 3.5);
+        if (G.estado === 'dormir') { G.yaw = Math.PI / 2; gatoBalao('zzz', '💤', 3); }
+        if (G.estado === 'tela') G.yaw = Math.PI;   // olhando a tela de PRs na parede
+      }
+    } else {
+      const k = d > 0 ? v / d : 0;
+      G.pos.x += dx * k; G.pos.z += dz * k; G.pos.y += (alvo.y - G.pos.y) * Math.min(1, k * 1.5);
+      const yaw = Math.atan2(dx, dz); let dy = yaw - G.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); G.yaw += dy * Math.min(1, dt * 8);
+      andando = true;
+    }
+  } else if (t >= G.ate) decidirGato(t);
+  if (gatoAgitado && !G.pts.length && t >= G.proxMiau) { G.proxMiau = t + 15; miar(false); }
+  // pose
+  G.raiz.rotation.y = G.yaw;
+  const dormindo = G.estado === 'dormir' && !G.pts.length;
+  const sentado = !andando && !dormindo;
+  f.pernas.forEach((p, i) => { p.rotation.x = andando ? Math.sin(t * 12 + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * 0.6 : 0; p.visible = !dormindo; });
+  f.corpo.rotation.x = sentado && G.estado === 'visitar' ? -0.35 : 0;
+  f.corpo.scale.y = dormindo ? 0.7 : 1;
+  f.corpo.position.y = dormindo ? -0.12 : 0;
+  if (!MOV_RED && G.pulo && t - G.pulo < 0.45) f.corpo.position.y += Math.sin(Math.PI * (t - G.pulo) / 0.45) * 0.35;
+  f.rabo.rotation.y = MOV_RED ? 0 : Math.sin(t * (gatoAgitado ? 9 : 2.2)) * (dormindo ? 0.1 : 0.45);
+  f.rabo.rotation.x = dormindo ? 0.05 : 0.8;
+  f.cabeca.rotation.x = dormindo ? 0.35 : 0;
+  if (dormindo && !G.balao && Math.random() < dt / 12) gatoBalao('zzz', '💤', 3);
+  // balão
+  const b = G.bal;
+  if (G.balao && t < G.balao.ate) {
+    const chave = G.balao.texto + G.balao.icone;
+    if (G.desenhado !== chave) { desenharBalao(b, G.balao.texto, G.balao.icone, 0xd9893b); G.desenhado = chave; }
+    b.sprite.visible = true;
+  } else { b.sprite.visible = false; G.balao = null; G.desenhado = ''; }
+}
+
+// ---------------------------------------------------------------- Link direto: ?agente=<nome>[&aba=xp]
+let linkFeito = !PARAMS.get('agente');
+function aplicarLinkDireto() {
+  if (linkFeito) return;
+  const a = agentes.get(normalizarNome(PARAMS.get('agente')));
+  if (!a) return;   // ainda sem mesa: tenta de novo depois da próxima consulta
+  linkFeito = true;
+  const aba = PARAMS.get('aba');
+  const botaoAba = document.querySelector('#ficha .abas button[data-aba="' + aba + '"]');   // aba escondida (sem Kanban/XP no config) não vale
+  if (['trabalho', 'conversas', 'cartoes', 'xp'].includes(aba) && botaoAba && !botaoAba.hidden) abaFicha = aba;
+  focarAgente(a); abrirFicha(a);
+}
+
+// ---------------------------------------------------------------- Replay do dia
+// GET /eventos?de=&ate= (paginado por id, até 8 páginas) e reprodução acelerada na própria cena. Os eventos ao vivo que chegam
+// durante o replay só são contados; ao sair, a cena é limpa e recarregada do servidor (estado ao vivo).
+const VELOCIDADES = [1, 10, 60, 300], MAX_PAGINAS_REPLAY = 8, POR_QUADRO_REPLAY = 60, SALTO_VAZIO_MS = 10 * 60 * 1000;
+const COR_MARCA = { fala: '#3b82f6', falha: '#ef4444', circulo: '#f97316', merge: '#22c55e' };
+const elReplay = $('replay'), seloReplay = $('seloReplay');
+const doisDig = (n) => String(n).padStart(2, '0');
+const isoLocal = (d) => `${d.getFullYear()}-${doisDig(d.getMonth() + 1)}-${doisDig(d.getDate())}T${doisDig(d.getHours())}:${doisDig(d.getMinutes())}:${doisDig(d.getSeconds())}`;
+const horaMin = (ms) => { const d = new Date(ms); return doisDig(d.getHours()) + ':' + doisDig(d.getMinutes()); };
+function limparCena() {   // todos sentados, sem filas, pausas, balões, subagentes, fios nem feed
+  for (const k of GRUPOS_CONV) fimConversa(k);
+  for (const a of ordemAgentes) {
+    if (a.pausa) encerrarPausa(a);
+    soltarItem(a);
+    a.fila.length = 0; a.atual = null;
+    a.pos.copy(a.mesa.assento); a.yaw = a.yawAlvo = Math.PI; a.sentado = true; posturaSentado(a.fig, true); a.fig.dentro.visible = true;
+    a.estado = a.base = 'ocioso';
+    Object.assign(a, { balao: null, balaoDesenhado: null, gesto: null, festa: null, resultado: null, ocupadoAte: 0, inicioComandoMs: 0, agoraFaz: null,
+      ultimoEventoMs: 0, ultimoEvento: null, ultimoResumo: '', convocados: [], ultimoComando: null, falhasSeguidas: 0, ultimoTrabalho: 0,
+      circulo: null, circuloAteMs: 0, ociosoDesde: null, emConversa: false, balaoSaida: 0 });
+    a.hist.length = 0;
+    a.ultimaLinha = '';
+  }
+  subagentes.slice().forEach(removerSubagente);
+  for (const k of [...fios.keys()]) removerFio(k);
+  edicoesArq.clear();
+  feedHist.length = 0; olFeed.textContent = '';
+  if (fichaAberta) desenharFicha();
+}
+const RE_CONTROLE = /[\x00-\x1f\x7f-\x9f\u2028\u2029]/;
+const EDICAO_SAUDE = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']), COMANDO_SAUDE = new Set(['Bash', 'PowerShell']);
+function alvoCirculo(ev) {   // igual ao saude._alvo: ("edita", arquivo) ou ("comando", texto até 160); caractere de controle = descarta
+  const det = String(ev.detalhe || ''), f = ev.ferramenta;
+  if (EDICAO_SAUDE.has(f)) {
+    for (const campo of ['file_path:', 'notebook_path:']) {
+      if (!det.startsWith(campo)) continue;
+      const arq = det.slice(campo.length).trim();
+      return RE_CONTROLE.test(arq) ? null : ['edita', arq.replace(/\\/g, '/').toLowerCase()];
+    }
+  }
+  if (COMANDO_SAUDE.has(f) && det.startsWith('command:')) {
+    const cmd = det.slice(8);
+    if (RE_CONTROLE.test(cmd.replace(/[\n\r\t]/g, ' '))) return null;
+    return ['comando', cmd.split(/\s+/).filter(Boolean).join(' ').slice(0, 160)];
+  }
+  return null;
+}
+function calcularMarcas(evs, deMs, ateMs) {
+  // falha (ok false), fala/reunião, círculo (6 edições do mesmo arquivo + 4 do mesmo comando em 45 min, como a /saude) e merge (/xp)
+  const marcas = [], janela = 45 * 60 * 1000, porAgente = new Map();
+  for (const ev of evs) {
+    const tipo = String(ev.tipo || '').toLowerCase(), quem = String(ev.agente || '?');
+    if (tipo === 'fala' || tipo === 'reuniao') marcas.push({ ms: ev._ms, tipo: 'fala', txt: quem + ': ' + String(ev.resumo || tipo).slice(0, 60) });
+    if (tipo !== 'trabalho' || ev.inicio) continue;
+    if (ev.ok === false) marcas.push({ ms: ev._ms, tipo: 'falha', txt: quem + ' ✖ ' + String(ev.resumo || '').slice(0, 60) });
+    const alvo = alvoCirculo(ev); if (!alvo) continue;
+    let p = porAgente.get(quem); if (!p) { p = { itens: [], avisado: new Map() }; porAgente.set(quem, p); }
+    p.itens.push({ ms: ev._ms, alvo });
+    while (p.itens.length && ev._ms - p.itens[0].ms > janela) p.itens.shift();
+    const conta = { edita: new Map(), comando: new Map() };
+    for (const it of p.itens) conta[it.alvo[0]].set(it.alvo[1], (conta[it.alvo[0]].get(it.alvo[1]) || 0) + 1);
+    const maxDe = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0] || ['', 0];
+    const [arq, ed] = maxDe(conta.edita), [, co] = maxDe(conta.comando);
+    if (ed >= 6 && co >= 4 && !(ev._ms - (p.avisado.get(arq) || -Infinity) < janela)) {
+      p.avisado.set(arq, ev._ms);
+      const nomeArq = arq.split('/').pop();
+      ev._circulo = { agente: quem, arquivo: nomeArq, edicoes: ed, comandos: co };
+      marcas.push({ ms: ev._ms, tipo: 'circulo', txt: quem + ' em círculos: ' + nomeArq });
+    }
+  }
+  const P = window.__placar && window.__placar.dados;   // merges com hora no /xp (ultimos[].data com "T")
+  for (const [nome, d] of Object.entries((P && P.agentes) || {})) {
+    for (const u of (d && d.ultimos) || []) {
+      if (!u || !/T\d{2}:\d{2}/.test(String(u.data || ''))) continue;
+      const ms = Date.parse(u.data);
+      if (Number.isFinite(ms) && ms >= deMs && ms < ateMs) {
+        marcas.push({ ms, tipo: 'merge', txt: 'PR #' + Number(u.pr) + ' entrou (' + nome.replace(/_/g, ' ') + ')' });
+        evs.push({ _ms: ms, tipo: '_merge', agente: nome, pr: u.pr, pontos: u.pontos });
+      }
+    }
+  }
+  evs.sort((a, b) => a._ms - b._ms || (a.id || 0) - (b.id || 0));
+  return marcas.sort((a, b) => a.ms - b.ms);
+}
+function desenharMarcas() {
+  const c = $('replayMarcas'); if (!c || !replay) return;
+  const w = Math.max(1, c.clientWidth), h = Math.max(1, c.clientHeight), k = Math.min(2, window.devicePixelRatio || 1);
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d'); g.setTransform(k, 0, 0, k, 0, 0); g.clearRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, h / 2 - 2, w, 4);
+  const span = Math.max(1, replay.ateMs - replay.deMs);
+  for (const tipo of ['fala', 'circulo', 'falha', 'merge']) {   // as importantes por cima
+    g.fillStyle = COR_MARCA[tipo];
+    const alto = tipo === 'fala' ? h * 0.35 : h * 0.8;
+    for (const m of replay.marcas) if (m.tipo === tipo) g.fillRect(Math.round((m.ms - replay.deMs) / span * (w - 2)), (h - alto) / 2, tipo === 'fala' ? 1 : 2, alto);
+  }
+}
+function atualizarInfoReplay() {
+  if (!replay) return;
+  const n = (t) => replay.marcas.filter((m) => m.tipo === t).length;
+  $('replayInfo').textContent = (replay.carregando ? 'carregando…' : replay.evs.length + ' evento(s)' + (replay.cortado ? ' (cortado no limite)' : ''))
+    + ' · ✖ ' + n('falha') + ' falha(s) · 💬 ' + n('fala') + ' fala(s) · 🔁 ' + n('circulo') + ' círculo(s) · 🔀 ' + n('merge') + ' merge(s)'
+    + (replay.aoVivo ? ' · ' + replay.aoVivo + ' evento(s) ao vivo chegaram (ao sair, os últimos vão para o feed, sem animação)' : '');
+}
+function atualizarControlesReplay(forcar) {
+  if (!replay || !replay.evs.length && !forcar) return;
+  const min = Math.floor(replay.tr / 60000);
+  if (min !== replay.minuto || forcar) {
+    replay.minuto = min;
+    const txt = 'REPLAY ' + horaMin(replay.tr);
+    seloReplay.textContent = txt; $('replayTitulo').textContent = '⏪ ' + txt;
+  }
+  const pos = $('replayPos');
+  if (!replay.arrastando) pos.value = String(Math.round((replay.tr - replay.deMs) / 1000));
+  $('replayHora').textContent = horaMin(replay.tr);
+  const play = $('replayPlay');
+  play.textContent = replay.tocando ? '⏸' : '▶'; play.setAttribute('aria-label', replay.tocando ? 'Pausar' : 'Reproduzir');
+  document.querySelectorAll('#replay [data-vel]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.vel) === replay.vel)));
+}
+function passoReplay(ev, animar) {
+  if (ev.tipo === '_merge') { if (animar) merge(ev.agente, ev.pr, ev.pontos, 1, true); return; }
+  processar(ev, animar, !animar);
+  if (ev._circulo) {
+    const a = agentes.get(normalizarNome(ev._circulo.agente));
+    if (a) { a.circulo = { arquivo: ev._circulo.arquivo, edicoes: ev._circulo.edicoes, comandos: ev._circulo.comandos }; a.circuloAteMs = ev._ms + 45 * 60 * 1000; }
+  }
+}
+function irPara(ms) {   // arrastar a barra: para trás, limpa e reaplica sem animar; para a frente, só aplica o que faltava
+  ms = Math.max(replay.deMs, Math.min(replay.ateMs, ms));
+  if (ms < replay.tr) { limparCena(); replay.i = 0; }
+  replay.tr = ms;   // o relógio já no destino: "há N min" e ⚠️ ficam certos
+  while (replay.i < replay.evs.length && replay.evs[replay.i]._ms <= ms) passoReplay(replay.evs[replay.i++], false);
+  renderizarFeed();
+  if (fichaAberta) desenharFicha();
+  atualizarControlesReplay(true);
+}
+function tickReplay(dtReal) {
+  if (!replay || replay.carregando) return;
+  if (replay.arrasto != null) {   // arrastando: só o relógio da barra; reaplica ao soltar ou depois de 150 ms parado
+    $('replayHora').textContent = horaMin(replay.arrasto);
+    if (!replay.arrastando || performance.now() - replay.arrastoEm > 150) { replay.alvo = replay.arrasto; replay.arrasto = null; }
+    else return;
+  }
+  if (replay.alvo != null) { irPara(replay.alvo); replay.alvo = null; }
+  if (replay.tocando) {
+    const prox = replay.evs[replay.i];
+    if (prox && prox._ms - replay.tr > SALTO_VAZIO_MS) replay.tr = prox._ms - 5000;   // pula intervalos longos sem eventos
+    replay.tr = Math.min(replay.ateMs, replay.tr + dtReal * 1000 * replay.vel);
+    let n = 0;
+    while (replay.i < replay.evs.length && replay.evs[replay.i]._ms <= replay.tr && n < POR_QUADRO_REPLAY) { passoReplay(replay.evs[replay.i++], true); n++; }
+    if (replay.tr >= replay.ateMs && replay.i >= replay.evs.length) replay.tocando = false;
+  }
+  for (const a of ordemAgentes) if (a.circulo && a.circuloAteMs && replay.tr > a.circuloAteMs) { a.circulo = null; a.circuloAteMs = 0; }
+  if ((replay.ui = (replay.ui || 0) + dtReal) > 0.25) { replay.ui = 0; atualizarControlesReplay(false); }
+}
+async function buscarPeriodo(de, ate) {
+  const evs = []; let apos = 0;
+  for (let pag = 0; pag < MAX_PAGINAS_REPLAY; pag++) {
+    const r = await fetch('/eventos?de=' + encodeURIComponent(de) + '&ate=' + encodeURIComponent(ate) + (apos ? '&apos=' + apos : ''), { cache: 'no-store' });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j && j.erro ? j.erro : 'HTTP ' + r.status);
+    evs.push(...(Array.isArray(j.eventos) ? j.eventos : []));
+    if (!j.proximo) return { evs, cortado: false };
+    apos = j.proximo;
+  }
+  return { evs, cortado: true };
+}
+function abrirReplay() {
+  elReplay.hidden = false;
+  const dia = $('replayDia');
+  if (!dia.value) dia.value = isoLocal(new Date()).slice(0, 10);
+  $('replayInfo').textContent = 'Escolha o dia e o intervalo e clique em Carregar. Enquanto o replay estiver aberto a cena não mostra o ao vivo; ao sair, ela recarrega os últimos eventos do servidor (os que chegaram no meio aparecem no feed, sem animação).';
+  $('btnReplay').classList.add('ativo');
+}
+async function carregarReplay() {
+  const dia = $('replayDia').value, hDe = $('replayDe').value || '00:00', hAte = $('replayAte').value || '23:59';
+  const deD = new Date(dia + 'T' + hDe + ':00'), ateD = new Date(dia + 'T' + hAte + ':00');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || isNaN(deD) || isNaN(ateD)) { $('replayInfo').textContent = 'Data ou hora inválida.'; return; }
+  ateD.setSeconds(ateD.getSeconds() + 60);   // "até 23:59" inclui o minuto inteiro
+  if (ateD <= deD) { $('replayInfo').textContent = 'O fim precisa ser depois do começo.'; return; }
+  const deMs = deD.getTime(), ateMs = Math.min(ateD.getTime(), Date.now());
+  if (ateMs <= deMs) { $('replayInfo').textContent = 'Esse intervalo ainda não aconteceu.'; return; }
+  geracaoPoll++;   // a recarga do ao vivo que estava a caminho não entra na cena do replay
+  const antes = replay;   // recarregar no meio de um replay mantém a foto do ao vivo (mesas, contagem)
+  const meu = replay = { deMs, ateMs, evs: [], marcas: [], i: 0, tr: deMs, vel: 60, tocando: false, carregando: true, minuto: -1, alvo: null, arrastando: false,
+    cortado: false, aoVivo: antes ? antes.aoVivo : 0, prsPendente: antes ? antes.prsPendente : null,
+    nomesAoVivo: antes ? antes.nomesAoVivo : new Set(ordemAgentes.map((a) => a.nome)), mesasComuns: antes ? antes.mesasComuns : mesasComuns, extras: antes ? antes.extras : extras };
+  const btnCarregar = $('replayCarregar'); btnCarregar.disabled = true;
+  pararSeguir();
+  limparCena();
+  seloReplay.hidden = false; elReplay.classList.add('ativo');
+  atualizarInfoReplay();
+  try {
+    const { evs, cortado } = await buscarPeriodo(isoLocal(deD), isoLocal(ateD));
+    if (replay !== meu) return;   // saiu ou recarregou enquanto buscava
+    replay.evs = evs.map((e) => { const ms = Date.parse(e && e.ts); return Number.isFinite(ms) ? Object.assign(e, { _ms: ms }) : null; }).filter(Boolean);
+    replay.cortado = cortado;
+    replay.marcas = calcularMarcas(replay.evs, deMs, ateMs);
+    replay.carregando = false;
+    replay.tr = replay.evs.length ? Math.max(deMs, replay.evs[0]._ms - 5000) : deMs;
+    replay.tocando = replay.evs.length > 0;
+    const pos = $('replayPos'); pos.max = String(Math.max(1, Math.round((ateMs - deMs) / 1000))); pos.value = String(Math.round((replay.tr - deMs) / 1000));
+    desenharMarcas();
+    atualizarInfoReplay();
+    atualizarControlesReplay(true);
+    if (!replay.evs.length) $('replayInfo').textContent = 'Nenhum evento nesse intervalo.';
+  } catch (e) {
+    if (replay !== meu) return;
+    replay.carregando = false;
+    $('replayInfo').textContent = 'Não consegui buscar os eventos: ' + String(e && e.message || e).slice(0, 120);
+  } finally {
+    if (replay === meu || !replay) btnCarregar.disabled = false;
+  }
+}
+function removerAgente(a) {   // mesa criada só no replay (agente que não está no ao vivo)
+  if (fichaAberta === a) fecharFicha();
+  if (seguindo === a) pararSeguir();
+  if (typeof gato !== 'undefined' && gato && gato.alvo === a) gato.alvo = null;
+  if (filtro.agentes.delete(a.nome)) filtroMudou = true;   // agente só do replay não fica preso no filtro gravado
+  cena.remove(a.fig.raiz);
+  for (const sp of [a.nomeSp, a.balaoSp, a.sinal]) if (sp) { sp.tex.dispose(); (sp.sprite || sp.sp).material.dispose(); }
+  if (a.sinal) a.sinal.anel.material.dispose();
+  cena.remove(a.mesa.grupo);
+  const k = mesas.indexOf(a.mesa); if (k >= 0) mesas.splice(k, 1);
+  if (a.mesa === mesaDiretoria) mesaDiretoria = null;   // a mesa da diretoria também nasce com o agente: volta a ficar livre
+  if (a.li) a.li.remove();
+  agentes.delete(a.nome);
+  const i = ordemAgentes.indexOf(a); if (i >= 0) ordemAgentes.splice(i, 1);
+}
+let filtroMudou = false;
+function sairReplay() {
+  const r = replay;
+  replay = null;
+  elReplay.hidden = true; elReplay.classList.remove('ativo'); seloReplay.hidden = true;
+  $('btnReplay').classList.remove('ativo'); $('replayCarregar').disabled = false;
+  if (!r) return;
+  limparCena();
+  for (const a of [...ordemAgentes]) if (!r.nomesAoVivo.has(a.nome)) removerAgente(a);
+  if (filtroMudou) { filtroMudou = false; salvarFiltro(); aplicarFiltro(); }
+  mesasComuns = r.mesasComuns; extras = r.extras;
+  atualizarChips();
+  // recarrega do servidor os últimos eventos, sem animar (os que chegaram durante o replay aparecem no feed);
+  // a consulta que estiver em andamento é descartada (geracaoPoll) para não duplicar o feed
+  geracaoPoll++; iniciou = false;
+  if (!pollando) { clearTimeout(pollTimer); poll(); }
+  if (ultimaSaude) aplicarSaude(ultimaSaude);
+  if (r.prsPendente) receberPrs(r.prsPendente);
+}
+$('btnReplay').addEventListener('click', () => { if (elReplay.hidden) abrirReplay(); else sairReplay(); });
+$('replaySair').addEventListener('click', sairReplay);
+$('replayCarregar').addEventListener('click', carregarReplay);
+$('replayHoje').addEventListener('click', () => { $('replayDia').value = isoLocal(new Date()).slice(0, 10); });
+$('replayOntem').addEventListener('click', () => { const d = new Date(); d.setDate(d.getDate() - 1); $('replayDia').value = isoLocal(d).slice(0, 10); });
+$('replayPlay').addEventListener('click', () => {
+  if (!replay || replay.carregando || !replay.evs.length) return;
+  if (!replay.tocando && replay.tr >= replay.ateMs) replay.alvo = replay.deMs;   // terminou: recomeça
+  replay.tocando = !replay.tocando; atualizarControlesReplay(true);
+});
+document.querySelectorAll('#replay [data-vel]').forEach((b) => b.addEventListener('click', () => { if (replay) { replay.vel = Number(b.dataset.vel); atualizarControlesReplay(true); } }));
+const posReplay = $('replayPos');
+posReplay.addEventListener('input', () => {
+  if (!replay || replay.carregando) return;
+  replay.arrastando = true; replay.arrastoEm = performance.now(); replay.arrasto = replay.deMs + Number(posReplay.value) * 1000;
+});
+posReplay.addEventListener('change', () => { if (replay) replay.arrastando = false; });
+$('replayProx').addEventListener('click', () => {   // próxima marca importante (falha, círculo, merge)
+  if (!replay || replay.carregando) return;
+  const m = replay.marcas.find((x) => x.tipo !== 'fala' && x.ms - 3000 > replay.tr + 500);   // salta para 3 s antes; sempre para a frente
+  if (m) { replay.alvo = m.ms - 3000; $('replayInfo').textContent = '⏭ ' + horaMin(m.ms) + ' — ' + m.txt; }
+  else $('replayInfo').textContent = 'Nenhuma marca importante depois deste ponto.';
+});
+if (window.ResizeObserver) new ResizeObserver(() => desenharMarcas()).observe($('replayMarcas'));
 
 // ---------------------------------------------------------------- Fonte de eventos: servidor ou demonstração
 let desde = 0, iniciou = false, demoForcada = false, demoAuto = false, falhas = 0;
@@ -1874,28 +3050,34 @@ $('btnApelidos').addEventListener('click', () => {
 $('btnApelidos').textContent = ROTULO_MODO[modoApelido];
 $('tituloEscritorio').textContent = CONFIG.titulo;
 
-let pollTimer = null, pollando = false;
+let pollTimer = null, pollando = false, geracaoPoll = 0;   // geracaoPoll: sair do replay descarta a consulta em andamento
 async function poll() {
   if (pollando) return;
   pollando = true;
+  const geracao = geracaoPoll;
   try {
     if (!iniciou) {
       const r = await fetch('/eventos?desde=0&ultimos=' + MAX_FEED, { cache: 'no-store' });
       const j = await r.json();
+      if (geracao !== geracaoPoll) throw new Error('descartada');
       (j.eventos || []).forEach((e) => processar(e, false));
       desde = j.total || 0; iniciou = true;
     } else {
       const r = await fetch('/eventos?desde=' + desde, { cache: 'no-store' });
       const j = await r.json();
+      if (geracao !== geracaoPoll) throw new Error('descartada');
       if (typeof j.total === 'number') {
-        if (j.total < desde) desde = 0; else { (j.eventos || []).forEach((e) => processar(e, true)); desde = j.total; }
+        if (j.total < desde) desde = 0;
+        else if (replay) { replay.aoVivo += (j.eventos || []).length; desde = j.total; atualizarInfoReplay(); }   // não mistura com o replay
+        else { (j.eventos || []).forEach((e) => processar(e, true)); desde = j.total; }
       }
     }
     falhas = 0; demoAuto = false;
   } catch (e) {
-    falhas++; if (falhas >= 1) demoAuto = true;
+    if (geracao === geracaoPoll) { falhas++; if (falhas >= 1) demoAuto = true; }
   }
   atualizarSelo();
+  aplicarLinkDireto();
   pollando = false;
   pollTimer = setTimeout(poll, document.hidden ? INTERVALO_POLL_OCULTO : INTERVALO_POLL);
 }
@@ -1903,6 +3085,7 @@ async function poll() {
 // Demonstração: eventos falsos plausíveis
 const agoraIso = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 19); };
 const demoEv = (agente, tipo, ferramenta, resumo, para = []) => {
+  if (replay) return;   // roteiro com setTimeout que dispara no meio do replay: ignora
   // na demonstração, poupa quem está em pausa (na maior parte das vezes) para dar tempo de ver comer, jogar e conversar
   if (tipo !== 'ocioso') {
     const envolvidos = [agente, ...para].map((n) => agentes.get(normalizarNome(n))).filter(Boolean);
@@ -1932,6 +3115,7 @@ const roteiros = [
 ];
 let proxDemo = 0, nDemo = 0;
 function tickDemo(t) {
+  if (replay) return;
   if (!(demoForcada || demoAuto) || t < proxDemo) return;
   proxDemo = t + 2.5 + Math.random() * 3;
   nDemo++;
@@ -1949,23 +3133,37 @@ function tickDemo(t) {
 }
 
 // ---------------------------------------------------------------- Loop principal
-let anterior = agora();
+let anterior = agora(), ultimoQuadroMs = 0;
 let oculto = document.hidden;
 document.addEventListener('visibilitychange', () => {
   oculto = document.hidden;
-  if (!oculto) { anterior = agora(); clearTimeout(pollTimer); poll(); }   // voltou: não acumula tempo e atualiza já
+  if (!oculto) {   // voltou: não acumula tempo e atualiza já
+    anterior = agora(); clearTimeout(pollTimer); poll();
+    if (Date.now() - saudeEm > INTERVALO_SAUDE) pollSaude();
+    luzEm = -1;
+  }
 });
 function quadro() {
   requestAnimationFrame(quadro);
   if (oculto) return;   // aba oculta: não gasta bateria desenhando
-  const t = agora(), dt = Math.min(0.1, t - anterior); anterior = t;
+  const msQuadro = performance.now();
+  if (LEVE && msQuadro - ultimoQuadroMs < QUADRO_LEVE_MS - 2) return;   // modo leve: no máximo 24 quadros/s
+  ultimoQuadroMs = msQuadro;
+  let t = agora(), dt = Math.min(0.1, t - anterior);
+  const dtReal = dt;
+  if (replay && replay.tocando && !MOV_RED && replay.arrasto == null) { const k = Math.min(replay.vel, 8); saltoRelogio += dt * (k - 1); t = agora(); dt *= k; }   // replay: a cena anda até 8× mais rápido
+  anterior = t;
+  tickReplay(dtReal);
   tickDemo(t);
-  tickSocial(t); tickConfete(dt);
-  for (const a of ordemAgentes) atualizarAgente(a, dt, t);
+  tickSocial(t); tickConfete(dt); tickQuedas(t); tickTelaPrs(t); tickFios(t); tickGato(t, dt);
+  if (luzEm < 0 || t - luzEm > 60) { ajustarLuz(); luzEm = t; }
+  const dist = camera.position.distanceTo(controles.target);
+  longe = longe ? dist > LONGE_SAI : dist > LONGE_ENTRA;
+  for (const a of ordemAgentes) { atualizarAgente(a, dt, t); atualizarSinais(a, t, dt); }
   for (const s of subagentes.slice()) {
     const idade = t - s.nasc;
     if (idade > TEMPO_SUBAGENTE) { removerSubagente(s); continue; }
-    s.fig.dentro.position.y = Math.abs(Math.sin(t * 3 + s.fase)) * 0.05;
+    s.fig.dentro.position.y = MOV_RED ? 0 : Math.abs(Math.sin(t * 3 + s.fase)) * 0.05;
     s.bal.sprite.visible = idade < 6;
     const aparece = Math.min(1, idade * 3, (TEMPO_SUBAGENTE - idade) * 2);
     s.fig.raiz.scale.setScalar(0.6 * Math.max(0.05, aparece));
@@ -1976,14 +3174,50 @@ function quadro() {
     controles.target.lerpVectors(foco.deAlvo, foco.alvo, e);
     if (k >= 1) foco = null;
   }
+  tickSeguir(dt);
   controles.update();
   atualizarPainel();
   atualizarResumo();
   renderer.render(cena, camera);
 }
 requestAnimationFrame(quadro);
-poll();
-window.__office = { agentes, processar, ficha: (nome, aba) => { const a = agentes.get(normalizarNome(nome)); if (!a) return false; if (aba) abaFicha = aba; focarAgente(a); abrirFicha(a); return true; }, xpDefinir, comemorar, emDemo, CORES_NIVEL, estrelas, progressoXp, atualizarFicha: () => desenharFicha(), camera, controles, iniciarFoco, VISAO_GERAL, SLOTS,
+poll(); pollSaude();
+$('btnMovimento').addEventListener('click', () => {
+  modoMov = MODOS_MOV[(MODOS_MOV.indexOf(modoMov) + 1) % MODOS_MOV.length];
+  try { localStorage.setItem(CHAVE_MOV, modoMov); } catch (e) {}
+  aplicarMovimento();
+});
+$('btnFiltro').addEventListener('click', () => {
+  const corpo = $('filtroCorpo'), abrir = corpo.hidden;
+  corpo.hidden = !abrir; $('btnFiltro').setAttribute('aria-expanded', String(abrir));
+});
+document.querySelectorAll('#filtroTipos button').forEach((b) => b.addEventListener('click', () => {
+  const t = b.dataset.tipo; if (filtro.tipos.has(t)) filtro.tipos.delete(t); else filtro.tipos.add(t); aplicarFiltro();
+}));
+$('filtroLimpar').addEventListener('click', () => { filtro.agentes.clear(); filtro.tipos.clear(); aplicarFiltro(); });
+$('fichaSo').addEventListener('click', () => {
+  const a = fichaAberta; if (!a) return;
+  const so = filtro.agentes.size === 1 && filtro.agentes.has(a.nome);
+  filtro.agentes.clear(); if (!so) filtro.agentes.add(a.nome);
+  aplicarFiltro();
+});
+aplicarFiltro();
+aplicarLinkDireto();
+desenharTelaPrs();   // primeiro desenho da tela de PRs ("esperando o painel de PRs…")
+$('btnSom').addEventListener('click', () => {
+  somLigado = !somLigado; interagiu = true;
+  try { localStorage.setItem(CHAVE_SOM, somLigado ? '1' : '0'); } catch (e) {}
+  aplicarSom();
+  if (somLigado && garantirAudio()) {
+    const ok = () => tocar('plim');
+    if (ctxAudio.state === 'suspended') ctxAudio.resume().then(ok).catch(() => {}); else ok();
+  }
+});
+window.__office = { agentes, processar, merge, emReplay: () => !!replay, filtro: (nomes, tipos) => { filtro.agentes = new Set((nomes || []).map(normalizarNome)); filtro.tipos = new Set((tipos || []).filter((t) => TIPOS_FILTRO.includes(t))); aplicarFiltro(); return { agentes: [...filtro.agentes], tipos: [...filtro.tipos] }; },
+  replay: { carregar: carregarReplay, sair: sairReplay, abrir: abrirReplay, irPara: (iso) => { if (replay) replay.alvo = Date.parse(iso); }, estado: () => replay && { tr: isoLocal(new Date(replay.tr)), i: replay.i, n: replay.evs.length, vel: replay.vel, tocando: replay.tocando, marcas: replay.marcas.length, aoVivo: replay.aoVivo } }, prs: receberPrs, tocar, leve: LEVE, placa: NOME_PLACA, fios: () => [...fios.values()].map((f) => [f.a.nome, f.b.nome, f.nome]),
+  gato: () => gato && { estado: gato.estado, agitado: gatoAgitado, x: +gato.pos.x.toFixed(1), z: +gato.pos.z.toFixed(1) }, miar: () => miar(true), seguir: (nome) => seguir(nome ? agentes.get(normalizarNome(nome)) : null),
+  saude: aplicarSaude, hora: (h) => { horaForcada = h == null || !Number.isFinite(Number(h)) ? null : ((Number(h) % 24) + 24) % 24; luzEm = -1; return ajustarLuz(); },
+  get movimentoReduzido() { return MOV_RED; }, ficha: (nome, aba) => { const a = agentes.get(normalizarNome(nome)); if (!a) return false; if (aba) abaFicha = aba; focarAgente(a); abrirFicha(a); return true; }, xpDefinir, comemorar, emDemo, CORES_NIVEL, estrelas, progressoXp, atualizarFicha: () => desenharFicha(), camera, controles, iniciarFoco, VISAO_GERAL, SLOTS,
   pausar: (nome, lugar) => { const a = agentes.get(normalizarNome(nome)); return !!a && !a.atual && !a.fila.length && a.sentado && iniciarPausa(a, lugar); },
   pingpong: (n1, n2) => { const a = agentes.get(normalizarNome(n1)), b = agentes.get(normalizarNome(n2)); return !!a && !!b && iniciarPartida(a, b); },
   voltar: (nome) => interromperPausa(agentes.get(normalizarNome(nome))),

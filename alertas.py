@@ -29,7 +29,7 @@ MAX_FILA = 200
 INTERVALO = 60                 # s entre leituras do detector
 REPETICAO_PR = 1800            # s: o mesmo alerta de PR não se repete antes disso (checks que piscam)
 LEMBRETE_INTERVALO = 86400     # no máximo 1 lembrete por dia
-PAINEIS = {"prs": "/#alerta=prs", "placar": "/#alerta=placar"}
+PAINEIS = {"prs": "/#alerta=prs", "placar": "/#alerta=placar", "saude": "/#alerta=saude"}
 
 TIPOS = [
     {"id": "pr_pronto", "rotulo": "PR pronto para o seu merge", "padrao": True, "painel": "prs"},
@@ -41,9 +41,9 @@ TIPOS = [
     {"id": "lembrete", "rotulo": "Lembrete de PR pronto esperando há mais de 24 h", "padrao": True, "painel": "prs"},
     {"id": "sugestao", "rotulo": "Sugestão P0/P1 nova do bot de revisão", "padrao": True, "painel": "prs"},
     {"id": "cota", "rotulo": "Cota do GitHub baixa", "padrao": True, "painel": "prs"},
-    {"id": "duplicado", "rotulo": "Trabalho duplicado (mesma tarefa em duas branches ou PRs)", "padrao": True, "painel": "prs"},
-    {"id": "circulo", "rotulo": "Agente andando em círculos (edita e roda o mesmo de novo)", "padrao": True, "painel": ""},
-    {"id": "pr_parado", "rotulo": "PR aberto parado (sem atualização há mais de parado_horas)", "padrao": True, "painel": "prs"},
+    {"id": "duplicado", "rotulo": "Trabalho duplicado (mesma tarefa em duas branches ou PRs)", "padrao": True, "painel": "saude"},
+    {"id": "circulo", "rotulo": "Agente andando em círculos (edita e roda o mesmo de novo)", "padrao": True, "painel": "saude"},
+    {"id": "pr_parado", "rotulo": "PR aberto parado (sem atualização há mais de parado_horas)", "padrao": True, "painel": "saude"},
 ]
 IMEDIATOS_PADRAO = ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"]
 REPETICAO_CIRCULO = 7200       # s: o mesmo agente em círculo no mesmo arquivo não alerta de novo antes disso
@@ -224,7 +224,10 @@ def _detectar_escalonamentos(est, registro, novos):
 
 def _detectar_saude(est, sd, agora, novos):
     """Fonte "saude" (saude.resumo): duplicados fortes novos, agentes em círculo e PRs parados. Alerta já na 1ª leitura
-    (como a cota): é um fato do presente que custa tokens enquanto ninguém olha, não uma novidade a ignorar."""
+    (como a cota): é um fato do presente que custa tokens enquanto ninguém olha, não uma novidade a ignorar.
+    Itens que o desenvolvedor ignorou no painel Saúde (sd["ignorados"]: chaves de saude.chave_*) não alertam; ao reativar,
+    o duplicado e o parado ainda presentes alertam de novo (o estado deles não guarda o que foi ignorado)."""
+    sd = _saude.sem_ignorados(sd, sd.get("ignorados") or ())
     # sem "duplicados"/"parados" (GitHub fora do ar: só os círculos) o estado deles fica como está (sem alerta repetido depois)
     fortes = [d for d in (sd.get("duplicados") or {}).get("fortes") or [] if isinstance(d, dict) and d.get("branches")]
     chaves = {",".join(d["branches"]): d for d in fortes}

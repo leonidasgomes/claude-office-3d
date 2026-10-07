@@ -70,14 +70,30 @@ def main():
         sl = statusline(settings)
         assert sl and sl.get("type") == "command" and "statusline_uso.py" in sl.get("command", ""), f"statusline: {sl}"
         n = contar(settings)
-        assert n == 5, f"esperava 5 hooks do escritório, achei {n}"
-        assert contar(settings, so_nossos=False) == 6, "o hook que já existia sumiu ou duplicou"
+        assert n == 6, f"esperava 6 hooks do escritório, achei {n}"
+        assert contar(settings, so_nossos=False) == 7, "o hook que já existia sumiu ou duplicou"
         pre = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
         assert [g.get("matcher") for g in pre] == ["Bash|PowerShell"], f"PreToolUse só nos comandos longos: {pre}"
+        falha = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUseFailure"]
+        assert [g.get("matcher") for g in falha] == ["Bash|PowerShell"], f"PostToolUseFailure só nos comandos: {falha}"
         rodar("--desinstalar", "--sem-perguntas", "--destino", str(tmp / "app"), "--settings-usuario", str(settings), "--sem-abrir")
         assert contar(settings) == 0, "o desinstalar deixou hooks do escritório"
         assert contar(settings, so_nossos=False) == 1, "o desinstalar mexeu no hook alheio"
         assert statusline(settings) is None, "o desinstalar deixou a statusline do escritório"
+        # quem atualiza da 1.14 (5 hooks, sem PostToolUseFailure) ganha só o que falta, com o matcher dos comandos
+        velho = instalar.bloco_hooks(tmp / "app")["hooks"]
+        velho.pop("PostToolUseFailure")
+        dados = json.loads(settings.read_text(encoding="utf-8"))
+        for ev, grupos in velho.items():
+            dados.setdefault("hooks", {}).setdefault(ev, []).extend(grupos)
+        settings.write_text(json.dumps(dados), encoding="utf-8")
+        assert contar(settings) == 5, "montagem do settings da 1.14"
+        rodar(*comum)
+        assert contar(settings) == 6, f"atualizar da 1.14: esperava 6 hooks do escritório, achei {contar(settings)}"
+        falha = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUseFailure"]
+        assert [g.get("matcher") for g in falha] == ["Bash|PowerShell"], f"atualizar da 1.14: PostToolUseFailure {falha}"
+        rodar("--desinstalar", "--sem-perguntas", "--destino", str(tmp / "app"), "--settings-usuario", str(settings), "--sem-abrir")
+        assert contar(settings) == 0 and contar(settings, so_nossos=False) == 1, "desinstalar depois de atualizar da 1.14"
         # statusline alheia: o instalador não troca e o desinstalar não remove
         alheia = {"type": "command", "command": "echo minha-statusline"}
         dados = json.loads(settings.read_text(encoding="utf-8"))

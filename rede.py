@@ -53,10 +53,20 @@ ROTAS_PUBLICAS = ("/manifest.webmanifest", "/icone-192.png", "/icone-512.png")
 PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"},
                   # sugestões do bot de revisão: tratar (encaminhar/ignorar/resolver) é só do PC; o celular só lê (GET)
                   "/api/sugestoes/tratar": {"pc"},
+                  # painel Saúde: ignorar/reativar um item e avisar o líder (pedido entregue pelo vigia) são só do PC
+                  "/api/saude/ignorar": {"pc"}, "/api/saude/avisar": {"pc"},
                   # alertas (push.py): qualquer aparelho pareado (ver ou mais) e o PC inscrevem o próprio navegador
                   "/api/push/inscrever": {"pc", "ver", "conferir"}, "/api/push/sair": {"pc", "ver", "conferir"},
                   "/api/push/prefs": {"pc", "ver", "conferir"}, "/api/push/teste": {"pc", "ver", "conferir"}}
+# ações que só fazem sentido pelo navegador (painel Saúde): exigem os cabeçalhos Sec-Fetch-* e gravam o User-Agent
+ROTAS_NAVEGADOR = ("/api/saude/",)
 TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
+_RX_CONTROLE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def resumo_ua(texto, limite=120):
+    """User-Agent numa linha, sem caractere de controle, até `limite` caracteres (vai para o histórico e o painel)."""
+    return " ".join(_RX_CONTROLE.sub(" ", str(texto or "")).split())[:limite]
 _ESTILO = ("<meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Claude Office 3D</title>"
            "<body style='font:18px system-ui;background:#0f1419;color:#e6edf3;display:grid;place-items:center;"
            "min-height:100vh;margin:0;text-align:center;padding:16px'>")
@@ -669,6 +679,13 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
         if not self._origem_segura():
             rede.log_negado(ip, rota, "CSRF: cabeçalhos/Origin/token inválidos")
             return self._negar(403, b"Acesso negado.")
+        # painel Saúde: além da guarda acima, exige Sec-Fetch-Site same-origin e Sec-Fetch-Mode PRESENTES (o navegador sempre
+        # manda; curl e scripts não, por padrão). Não impede um processo local decidido, mas eleva a barreira; o User-Agent
+        # vai para o histórico e para o painel.
+        if rota.startswith(ROTAS_NAVEGADOR) and (self.headers.get("Sec-Fetch-Site") != "same-origin"
+                                                 or not self.headers.get("Sec-Fetch-Mode")):
+            rede.log_negado(ip, rota, "sem Sec-Fetch-Site/Sec-Fetch-Mode de navegador")
+            return self._negar(403, b"Acesso negado.")
         if rota.startswith("/api/") and ident["permissao"] not in PERMISSAO_ROTA.get(rota, ()):
             if rota in PERMISSAO_ROTA:
                 rede.log_negado(ip, rota, f"sem permissão ({ident['permissao']})")
@@ -683,13 +700,18 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             dados = None
         if not isinstance(dados, dict):
             return self._json_erro(400, "corpo JSON inválido")
+        ua = resumo_ua(self.headers.get("User-Agent"))
+        dados["_ua"] = ua   # sempre o do cabeçalho (o do corpo, se veio, é descartado)
         if rota.startswith("/rede/"):
             return self._rede_post(rota, dados, ip)
         resposta = self.api_post(rota, dados, ident)
         if resposta is None:
             return self._json_erro(404, "ação desconhecida")
         if resposta[0] == 200 and self.rede is not None:
-            self.rede.registrar_acao(rota.rsplit("/", 1)[1], dados.get("pr"), ident["nome"], ip)
+            detalhe = str(dados.get("_detalhe") or "")[:200]
+            if rota.startswith(ROTAS_NAVEGADOR):
+                detalhe = (detalhe + " · UA: " + ua).strip(" ·")
+            self.rede.registrar_acao(rota.rsplit("/", 1)[1], dados.get("pr"), ident["nome"], ip, detalhe=detalhe)
         self.responder(resposta[1], codigo=resposta[0])
 
     def _rede_post(self, rota, dados, ip):
