@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.14.0
+- **ⓘ em cada número do Placar** (`dica.js`, novo; `placar.js`): um ⓘ ao lado de cada tile (XP total, aprovado de
+  primeira, retrabalho, auditorias, para conferir, uso do plano, custo por PR, acumulado, revisor) explica como o número
+  é calculado. O texto usa a **sua** configuração: pesos, data inicial (`xp.desde`), janela de retrabalho e amostra
+  aleatória vêm do bloco `regras` do `placar.json` que o `xp.py` grava, e o check de revisão vem de
+  `github.check_revisao` (sem ele, as reviews do PR). Os números do momento (PRs pontuados, custo da janela, consumo por
+  dia) aparecem embaixo da explicação. Uma legenda ⓘ explica o cartão de cada agente (níveis de `xp.niveis`). A dica
+  abre com o mouse, com Tab e com toque, e Esc ou tocar fora fecha; o leitor de tela lê o texto sem depender do balão.
+- **ⓘ no selo de risco do PR** (`prs.js`): explica linhas, arquivos, os limites de médio/grande (os mesmos de
+  `saude.RISCO`) e o que conta como check falhando; a sugestão ("dividir em PRs menores") entra no mesmo texto.
+- **Lista de agentes diz o que cada um faz e há quanto tempo** (`escritorio.js`): no lugar de só a hora do último
+  evento, a linha mostra o resumo do que o agente está fazendo e "rodando há 9 min" (comando longo), "ocioso há 20 min",
+  "há 3 min" ou "sem eventos recentes"; a hora exata fica no `title` (passe o mouse) e no leitor de tela. O texto se
+  renova a cada 30 s sem recriar a lista. A ficha do agente mostra o mesmo. Cada linha também abre a ficha pelo teclado
+  (Tab + Enter).
+- **Alertas recentes no topo** (`alertas.js`, `alertas.css`): o painel 🔔 abre direto na lista; ativar o push, o teste e
+  os tipos ficam num bloco recolhido **⚙️ Tipos de alerta e push**, que mostra o estado ("push ligado · 9 de 12 tipos")
+  e é lembrado neste navegador. Alerta que abre o painel PRs ou Placar também responde ao teclado.
+- **Responsividade e acessibilidade** (`estilo.css`, `placar.css`, `prs.css`, `kanban.css`, `index.html`): sem rolagem
+  lateral de 360 a 1366 px; o cabeçalho do painel lateral quebra linha no PC em vez de esconder botões; foco visível no
+  teclado; `aria-label` nos botões ×; número do PR sem quebrar dígito a dígito; cartões do Kanban sem cortar o título e
+  textos fracos com contraste AA; tiles do Placar com valores longos (US$ 1279,04) sem cobrir o ⓘ.
+- **Instalador** (`instalar.py`): `dica.js` entra no pacote copiado.
+- **Aviso do iPhone no topo dos Alertas** (`alertas.js`): a instrução "Adicionar à Tela de Início" (sem ela o iPhone não
+  recebe push) fica visível mesmo com o bloco de configuração recolhido.
+- **Servidor aceita mais conexões ao mesmo tempo** (`servidor.py`): a fila de conexões passou de 5 para 64; no Windows a
+  página às vezes recebia "conexão recusada" ao carregar vários módulos de uma vez.
+
 ## 1.13.0
 - **Saúde do time, sem tokens** (`saude.py`, novo; `servidor.py`, `alertas.py`): três alertas novos a partir de uma
   pesquisa sobre por que PRs de agentes falham ("Where Do AI Coding Agents Fail?", arXiv 2601.15195; MAST, arXiv

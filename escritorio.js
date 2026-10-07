@@ -1536,21 +1536,50 @@ function atualizarAgente(a, dt, t) {
 const CORES_ESTADO = { trabalhando: '#22c55e', conversando: '#3b82f6', 'em reunião': '#a855f7', 'em pausa': '#eab308', ocioso: '#6b7280' };
 function criarLinhaPainel(a) {
   const li = document.createElement('li');
-  li.innerHTML = '<span class="ponto"></span><div class="info"><div class="nome"></div><div class="funcao"></div><div class="sub"></div></div><div class="hora">--:--:--</div>';
+  li.innerHTML = '<span class="ponto"></span><div class="info"><div class="nome"></div><div class="funcao"></div><div class="sub"></div></div>'
+    + '<div class="hora"><span class="rel">sem eventos</span><span class="so-leitor"></span></div>';
   li.querySelector('.nome').textContent = a.titulo;
   li.querySelector('.funcao').textContent = a.funcao;
   li.querySelector('.nome').style.color = corCss(a.cor);
   li.addEventListener('click', () => { focarAgente(a); abrirFicha(a); });
+  li.tabIndex = 0; li.setAttribute('role', 'button');   // teclado: Enter/Espaço abre a ficha
+  li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); focarAgente(a); abrirFicha(a); } });
   ulAgentes.appendChild(li);
   a.li = li; a.liPonto = li.querySelector('.ponto'); a.liSub = li.querySelector('.sub'); a.liHora = li.querySelector('.hora');
+  a.liRel = li.querySelector('.hora .rel'); a.liHoraSr = li.querySelector('.hora .so-leitor');
   a.ultimaLinha = '';
 }
+// "há 3 min" a partir de um instante (ms); o painel muda o texto a cada 30 s sem recriar a linha
+function haQuanto(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return 'agora';
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+  return `há ${Math.floor(s / 86400)} d`;
+}
+const rodandoComando = (a) => !!a.ocupadoAte && agora() < a.ocupadoAte && a.inicioComandoMs;
+// o que o agente está fazendo agora: {sub, rel, exata}. Comando longo: "rodando há 9 min"; ocioso: "ocioso há 20 min".
+function linhaAgente(a) {
+  const e = String(a.estado || 'ocioso'), ocioso = e.startsWith('ocioso');
+  if (!a.ultimoEventoMs) return { sub: e, rel: 'sem eventos recentes', exata: 'nenhum evento entre os últimos carregados pela página' };
+  const fazendo = e.startsWith('trabalhando') && a.agoraFaz && a.agoraFaz.resumo;   // conversa/reunião: vale o último evento
+  const resumo = String(fazendo || a.ultimoResumo || '').replace(/\s+/g, ' ').trim();
+  const exata = 'último evento às ' + (a.ultimoEvento || '');
+  if (ocioso) return { sub: resumo ? 'último: ' + resumo : 'ocioso', rel: 'ocioso ' + haQuanto(a.ultimoEventoMs).replace('agora', 'há < 1 min'), exata };
+  if (rodandoComando(a)) return { sub: resumo || e, rel: 'rodando ' + haQuanto(a.inicioComandoMs).replace('agora', 'há < 1 min'), exata };
+  const est = e.split(' · ')[0];
+  return { sub: est === 'trabalhando' ? (resumo || e) : e + (resumo ? ' · ' + resumo : ''), rel: haQuanto(a.ultimoEventoMs), exata };
+}
 function atualizarPainel() {
+  const fatia = Math.floor(Date.now() / 30000);   // tempo relativo: refaz o texto a cada 30 s
   for (const a of ordemAgentes) {
-    const e = a.estado;
-    if (a.ultimaLinha !== e + '|' + a.ultimoEvento) {
-      a.liSub.textContent = e; a.liPonto.style.background = CORES_ESTADO[e.split(' · ')[0]] || '#6b7280';
-      a.liHora.textContent = a.ultimoEvento || '--:--:--'; a.ultimaLinha = e + '|' + a.ultimoEvento;
+    const e = a.estado, chave = e + '|' + a.ultimoEventoMs + '|' + (a.agoraFaz && a.agoraFaz.resumo) + '|' + rodandoComando(a) + '|' + fatia;
+    if (a.ultimaLinha !== chave) {
+      const l = linhaAgente(a);
+      a.liSub.textContent = l.sub; a.liSub.title = l.sub; a.liPonto.style.background = CORES_ESTADO[e.split(' · ')[0]] || '#6b7280';
+      a.liRel.textContent = l.rel; a.liHora.title = l.exata; a.liHoraSr.textContent = ', ' + l.exata;
+      a.ultimaLinha = chave;
+      if (fichaAberta === a) estadoFicha(a);
     }
   }
 }
@@ -1596,12 +1625,18 @@ function el(tag, cls, texto) {
   if (texto != null) e.textContent = texto;
   return e;
 }
+function estadoFicha(a) {   // "trabalhando · rodando há 9 min · último evento às 10:34:44"
+  const l = linhaAgente(a), est = String(a.estado || '');
+  // "há N min" sempre diz do quê: do comando em andamento ou do último evento (em pausa, a pausa não tem início conhecido)
+  const rel = !a.ultimoEventoMs || l.rel.startsWith('rodando') || l.rel.startsWith('ocioso') ? l.rel : 'último evento ' + l.rel;
+  $('fichaEstado').textContent = (l.rel.startsWith('ocioso') ? '' : est + ' · ') + rel + (a.ultimoEventoMs ? ' (' + l.exata + ')' : '');
+}
 function desenharFicha() {
   const a = fichaAberta; if (!a) return;
   const cor = corCss(a.cor);
   fichaEl.style.borderTopColor = cor;
   $('fichaNome').textContent = a.titulo + (a.funcao ? ' — ' + a.funcao : ''); $('fichaNome').style.color = cor;
-  $('fichaEstado').textContent = a.estado + (a.ultimoEvento ? ' · último evento ' + a.ultimoEvento : '');
+  estadoFicha(a);
   const f = a.agoraFaz;
   $('fichaAgora').textContent = f ? iconeDe(f.ferramenta) + ' ' + (f.ferramenta || '') + ' — ' + (f.resumo || '') : 'sem trabalho em andamento';
   document.querySelectorAll('#ficha .abas button').forEach((b) => b.classList.toggle('ativo', b.dataset.aba === abaFicha));
@@ -1761,6 +1796,9 @@ function processar(ev, animar = true) {
   adicionarFeed(ev, a);
   if (!a) return;
   a.ultimoEvento = horaDe(ev);
+  const msEv = Date.parse(ev.ts);
+  a.ultimoEventoMs = Number.isFinite(msEv) ? Math.min(msEv, Date.now()) : Date.now();
+  a.ultimoResumo = resumo || (tipo !== 'ocioso' ? tipo : a.ultimoResumo);
   guardarHist(a, ev, 'fez');
   if (tipo === 'trabalho') a.agoraFaz = ev;
   else if (tipo === 'ocioso') a.agoraFaz = null;
@@ -1769,7 +1807,8 @@ function processar(ev, animar = true) {
   if (ev.inicio) {
     const resta = Math.min(Number(ev.espera_s) || 120, MAX_COMANDO) - (Date.now() - Date.parse(ev.ts)) / 1000;
     a.ocupadoAte = resta > 0 && resta <= MAX_COMANDO ? agora() + resta : 0;
-  } else a.ocupadoAte = 0;
+    a.inicioComandoMs = a.ultimoEventoMs;   // painel: "rodando há N min"
+  } else { a.ocupadoAte = 0; a.inicioComandoMs = 0; }
   if (!animar && a.ocupadoAte) { a.base = 'trabalhando'; a.ultimoTrabalho = agora(); a.estado = 'trabalhando'; }
   const recebem = para.includes('*') ? ordemAgentes.filter((x) => x !== a)
     : para.map((n) => agentes.get(n)).filter((x) => x && x !== a);

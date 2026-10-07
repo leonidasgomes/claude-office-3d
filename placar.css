@@ -98,3 +98,24 @@ html.compacto #placarToast { bottom: calc(18px + env(safe-area-inset-bottom, 0px
 html.compacto #placarToast button.link { min-height: 44px; }
 html.compacto #fichaLista .xp-linha, html.compacto #fichaLista .xp-titulo { font-size: 15px; }
 html.compacto #fichaLista li.xp-secao { font-size: 14px; }
+
+/* ---- Dicas ⓘ e legibilidade dos tiles (UX, out. 2026) ---- */
+#placar { width: min(600px, calc(100% - 20px)); }
+#placarTime { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+#placarTime .tile { position: relative; padding-right: 28px; min-width: 0; }
+#placarTime .tile b { font-size: 20px; white-space: nowrap; }
+#placarTime .tile span { color: #9aa7b6; }
+#placarTime .tile > .dica { position: absolute; top: 4px; right: 4px; }
+html.movel #placarTime .tile { padding-right: 40px; }
+html.movel #placarTime .tile > .dica { top: 0; right: 0; }
+#placarOrdem .legenda { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+#placarOrdem .legenda .dica { width: 26px; height: 26px; padding: 0; font-size: 15px; }
+html.movel #placarOrdem .legenda .dica { width: 44px; height: 44px; }
+#placarLista .ag:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
+html.compacto #placarTime .tile b { font-size: 22px; }
+/* o ⓘ ocupa só a linha do número: o rótulo usa a largura toda */
+#placarTime .tile, html.movel #placarTime .tile { padding-right: 10px; }
+#placarTime .tile b { padding-right: 22px; }
+html.movel #placarTime .tile b { padding-right: 30px; }
+#placarTime .tile b.longo { font-size: 17px; }
+html.compacto #placarTime .tile b.longo { font-size: 19px; }

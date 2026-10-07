@@ -30,14 +30,14 @@
     <section id="prs" hidden>
       <header>
         <div><h3>Pull requests — esperando o seu merge</h3><div id="prsInfo"></div></div>
-        <div class="botoes"><button id="prsAtualizar" title="Buscar agora no GitHub">Atualizar</button><button id="prsFechar" title="Fechar (Esc)">×</button></div>
+        <div class="botoes"><button id="prsAtualizar" title="Buscar agora no GitHub">Atualizar</button><button id="prsFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></div>
       </header>
       <ol id="prsLista"></ol>
     </section>
     <section id="kanban" hidden>
       <header>
         <div><h3><span id="kanbanTitulo">Kanban</span> <a id="kanbanLink" href="#" target="_blank" rel="noopener" hidden>abrir no GitHub ↗</a></h3><div id="kanbanInfo"></div></div>
-        <button id="kanbanFechar" title="Fechar (Esc)">×</button>
+        <button id="kanbanFechar" title="Fechar (Esc)" aria-label="Fechar">×</button>
       </header>
       <div id="kanbanFiltros"></div>
       <div id="kanbanColunas"></div>
@@ -45,22 +45,22 @@
     <section id="placar" hidden>
       <header>
         <div><h3>Placar do time</h3><div id="placarInfo"></div></div>
-        <button id="placarFechar" title="Fechar (Esc)">×</button>
+        <button id="placarFechar" title="Fechar (Esc)" aria-label="Fechar">×</button>
       </header>
       <div id="placarTime"></div>
       <div id="placarOrdem"><span>Ordenar por:</span><button data-ordem="nome">Nome</button><button data-ordem="nivel">Nível</button></div>
       <ol id="placarLista"></ol>
     </section>
     <section id="celular" hidden>
-      <header><div><h3>📱 Celular na rede local</h3></div><button id="celularFechar" title="Fechar (Esc)">×</button></header>
+      <header><div><h3>📱 Celular na rede local</h3></div><button id="celularFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div id="celularCorpo"></div>
     </section>
     <section id="alertas" hidden>
-      <header><div><h3>🔔 Alertas</h3><div id="alertasInfo"></div></div><button id="alertasFechar" title="Fechar (Esc)">×</button></header>
+      <header><div><h3>🔔 Alertas</h3><div id="alertasInfo"></div></div><button id="alertasFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div id="alertasCorpo"></div>
     </section>
     <section id="ficha" hidden>
-      <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)">×</button></header>
+      <header><div><h3 id="fichaNome"></h3><div id="fichaEstado"></div></div><button id="fichaFechar" title="Fechar (Esc)" aria-label="Fechar">×</button></header>
       <div class="agora"><span>Agora:</span> <span id="fichaAgora"></span></div>
       <div class="abas"><button data-aba="trabalho">O que está fazendo</button><button data-aba="conversas">O que está falando</button><button data-aba="cartoes" id="abaCartoes">Cartões</button><button data-aba="xp" id="abaXp">XP</button></div>
       <ol id="fichaLista"></ol>

@@ -2,6 +2,7 @@
 // O escritório só mostra e leva ao GitHub: o merge é sempre seu.
 // "Aprovado" = status check github.check_revisao com SUCCESS (ou, sem check configurado, review APPROVED).
 import { CONFIG, agenteConfig, LIDER, temServidor } from './config.js';
+import { dica } from './dica.js';
 
 const ATUALIZAR_MS = 60000;
 const GH = CONFIG.github;
@@ -153,8 +154,12 @@ function desenhar() {
     const r = pr.risco;   // saude.risco_pr: PR grande ou com checks falhando entra menos (arXiv 2601.15195)
     if (r && r.nivel !== '?') {
       const selo = el('span', 'risco ' + r.nivel, `${r.linhas} linhas · ${r.arquivos} arq.` + (r.falhas ? ` · ${r.falhas} check(s) falhando` : ''));
-      selo.title = r.dica ? 'Sugestão: ' + r.dica : 'Tamanho do PR (linhas alteradas e arquivos)';
-      meta.append(selo);
+      const grupo = el('span', 'risco-grupo');   // limites iguais a saude.RISCO e checks iguais a saude.CHECKS_FALHOS
+      grupo.append(selo, dica('Tamanho do PR: linhas = adições + remoções; arq. = arquivos alterados (GitHub). Médio a partir de 300 linhas ou '
+        + '10 arquivos; grande a partir de 800 linhas ou 25 arquivos. Checks falhando = status do commit atual em falha, erro, tempo esgotado, '
+        + 'cancelado, ação necessária ou falha ao iniciar. PR grande ou com check falhando tende a entrar menos. (saude.risco_pr)'
+        + (r.dica ? '\n\nSugestão: ' + r.dica + '.' : ''), 'selo de tamanho e risco do PR'));
+      meta.append(grupo);
     }
     const acoes = el('div', 'acoes');
     const abrir = el('a', 'botao principal', s.classe === 'pronto' ? 'Aprovar e fazer merge ↗' : 'Abrir no GitHub ↗');

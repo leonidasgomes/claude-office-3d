@@ -281,8 +281,9 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
 
 ## 7. Uso
 
-- **Painel de agentes** — estado de cada um (trabalhando, conversando, em reunião, em pausa, ocioso) e a hora do
-  último evento. Clique num agente (no painel ou no boneco) para focar a câmera e abrir a **ficha**: abas "O que
+- **Painel de agentes** — estado de cada um (trabalhando, conversando, em reunião, em pausa, ocioso), o que está
+  fazendo (resumo do último evento) e há quanto tempo ("rodando há 9 min" num comando longo, "ocioso há 20 min"); a hora
+  exata aparece ao passar o mouse. Clique (ou Tab + Enter) num agente (no painel ou no boneco) para focar a câmera e abrir a **ficha**: abas "O que
   está fazendo" (comandos, arquivos) e "O que está falando" (mensagens completas); com o Kanban ligado, também
   "Cartões" (os cartões ativos do agente).
 - **Kanban** — o quadro do GitHub Projects, com filtro por time; o cartão leva ao GitHub. Com o Kanban ligado há
@@ -291,7 +292,8 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
   reprovados). O número no botão mostra quantos estão prontos. O escritório só mostra: o merge é sempre seu.
 - **Placar** — (com `xp.ativo`) XP e nível de cada agente, aprovação de primeira, retrabalho, auditorias abertas (vermelho)
   e PRs para conferir (amarelo), com os botões **✓ Conferido** / **Liberar pontos** / **Desfazer**; o nível também aparece
-  no crachá da mesa e na aba "XP" da ficha. Veja a seção 8.
+  no crachá da mesa e na aba "XP" da ficha. O **ⓘ** de cada número explica como ele é calculado (com os pesos, a data
+  inicial e o check de revisão do seu config). Veja a seção 8.
 - **📱 Celular** — (só no PC, quando ligado) QR para instalar o certificado e parear o celular; lista e revoga aparelhos.
   Veja a seção 9.
 - **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
@@ -582,7 +584,8 @@ endereços). Os nomes MagicDNS não entram na CA (ela só permite `localhost` e 
 ## 10. Alertas no celular
 
 O escritório avisa quando **há algo esperando por você**, mesmo com o celular no bolso e a página fechada. Cada tipo liga e
-desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celular):
+desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celular). O painel abre com os **alertas recentes**;
+os tipos e o push ficam no bloco recolhido **⚙️ Tipos de alerta e push** (o navegador lembra se você o deixou aberto):
 
 | Tipo | Quando avisa | Padrão |
 |---|---|---|
@@ -601,7 +604,8 @@ desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celula
 
 Os três últimos vêm de `saude.py`, sem tokens; `GET /saude` mostra também os "fracos" (duas branches ativas com o mesmo
 número de issue). No painel PRs, cada PR ganha um selo de tamanho (linhas e arquivos; amarelo a partir de 300 linhas ou
-10 arquivos, vermelho a partir de 800 ou 25) e de checks falhando: PR grande ou com CI falhando entra menos.
+10 arquivos, vermelho a partir de 800 ou 25) e de checks falhando: PR grande ou com CI falhando entra menos. O ⓘ ao
+lado do selo explica a conta.
 
 **Orçamento de atenção.** Avisar demais cansa e piora a supervisão. Só PR pronto, PR com problema, pergunta,
 escalonamento, auditoria e cota avisam na hora (`imediatos`); os outros entram na lista do painel marcados "no resumo",
@@ -621,7 +625,7 @@ que já existia (nada de enxurrada). Os alertas vão para a fila `dados/alertas.
 
 ### Ligar no PC
 
-Abra `http://localhost:<porta>/` (localhost conta como contexto seguro), clique em **🔔 Alertas → Ativar alertas neste aparelho**,
+Abra `http://localhost:<porta>/` (localhost conta como contexto seguro), clique em **🔔 Alertas → ⚙️ Tipos de alerta e push → Ativar alertas neste aparelho**,
 aceite a permissão do navegador e use **Enviar alerta de teste**. O Web Push precisa da biblioteca `cryptography`
 (`pip install cryptography`); sem ela o painel avisa e as camadas 2 e 3 continuam funcionando.
 
@@ -630,7 +634,7 @@ aceite a permissão do navegador e use **Enviar alerta de teste**. O Web Push pr
 1. Deixe o acesso pelo celular funcionando **com HTTPS** (seção 9): o Web Push só existe em contexto seguro, ou seja, o
    endereço `https://<ip>:<porta+1>/` com a CA local instalada no celular.
 2. Pareie o celular (QR code). Qualquer permissão serve ("só ver" também recebe alertas).
-3. No celular: menu ☰ → **🔔 Alertas → Ativar alertas neste aparelho** → permitir → **Enviar alerta de teste**.
+3. No celular: menu ☰ → **🔔 Alertas → ⚙️ Tipos de alerta e push → Ativar alertas neste aparelho** → permitir → **Enviar alerta de teste**.
 4. **iPhone/iPad (iOS 16.4 ou mais novo):** o push só funciona com o escritório na Tela de Início. No Safari, toque em
    Compartilhar → **Adicionar à Tela de Início**, abra o escritório por esse ícone e ative os alertas lá (a página mostra
    esta instrução quando detecta iOS fora do modo "app"). O ícone abre em tela cheia pelo `manifest.webmanifest` do servidor.
@@ -673,7 +677,7 @@ Tocar na notificação abre o escritório já no painel certo (PRs ou Placar).
 }
 ```
 
-Cada aparelho ainda escolhe os seus tipos no painel 🔔 (o `tipos` do config é só o ponto de partida).
+Cada aparelho ainda escolhe os seus tipos no painel 🔔, bloco ⚙️ Tipos de alerta e push (o `tipos` do config é só o ponto de partida).
 
 **Escalonamentos (opcional).** Se `alertas.escalonamentos` apontar para um JSON no formato
 `{"2026-W40": [{"cartao": 86, "motivo": "...", "aberto": "2026-10-01", "fechado": null, "resultado": ""}]}`, o escritório

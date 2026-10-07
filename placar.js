@@ -2,6 +2,7 @@
 // Sem ranking competitivo: só nome ou nível como ordem, sem medalhas. Se /xp não existir, usa uma demonstração.
 
 import { CONFIG } from './config.js';
+import { dica } from './dica.js';
 
 const ATUALIZAR_MS = 60000;
 const CHAVE_NIVEIS = 'office.xp.niveis', CHAVE_ORDEM = 'office.placar.ordem';
@@ -50,7 +51,8 @@ function normalizar(obj) {
     d.skills_autor = Array.isArray(d.skills_autor) ? d.skills_autor : [];
     agentes[nome] = d;
   }
-  return { atualizado: obj.atualizado || '', repo: String(obj.repo || ''), niveis, time: obj.time || {}, agentes,
+  const regras = obj.regras && typeof obj.regras === 'object' ? obj.regras : null;   // xp.py: pesos, desde, janela, amostra (ⓘ)
+  return { atualizado: obj.atualizado || '', repo: String(obj.repo || ''), niveis, regras, time: obj.time || {}, agentes,
     resolvidos: Array.isArray(obj.resolvidos) ? obj.resolvidos.filter((x) => x && Number.isInteger(x.pr)) : [] };
 }
 
@@ -133,14 +135,72 @@ function aplicar(obj, opcoes = {}) {
 
 // ---------------------------------------------------------------- Painel
 const pct = (v) => (typeof v === 'number' ? Math.round(v * 100) + '%' : '—');
-function tile(valor, rotulo, cor, alerta) {   // alerta: true (tile vermelho) ou 'amarelo'
+const NL = String.fromCharCode(10);
+// Como cada número do Placar é calculado (ⓘ de cada tile). Fontes: xp.py, custo_time.py, statusline_uso.py e banco.uso_resumo;
+// ao mudar a regra num desses arquivos, ajuste o texto aqui. Pesos, data inicial, janela e amostra vêm do próprio placar.json
+// (bloco "regras" que o xp.py grava a partir do config.json); o check de revisão vem de github.check_revisao.
+const sinal = (v) => (Number(v) > 0 ? '+' : Number(v) < 0 ? '−' : '') + Math.abs(Number(v) || 0);
+const dataBr = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || '')) ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+function descricoes(r) {
+  const P = r || {}, tem = (k) => typeof P[k] === 'number';
+  const J = Number(P.janela_retrabalho_dias) || 14;
+  const desde = dataBr(P.desde);
+  const check = CONFIG.github && CONFIG.github.check_revisao;
+  const revisao = check ? `o check de revisão configurado (github.check_revisao: "${check}")` : 'a revisão (sem github.check_revisao, as reviews do PR)';
+  const reprovado = check ? `reprovado pelo check de revisão configurado ("${check}")` : 'reprovado na revisão (alguma review pediu mudanças)';
+  const reprovou = check ? `"${check}" em falha, erro, tempo esgotado ou cancelado em algum commit` : 'alguma review pediu mudanças';
+  const pesos = ['aprovado_de_primeira', 'sem_conflito_com_testes', 'cartao_fechado', 'bug_nao_voltou_14d', 'retrabalho', 'regressao'].every(tem)
+    ? `${sinal(P.aprovado_de_primeira)} aprovado de primeira, ${sinal(P.sem_conflito_com_testes)} sem merge da base no meio e com testes citados no corpo, `
+      + `${sinal(P.cartao_fechado)} cartão na coluna final do Kanban, ${sinal(P.bug_nao_voltou_14d)} fix sem bug de volta em ${J} dias, `
+      + `${sinal(P.retrabalho)} retrabalho, ${sinal(P.regressao)} regressão`
+    : 'os pesos de xp.pesos do config.json (aprovado de primeira, testes citados, cartão fechado, fix que não voltou, retrabalho, regressão)';
+  const skills = tem('skill_reusada_por_outro') && tem('skill_promovida')
+    ? `Skills: ${sinal(P.skill_reusada_por_outro)} por reuso por outro agente, ${sinal(P.skill_promovida)} se promovida. `
+    : 'Skills: pontos por reuso por outro agente e por skill promovida (xp.pesos). ';
+  const amostra = Number(P.amostra_1_em);
+  return {
+    xp: `Soma do XP dos agentes. Os PRs mergeados ${desde ? 'desde ' + desde : 'desde xp.desde ou, sem ela, nos últimos 30 dias'} (até os 300 mais recentes) `
+      + 'vão para um agente (cartão fechado pelo PR, Closes #n, #número citado no título, branch ou corpo, rótulo de github.times, prefixo de branch '
+      + 'de xp.atribuicao ou o agente padrão; PR que não cai em nenhum agente não pontua) e cada um pontua: ' + pesos + '. ' + skills
+      + 'PR na auditoria (vermelho) vale 0; o XP de um agente não fica abaixo de 0. (xp.py)',
+    primeira: `PRs pontuados em que ${revisao} não reprovou nenhum commit, divididos pelo total de PRs pontuados. Reprovado = ${reprovou}. (xp.py)`,
+    retrabalho: `Fração dos PRs pontuados com retrabalho: ${reprovado}, ou um PR posterior de fix, revert ou regressão citou o número `
+      + `dele em até ${J} dias depois do merge. PR zerado pela auditoria entra na conta como sem retrabalho. (xp.py)`,
+    auditorias: 'PRs na faixa vermelha ainda não liberados: skip/xfail incondicional em teste, teste apagado sem substituto equivalente ou mudança em '
+      + 'arquivo de avaliação (xp.padroes_avaliacao). Os pontos do PR ficam zerados até alguém liberar (botão Liberar, só no PC, ou python xp.py --liberar N). (xp.py)',
+    conferir: 'PRs na faixa amarela ainda não conferidos: skip condicional em teste, consolidação de testes, teste enfraquecido (menos asserções '
+      + 'acrescentadas que removidas)' + (!tem('amostra_1_em') ? ' ou a amostra aleatória de xp.amostra_1_em' : amostra > 0 ? ` ou amostra aleatória de 1 em ${amostra} PRs` : '')
+      + '. Os pontos contam normalmente. Com o auditor automático ligado (auditor.ativo, auditor_xp.py), ele marca como conferido o que for legítimo '
+      + 'e, quando confirma a suspeita, abre uma issue para o time do autor e também tira da lista. (xp.py)',
+    uso5h: 'Percentual já usado da janela de 5 horas do plano, na última leitura gravada pela statusline do Claude Code (rate_limits.five_hour). '
+      + 'Some quando a janela já reiniciou. Amarelo a partir de 70%, vermelho a partir de 90%. (statusline_uso.py, banco.uso_resumo)',
+    usoSemana: 'Percentual já usado do limite semanal do plano, na última leitura gravada pela statusline do Claude Code (rate_limits.seven_day). '
+      + 'Some quando a semana já reiniciou. Amarelo a partir de 70%, vermelho a partir de 90%. (statusline_uso.py, banco.uso_resumo)',
+    hoje: 'Pontos percentuais do limite semanal gastos hoje (dia local): soma das subidas do % semanal entre uma leitura e a seguinte; '
+      + 'a queda do reset é ignorada. (banco.uso_resumo)',
+    projecao: '% semanal de agora + ritmo × dias que faltam até o reset. Ritmo = quanto o % semanal subiu entre a primeira e a última leitura '
+      + 'das últimas 24 h, por dia. Amarelo a partir de 85%; 100% ou mais = o limite acaba antes do reset. (banco.uso_resumo)',
+    porPr: 'Custo do time na janela (sessões do Claude Code nos transcritos locais das pastas em "projetos" do config.json, rateadas por resposta, '
+      + 'mais o revisor de código) dividido pelos PRs mergeados no GitHub no mesmo período (entre os 100 PRs fechados mais recentes). '
+      + 'Sessão ainda aberta é estimada pelos tokens. Recalculado quando tem mais de 1 h. (custo_time.py)',
+    acumulado: 'Soma do custo de todas as sessões e revisões já vistas, guardada no banco local dados/escritorio.db. Não cai quando a janela '
+      + 'anda nem quando o Claude Code apaga transcritos velhos (só ajusta um pouco quando a estimativa da sessão aberta vira o custo real). '
+      + '"desde" = data da sessão mais antiga registrada. (custo_time.py, banco.acumulado)',
+    revisor: 'Custo das revisões do revisor de código (revisor_ia.py, [revisor-ia]) na janela, pelo custo que cada revisão grava em '
+      + 'dados/revisor/estado.json. Já está somado no custo por PR. (custo_time.py)',
+  };
+}
+function tile(valor, rotulo, cor, alerta, desc, extra) {   // alerta: true (vermelho) ou 'amarelo'; desc: texto do ⓘ; extra: números do momento
   const t = el('div', 'tile' + (alerta === 'amarelo' ? ' aviso' : alerta ? ' alerta' : '')); if (cor && !alerta) t.style.borderTopColor = cor;
-  t.append(el('b', null, valor), el('span', null, rotulo)); return t;
+  t.append(el('b', String(valor).length > 9 ? 'longo' : null, valor), el('span', null, rotulo));   // longo: US$ 1279,04 cabe sem cobrir o ⓘ
+  if (desc) t.append(dica(desc + (extra ? NL + NL + extra : ''), rotulo));
+  return t;
 }
 function nomeExibido(nome) { const a = office() && office().agentes.get(nome); return a ? a.titulo : String(nome).replace(/_/g, ' '); }
 function corDe(nome) { const a = office() && office().agentes.get(nome); return a ? '#' + a.cor.toString(16).padStart(6, '0') : '#64748b'; }
 // Listas das duas faixas: 🔴 auditoria (pontos zerados) e 🟡 para conferir (pontos normais), com link do PR e os botões para resolver
 const faixasEl = el('div'); faixasEl.id = 'placarFaixas'; $('placarOrdem').before(faixasEl);
+const legendaEl = el('span', 'legenda'); $('placarOrdem').append(legendaEl);   // ⓘ: como ler o cartão de cada agente
 function linkPr(n) {
   const repo = atual && atual.repo;
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return el('b', null, 'PR #' + n);
@@ -284,37 +344,29 @@ function quando(epoch) {
   return d.toDateString() === hoje.toDateString() ? hm : `${DIAS_SEM[d.getDay()]} ${hm}`;
 }
 // Uso do plano (rate_limits do Claude Code, gravado pela statusline): 5 h, semana, consumo de hoje e projeção no reset.
-function tilesUso(u) {
+function tilesUso(u, DESC) {
   const out = [];
   if (!u) return out;
   const nivel = (p) => (p >= 90 ? true : p >= 70 ? 'amarelo' : false);
   if (u.five_pct != null) {
-    const t = tile(Math.round(u.five_pct) + '%', `uso em 5 h · reinicia ${quando(u.five_reset)}`, '#ec4899', nivel(u.five_pct));
-    t.title = 'Janela de 5 horas do plano (rate_limits.five_hour do Claude Code)';
-    out.push(t);
+    out.push(tile(Math.round(u.five_pct) + '%', `uso em 5 h · reinicia ${quando(u.five_reset)}`, '#ec4899', nivel(u.five_pct), DESC.uso5h));
   }
   if (u.seven_pct != null) {
-    const t = tile(Math.round(u.seven_pct) + '%', `uso na semana · reinicia ${quando(u.seven_reset)}`, '#ec4899', nivel(u.seven_pct));
-    t.title = 'Limite semanal do plano (rate_limits.seven_day do Claude Code)';
-    out.push(t);
+    out.push(tile(Math.round(u.seven_pct) + '%', `uso na semana · reinicia ${quando(u.seven_reset)}`, '#ec4899', nivel(u.seven_pct), DESC.usoSemana));
   }
   const dias = u.por_dia || [];
   if (dias.length) {
     const n = new Date(), hoje = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
     const h = dias.find((d) => d.dia === hoje);   // data local, como o banco.py agrupa
-    const t = tile((h ? h.pontos : 0).toFixed(1).replace('.', ',') + ' pts', 'da semana gastos hoje', '#ec4899');
-    const NL = String.fromCharCode(10);
-    t.title = 'Pontos percentuais do limite semanal gastos por dia:' + NL
+    const extra = 'Por dia:' + NL
       + dias.map((d) => `${d.dia.split('-').reverse().slice(0, 2).join('/')}: ${d.pontos.toFixed(1).replace('.', ',')}`).join(NL)
       + (u.ritmo_dia != null ? `${NL}Ritmo das últimas 24 h: ${u.ritmo_dia.toFixed(1).replace('.', ',')} pts/dia` : '');
-    out.push(t);
+    out.push(tile((h ? h.pontos : 0).toFixed(1).replace('.', ',') + ' pts', 'da semana gastos hoje', '#ec4899', false, DESC.hoje, extra));
   }
   if (u.projecao_reset != null) {
     const p = u.projecao_reset;
-    const t = tile('~' + Math.round(p) + '%', 'no reset, no ritmo atual', '#ec4899', p >= 100 ? true : p >= 85 ? 'amarelo' : false);
-    t.title = p >= 100 ? 'No ritmo das últimas 24 h o limite semanal acaba antes do reset: reduza (modelo menor nos subagentes, menos releitura de contexto).'
-      : 'Projeção do limite semanal no momento do reset, no ritmo das últimas 24 h.';
-    out.push(t);
+    out.push(tile('~' + Math.round(p) + '%', 'no reset, no ritmo atual', '#ec4899', p >= 100 ? true : p >= 85 ? 'amarelo' : false, DESC.projecao,
+      p >= 100 ? 'No ritmo das últimas 24 h o limite semanal acaba antes do reset: reduza (modelo menor nos subagentes, menos releitura de contexto).' : ''));
   }
   return out;
 }
@@ -325,36 +377,44 @@ function desenhar() {
   const t = atual.time;
   timeEl.textContent = '';
   const aud = Number(t.auditorias_abertas) || 0, conf = Number(t.conferir_abertos) || 0;
-  timeEl.append(tile(String(t.xp_total ?? 0), 'XP total do time', '#f59e0b'), tile(pct(t.aprovacao_primeira), 'aprovado de primeira', '#22c55e'),
-    tile(pct(t.retrabalho_14d), 'retrabalho em 14 dias', '#3b82f6'), tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0),
-    tile(String(conf), 'para conferir', '#22c55e', conf > 0 ? 'amarelo' : false));
-  if (fonte === 'real') timeEl.append(...tilesUso(uso));
+  const DESC = descricoes(atual.regras), J = Number(atual.regras && atual.regras.janela_retrabalho_dias) || 14;
+  const nPrs = t.prs_pontuados != null ? `Agora: ${t.prs_pontuados} PR(s) pontuado(s).` : '';
+  timeEl.append(tile(String(t.xp_total ?? 0), 'XP total do time', '#f59e0b', false, DESC.xp, nPrs),
+    tile(pct(t.aprovacao_primeira), 'aprovado de primeira', '#22c55e', false, DESC.primeira, nPrs),
+    tile(pct(t.retrabalho_14d), `retrabalho em ${J} dias`, '#3b82f6', false, DESC.retrabalho, nPrs),
+    tile(String(aud), 'auditorias abertas', '#22c55e', aud > 0, DESC.auditorias),
+    tile(String(conf), 'para conferir', '#22c55e', conf > 0 ? 'amarelo' : false, DESC.conferir));
+  if (fonte === 'real') timeEl.append(...tilesUso(uso, DESC));
   const c = fonte === 'real' && custos;
   if (c && c.usd_por_pr != null) {
-    const tl = tile(usd(c.usd_por_pr), `por PR mergeado (${c.dias} d)`, '#a855f7');
-    tl.title = `${usd(c.total_usd)} em ${c.dias} dia(s), ${c.prs_mergeados} PR(s) mergeado(s) · custo_time.py, ${c.gerado}`;
-    timeEl.append(tl);
+    timeEl.append(tile(usd(c.usd_por_pr), `por PR mergeado (${c.dias} d)`, '#a855f7', false, DESC.porPr,
+      `Agora: ${usd(c.total_usd)} em ${c.dias} dia(s), ${c.prs_mergeados} PR(s) mergeado(s) · calculado em ${c.gerado}.`));
   }
   if (c && c.acumulado_usd != null) {
     // A janela de 7 dias anda (o custo "cai" quando sessões velhas saem); o acumulado vem do banco local e só cresce.
-    const ta = tile(usd(c.acumulado_usd), `acumulado desde ${(c.acumulado_desde || '').split('-').reverse().join('/')}`, '#a855f7');
-    ta.title = `${usd(c.total_usd)} nos últimos ${c.dias} dia(s)` + (c.sessoes_ao_vivo ? ` · inclui ${c.sessoes_ao_vivo} sessão(ões) aberta(s), estimada(s) pelos tokens` : '')
-      + ' · dados/escritorio.db (SQLite), não zera';
-    timeEl.append(ta);
+    timeEl.append(tile(usd(c.acumulado_usd), `acumulado desde ${(c.acumulado_desde || '').split('-').reverse().join('/')}`, '#a855f7', false, DESC.acumulado,
+      `Agora: ${usd(c.total_usd)} nos últimos ${c.dias} dia(s)` + (c.sessoes_ao_vivo ? `, com ${c.sessoes_ao_vivo} sessão(ões) aberta(s) estimada(s) pelos tokens` : '') + '.'));
   }
   if (c && c.revisor && c.revisor.revisoes) {
-    const tr = tile(usd(c.revisor.usd), `revisor de código (${c.dias} d)`, '#0ea5e9');
-    tr.title = `${c.revisor.revisoes} revisão(ões), ${c.revisor.achados} achado(s) · [revisor-ia], já somado ao custo por PR`;
-    timeEl.append(tr);
+    timeEl.append(tile(usd(c.revisor.usd), `revisor de código (${c.dias} d)`, '#0ea5e9', false, DESC.revisor,
+      `Agora: ${c.revisor.revisoes} revisão(ões), ${c.revisor.achados} achado(s).`));
   }
   desenharFaixas();
-  document.querySelectorAll('#placarOrdem button').forEach((b) => b.classList.toggle('ativo', b.dataset.ordem === ordem));
+  document.querySelectorAll('#placarOrdem button[data-ordem]').forEach((b) => {
+    b.classList.toggle('ativo', b.dataset.ordem === ordem); b.setAttribute('aria-pressed', String(b.dataset.ordem === ordem));
+  });
+  const niveis = (atual.niveis || NIVEIS_PADRAO).map((x) => `${x.titulo} ${x.xp}`).join(', ');
+  legendaEl.replaceChildren(dica('Cada cartão é um agente. Estrelas e título = nível pelo XP (' + niveis + ' XP; xp.niveis); a barra mostra o caminho até o próximo nível. '
+    + '"XP · PR(s)" = XP do agente e PRs mergeados atribuídos a ele (xp.py). '
+    + (c && c.agentes ? `US$ = custo do agente nos últimos ${c.dias} dia(s): respostas dele (líder ou colega/subagente) nos transcritos locais (custo_time.py). ` : '')
+    + 'Embaixo, os últimos pontos por PR e o primeiro motivo. ⚠ = auditorias abertas, ● = para conferir. Toque no cartão para abrir a ficha de XP.', 'cartões dos agentes'));
   const ags = Object.entries(atual.agentes);
   ags.sort((a, b) => (ordem === 'nivel' ? b[1].nivel - a[1].nivel || b[1].xp - a[1].xp : 0) || nomeExibido(a[0]).localeCompare(nomeExibido(b[0]), 'pt-BR'));
   listaEl.textContent = '';
   if (!ags.length) listaEl.append(el('li', 'vazio', 'Nenhum agente pontuado ainda.'));
   for (const [nome, d] of ags) {
     const li = el('li', 'ag'); li.style.borderLeftColor = corDe(nome); li.title = nome;
+    li.tabIndex = 0; li.setAttribute('role', 'button'); li.setAttribute('aria-label', nomeExibido(nome) + ': ' + d.titulo_nivel + ', ' + d.xp + ' XP. Abrir a ficha de XP');
     const topo = el('div', 'topo'), nm = el('span', 'nome', nomeExibido(nome)); nm.style.color = corDe(nome);
     const nv = el('span', 'nivel'); nv.style.color = cn(d.nivel);
     nv.append(el('span', null, '★'.repeat(Math.min(5, d.nivel))), el('span', 'vazia', '☆'.repeat(Math.max(0, 5 - d.nivel))), document.createTextNode(' ' + d.titulo_nivel));
@@ -375,6 +435,7 @@ function desenhar() {
     }
     if (ul.children.length) li.append(ul);
     li.addEventListener('click', () => { if (o) o.ficha(nome, 'xp'); });
+    li.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === li) { e.preventDefault(); if (o) o.ficha(nome, 'xp'); } });
     listaEl.append(li);
   }
   const hora = atual.atualizado ? new Date(atual.atualizado).toLocaleTimeString('pt-BR') : '';
@@ -384,7 +445,7 @@ function desenhar() {
 }
 function abrir() {
   ['prs', 'kanban'].forEach((id) => { const e = $(id); if (e) e.hidden = true; });
-  painel.hidden = false; desenhar(); carregarHistorico();
+  painel.hidden = false; if (!atual) infoEl.textContent = 'carregando o placar…'; desenhar(); carregarHistorico();
 }
 function fechar() { painel.hidden = true; }
 $('btnPlacar').addEventListener('click', () => (painel.hidden ? abrir() : fechar()));
@@ -392,7 +453,7 @@ $('placarFechar').addEventListener('click', fechar);
 $('btnPrs').addEventListener('click', fechar);
 $('btnKanban').addEventListener('click', fechar);
 $('btnApelidos').addEventListener('click', () => { if (!painel.hidden) desenhar(); });
-document.querySelectorAll('#placarOrdem button').forEach((b) => b.addEventListener('click', () => { ordem = b.dataset.ordem; gravarLS(CHAVE_ORDEM, ordem); desenhar(); }));
+document.querySelectorAll('#placarOrdem button[data-ordem]').forEach((b) => b.addEventListener('click', () => { ordem = b.dataset.ordem; gravarLS(CHAVE_ORDEM, ordem); desenhar(); }));
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hidden) fechar(); });
 
 // ---------------------------------------------------------------- Busca periódica

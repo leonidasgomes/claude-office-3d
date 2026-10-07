@@ -31,6 +31,7 @@ import time
 import webbrowser
 from functools import partial
 from http.server import ThreadingHTTPServer
+ThreadingHTTPServer.request_queue_size = 64   # o padrão (5) recusa conexões quando a página pede vários módulos de uma vez no Windows
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 

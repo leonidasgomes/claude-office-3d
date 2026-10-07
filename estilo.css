@@ -105,3 +105,26 @@ html.compacto #fichaLista .detalhe { font-size: 14px; max-height: 260px; }
 @media (max-height: 480px) {   /* paisagem de celular: gaveta cheia/meio mais generosas e nada de enfeite vertical */
   html.compacto #painel h1 { font-size: 16px; }
 }
+
+/* ---- Acessibilidade e cabeçalho (UX, out. 2026) ---- */
+/* foco visível só no teclado (o clique não ganha contorno) */
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
+/* texto só para leitor de tela */
+.so-leitor { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* PC: o cabeçalho do painel lateral quebra linha em vez de esconder botões (Celular, Visão geral, Apelidos, Demo) */
+#painel > header { flex-wrap: wrap; gap: 8px; }
+#menuBotoes { flex-wrap: wrap; }
+html.compacto #painel > header { flex-wrap: nowrap; }
+
+/* Dica ⓘ (dica.js): ícone discreto; o balão é um só para a página */
+button.dica { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid transparent; background: transparent; color: #9aa7b6; font-size: 15px; line-height: 1; cursor: help; vertical-align: middle; }
+button.dica:hover, button.dica[aria-expanded="true"] { color: #e6edf3; background: #2d3a4b; border-color: #3a4756; }
+html.movel button.dica { width: 40px; height: 40px; min-height: 40px; padding: 0; font-size: 18px; }
+#dicaBalao { position: fixed; z-index: 100; left: 0; top: 0; max-width: 340px; padding: 8px 10px; background: #0b1016; color: #e6edf3; border: 1px solid #3a4756; border-radius: 8px; box-shadow: 0 8px 26px #000c; font-size: 13px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; pointer-events: auto; }
+html.compacto #dicaBalao { font-size: 15px; }
+
+/* Lista de agentes: o que está fazendo (uma linha, com reticências) + tempo relativo; a hora exata vai no title e no leitor de tela */
+#agentes .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#agentes .hora { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: #9aa7b6; }
+#agentes li:focus-visible { outline: 2px solid #f59e0b; outline-offset: 1px; }
+html.compacto #agentes .hora { max-width: 40%; }

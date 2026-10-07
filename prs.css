@@ -57,3 +57,14 @@ html.compacto #prsLista .sug, html.compacto #prsLista .sugestoes > summary { fon
 #prsLista .risco { border-radius: 999px; padding: 0 8px; background: #1f2a37; color: #cbd5e1; }
 #prsLista .risco.medio { background: #713f12; color: #fde68a; }
 #prsLista .risco.grande { background: #7f1d1d; color: #fecaca; }
+
+/* ---- UX (out. 2026): número do PR sem quebrar dígito a dígito, selo de risco com ⓘ ---- */
+#prsLista .topo .num { flex: none; white-space: nowrap; }
+#prsLista .titulo { min-width: 0; overflow-wrap: anywhere; }
+#prsLista .meta { align-items: center; }
+#prsLista .risco-grupo { display: inline-flex; align-items: center; gap: 2px; }
+#prsLista .meta > span:not(.risco-grupo) { overflow-wrap: anywhere; }
+html.compacto #prsLista .acoes .botao { flex: 1 1 auto; justify-content: center; }
+html.compacto #prs > header { flex-wrap: wrap; }
+html.compacto #prs > header > div:first-child { flex: 1 1 200px; min-width: 0; }
+html.compacto #prsAtualizar { min-height: 52px; }

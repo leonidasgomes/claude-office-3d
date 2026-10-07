@@ -5,7 +5,7 @@
 // Nada de comando, caminho ou código vai no push; este painel só liga/desliga e testa.
 // Avisos de rotina (a.resumo) entram na lista e no selo sem toast: o servidor os junta num push de resumo (alertas.py).
 const POLL_MS = 10000;
-const CHAVES = { visto: 'office.alertas.visto', tipos: 'office.alertas.tipos', push: 'office.alertas.push' };
+const CHAVES = { visto: 'office.alertas.visto', tipos: 'office.alertas.tipos', push: 'office.alertas.push', config: 'office.alertas.config' };
 const $ = (id) => document.getElementById(id);
 const botao = $('btnAlertas'), painel = $('alertas'), corpo = $('alertasCorpo'), info = $('alertasInfo'), conta = $('alertasConta');
 
@@ -30,6 +30,8 @@ let recentes = [], tipos = [], ativo = true, pushInfo = { disponivel: true, moti
 let destacar = 0;
 let hoje = null;                 // {imediatos, resumo}: avisos de hoje (orçamento de atenção)
 let sessao = null, estadoPush = { inscrito: false, h: '' }, mensagem = '', mensagemErro = false;
+// Bloco "Tipos de alerta e push" recolhido por padrão (a lista de alertas fica no topo); lembra a escolha neste navegador
+let configAberta = lerLS(CHAVES.config) === '1';
 
 // ---------------------------------------------------------------- rede
 async function pegar(url) {
@@ -195,11 +197,11 @@ async function executar(fn) {
   await atualizarEstadoPush(); desenhar();
 }
 function desenhar() {
-  const partes = [];
+  const topo = [], partes = [];
   const perm = temNotif ? Notification.permission : 'indisponivel';
-  if (!ativo) partes.push(el('p', 'aviso', 'Os alertas estão desligados no servidor (alertas.ativo no config ou dados/alertas_config.json).'));
-  if (ios && !standalone) {
-    partes.push(el('p', 'aviso', 'No iPhone/iPad as notificações só funcionam com o escritório na Tela de Início: toque em Compartilhar → "Adicionar à Tela de Início", '
+  if (!ativo) topo.push(el('p', 'aviso', 'Os alertas estão desligados no servidor (alertas.ativo no config ou dados/alertas_config.json).'));
+  if (ios && !standalone) {   // no topo: sem isso o iPhone não recebe nada, e o bloco de configuração vem recolhido
+    topo.push(el('p', 'aviso', 'No iPhone/iPad as notificações só funcionam com o escritório na Tela de Início: toque em Compartilhar → "Adicionar à Tela de Início", '
       + 'abra o escritório por esse ícone e volte aqui para ativar (iOS 16.4 ou mais novo).'));
   }
   if (!seguro) partes.push(el('p', 'aviso', 'Notificações e push exigem conexão segura. No celular, use o endereço https do modo rede (com o certificado instalado); no PC, localhost serve.'));
@@ -241,7 +243,17 @@ function desenhar() {
     partes.push(bloco);
   }
 
-  const lista = el('div', 'bloco'), ol = el('ol');
+  // configuração (push, teste e tipos) num <details> recolhido, depois da lista
+  const cfg = el('details', 'config'), resumo = el('summary');
+  cfg.open = configAberta;   // os botões ficam aqui dentro: o resultado deles aparece com o bloco aberto
+  cfg.addEventListener('toggle', () => { configAberta = cfg.open; gravarLS(CHAVES.config, cfg.open ? '1' : '0'); });
+  const ligados = tipos.length ? tipos.filter((t) => querTipo(t.id)).length : 0;
+  resumo.append(el('span', null, '⚙️ Tipos de alerta e push'),
+    el('span', 'estado', (estadoPush.inscrito ? 'push ligado' : perm === 'granted' ? 'notificações ligadas' : 'não ativado')
+      + (tipos.length ? ` · ${ligados} de ${tipos.length} tipos` : '')));
+  cfg.append(resumo, ...partes);
+
+  const lista = el('div', 'bloco recentes'), ol = el('ol');
   lista.append(el('h4', null, 'Alertas recentes'));
   const itens = recentes.slice().reverse().slice(0, 20);
   if (!itens.length) ol.append(el('li', 'msg', 'Nada por enquanto. Quando algo esperar por você, aparece aqui.'));
@@ -249,11 +261,16 @@ function desenhar() {
     const li = el('li', 'alerta' + (a.id > destacar ? ' novo' : ''));
     li.append(el('span', 'hora', horaDe(a.ts) + (querTipo(a.tipo) ? '' : ' · tipo desligado') + (a.resumo ? ' · no resumo' : '')), el('b', null, a.titulo), el('span', null, a.corpo));
     if (a.detalhe) li.append(el('span', 'det', a.detalhe));
-    li.addEventListener('click', () => abrirPainel(painelDaUrl(a.url)));
+    const destino = painelDaUrl(a.url);
+    li.addEventListener('click', () => abrirPainel(destino));
+    if (destino === 'prs' || destino === 'placar') {   // abre o painel do alerta: acessível pelo teclado também
+      li.tabIndex = 0; li.setAttribute('role', 'button');
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirPainel(destino); } });
+    }
     ol.append(li);
   }
-  lista.append(ol); partes.push(lista);
-  corpo.replaceChildren(...partes);
+  lista.append(ol);
+  corpo.replaceChildren(...topo, lista, cfg);
   info.textContent = ultimo === null ? 'consultando…' : (recentes.length + ' alerta(s) guardado(s)'
     + (hoje ? ' · hoje: ' + hoje.imediatos + ' na hora, ' + hoje.resumo + ' no resumo' : ''));
 }

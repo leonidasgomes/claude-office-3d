@@ -33,3 +33,8 @@ html.compacto #kanbanColunas .cartao { font-size: 15px; padding: 10px 12px; min-
 html.compacto #kanbanColunas .topo, html.compacto #kanbanColunas .rodape, html.compacto #kanbanColunas .vazio { font-size: 14px; }
 html.compacto #kanbanColunas .prio { font-size: 13px; }
 html.compacto #kanban h3 a { display: inline-block; font-size: 14px; padding: 6px 0; }
+
+/* ---- UX (out. 2026): cartão não encolhe dentro da coluna (o título era cortado) e contraste dos textos fracos ---- */
+#kanbanColunas .cartao { flex: none; }
+#kanbanColunas .titulo { overflow-wrap: anywhere; }
+#kanbanColunas .etapa, #kanbanColunas .vazio { color: #8b98a8; }

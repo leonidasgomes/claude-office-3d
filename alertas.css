@@ -45,3 +45,19 @@ html.compacto #alertasCorpo { font-size: 15px; overflow-wrap: anywhere; }
 html.compacto #alertasCorpo .msg, html.compacto #alertasCorpo li.alerta .det { font-size: 14px; }
 html.compacto #alertasCorpo label.tipo { min-height: 44px; }
 html.compacto #alertasCorpo ol { max-height: none; }
+
+/* ---- UX (out. 2026): lista de alertas no topo; tipos e push recolhidos em <details> ---- */
+#alertasCorpo .bloco.recentes ol { max-height: min(55vh, 460px); }
+#alertasCorpo details.config { background: #161c24; border: 1px solid #2a3340; border-radius: 8px; padding: 0 10px; }
+#alertasCorpo details.config[open] { padding-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+#alertasCorpo details.config > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 40px; font-weight: 700; font-size: 14px; }
+#alertasCorpo details.config > summary .estado { font-weight: 400; font-size: 12px; color: #9aa7b6; }
+#alertasCorpo details.config .bloco { background: #11171e; }
+#alertasCorpo li.alerta:hover { background: #222c39; }
+html.compacto #alertasCorpo details.config > summary { min-height: 48px; font-size: 15px; }
+html.compacto #alertasCorpo details.config > summary .estado { font-size: 14px; }
+html.compacto #alertasCorpo .bloco.recentes ol { max-height: none; }
+#alertasCorpo details.config > summary::-webkit-details-marker { display: none; }
+#alertasCorpo details.config > summary::before { content: '▸'; display: inline-block; width: 1em; color: #9aa7b6; transition: transform .15s; }
+#alertasCorpo details.config[open] > summary::before { transform: rotate(90deg); }
+#alertasCorpo label.tipo input { flex: none; }
