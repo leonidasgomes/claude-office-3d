@@ -120,7 +120,8 @@ PADRAO = {
     "apelidos": "desligado",
     "rede_local": False,        # True: escuta na rede local para o celular (QR code + sessão pareada); False: só 127.0.0.1
     "rede_https": True,         # com rede_local: HTTPS com CA própria (porta+1) e certificado público em porta+2
-    "rede_tailscale": False,    # com rede_local: aceita também a faixa 100.64.0.0/10 do Tailscale (entra na CA)
+    "rede_tailscale": False,    # com rede_local: True aceita aparelhos na faixa 100.64.0.0/10 do Tailscale e põe o IP
+                                # Tailscale na CA; False recusa essa faixa (rede.ip_permitido)
     # SendMessage cujo resumo/mensagem contém uma destas palavras vira reunião (todos vão para a sala)
     "palavras_reuniao": ["reunião", "reuniao", "alinhamento", "daily", "stand-up", "standup", "meeting",
                          "planejamento da sprint", "todos na sala", "retrospectiva"],

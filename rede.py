@@ -3,11 +3,12 @@
 DESLIGADO por padrão: o servidor só escuta 127.0.0.1. Com `--rede-local` ele escuta 0.0.0.0 e, nesse modo:
   * o PC (127.0.0.1/::1) passa sem sessão e é o único que pode gerar código de pareamento, revogar aparelhos e
     "liberar pontos" (vermelho);
-  * qualquer outra origem precisa ser de rede privada (192.168/16, 10/8, 172.16/12, fd00::/8; também 100.64/10,
-    a faixa do Tailscale) e ter o cookie de um aparelho pareado;
+  * qualquer outra origem precisa ser de rede privada (`ipaddress.is_private`: 192.168/16, 10/8, 172.16/12,
+    fc00::/7...; a faixa 100.64/10 do Tailscale só com "rede_tailscale": true) e ter o cookie de um aparelho pareado;
   * pareamento: o PC gera um CÓDIGO de uso único (vale 10 min, só o hash fica na memória) com uma permissão
     ("ver" ou "conferir"); o celular abre /parear?c=<código> (QR code), informa o nome do aparelho e ganha uma
-    sessão própria; em dados/dispositivos.json fica só o HASH da sessão (sha256), nome, permissão e acessos;
+    sessão própria; em dados/dispositivos.json ficam o HASH da sessão (sha256), nome, permissão, acessos e o token
+    anti-CSRF da sessão (em texto puro: o servidor compara com o X-Office-Csrf);
   * "conferir" pode POST /api/xp/conferido e /api/xp/desfazer (só de ações "conferido"), com token anti-CSRF por
     sessão (X-Office-Csrf), Origin igual ao host acessado e no máximo 10 ações por minuto;
   * 5 erros de código em 10 min bloqueiam o IP por 15 min (429);
@@ -77,12 +78,16 @@ def eh_local(ip):
     return a is not None and a.is_loopback and str(a) in ("127.0.0.1", "::1")
 
 
-def ip_permitido(ip):
-    """Só rede privada de verdade: nada de IP público, link-local, multicast, loopback alheio ou reservado."""
+def ip_permitido(ip, tailscale=False):
+    """Só rede privada de verdade: nada de IP público, link-local, multicast, loopback alheio ou reservado.
+    A faixa 100.64.0.0/10 (Tailscale/CGNAT) só entra com tailscale=True ("rede_tailscale" no config.json): fora do
+    Tailscale ela é o CGNAT da operadora, compartilhado com outros clientes."""
     a = _ip(ip)
     if a is None or a.is_loopback or a.is_link_local or a.is_multicast or a.is_unspecified or a.is_reserved:
         return False
-    return a.is_private or (a.version == 4 and a in TAILSCALE)
+    if a.version == 4 and a in TAILSCALE:
+        return bool(tailscale)
+    return a.is_private
 
 
 _NOMES_VIRTUAIS = ("vethernet", "wsl", "hyper-v", "vmware", "virtualbox", "vbox", "docker", "npcap", "loopback", "tap-windows", "zerotier")
@@ -182,7 +187,7 @@ def limpar_nome(texto):
 
 
 class Rede:
-    def __init__(self, pasta, ativo=False):
+    def __init__(self, pasta, ativo=False, tailscale=False):
         self.ativo = bool(ativo)
         dados = Path(pasta) / "dados"
         self.arq_dispositivos = dados / "dispositivos.json"
@@ -196,7 +201,7 @@ class Rede:
         self._acoes_rec = {}   # id do aparelho -> instantes das últimas ações
         self.ao_revogar = []   # funções chamadas com a lista de ids de aparelhos revogados (apagam as inscrições de push)
         # HTTPS local (preenchido por iniciar_tls): HTTP em 127.0.0.1:porta, HTTPS em porta+1, certificado público em porta+2
-        self.pasta, self.tailscale = Path(pasta), False
+        self.pasta, self.tailscale = Path(pasta), bool(tailscale)   # tailscale: aceita 100.64/10 (ip_permitido)
         self.porta_http = self.porta_https = self.porta_ca = 0
         self.https, self.tls_info, self.tls_ctx = False, {"ok": False, "erro": ""}, None
 
@@ -514,7 +519,7 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             self.ident = PC
             return True
         rede = self.rede or _Mudo
-        if self.rede is None or not self.rede.ativo or not ip_permitido(ip):
+        if self.rede is None or not self.rede.ativo or not ip_permitido(ip, self.rede.tailscale):
             rede.log_negado(ip, rota, "origem não permitida")
             self._negar(403, b"Acesso negado.")
             return False
@@ -558,7 +563,7 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
                       "max-width:340px;width:100%'><h2 style='margin:0'>Parear este aparelho</h2>"
                       f"<p style='margin:0;color:#9aa7b6'>Ele poderá {html.escape(quem)}.</p>"
                       f"<input type=hidden name=c value=\"{html.escape(codigo, quote=True)}\">"
-                      "<input name=nome maxlength=40 required autofocus placeholder='Nome do aparelho (ex.: Celular do Leo)' "
+                      "<input name=nome maxlength=40 required autofocus placeholder='Nome do aparelho (ex.: Meu celular)' "
                       "style='font:18px system-ui;padding:12px;border-radius:8px;border:1px solid #3a4756;"
                       "background:#161c24;color:#e6edf3'>"
                       "<button style='font:700 18px system-ui;padding:14px;border-radius:8px;border:0;background:#16a34a;"
@@ -806,7 +811,7 @@ class HandlerCA(BaseHTTPRequestHandler):
     def _servir(self):
         ip, rota = self.client_address[0], urlparse(self.path).path
         r = self.rede
-        if not (eh_local(ip) or ip_permitido(ip)):
+        if not (eh_local(ip) or ip_permitido(ip, r is not None and r.tailscale)):
             (r or _Mudo).log_negado(ip, rota, "origem não permitida (porta do certificado)")
             return self._resp(403, b"Acesso negado.", "text/plain; charset=utf-8")
         if r is None or not r.https:

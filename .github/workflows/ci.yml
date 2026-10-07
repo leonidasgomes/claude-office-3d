@@ -19,9 +19,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Dependência opcional dos alertas (Web Push)
+        run: python -m pip install cryptography
       - name: Sintaxe e varredura de vazamento
         run: python ferramentas/verificar.py
+      - name: SDD em dia com o código (rotas, tabelas, scripts e flags, chaves do config)
+        run: python ferramentas/verificar_docs.py
       - name: Instalação silenciosa (instala, repete sem duplicar, desinstala)
         run: python ferramentas/testar_instalacao.py
+      - name: Alertas (detector, Web Push cifrado, VAPID, cota)
+        run: python -W error ferramentas/testar_alertas.py
+      - name: Filtro de origem do acesso pelo celular (rede_tailscale)
+        run: python -W error ferramentas/testar_rede.py
       - name: Build do pacote
         run: python ferramentas/build.py

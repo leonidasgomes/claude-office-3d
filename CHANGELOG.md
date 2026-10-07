@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.12.0
+- **Segurança — faixa do Tailscale só com `rede_tailscale`** (`rede.py`, `servidor.py`): com o acesso pelo celular
+  ligado, `rede.ip_permitido` aceitava sempre a faixa `100.64.0.0/10` (Tailscale/CGNAT), mesmo com
+  `"rede_tailscale": false`; fora do Tailscale essa faixa é o CGNAT da operadora, compartilhado com outros clientes.
+  Agora ela só entra com `"rede_tailscale": true` (o servidor passa o flag ao `rede.Rede`, valendo com ou sem HTTPS e na
+  porta do certificado). Novo `ferramentas/testar_rede.py` (IP privado entra; `100.64.x` recusado com o flag desligado e
+  aceito com ele ligado; IP público recusado).
+  **Atenção ao atualizar:** quem acessa pelo Tailscale precisa de `"rede_tailscale": true` no `config.json`, senão o
+  celular passa a receber 403.
+- **Alerta "PR pronto" com a mesma regra do painel PRs** (`alertas.py`, `servidor.py`): desde a 1.8.0 o painel só fica
+  verde com o `--pronto` OK no commit atual, mas o alerta olhava só a revisão e podia sair antes. A fonte `sugestoes` do
+  detector agora leva o `PRONTO` da thread de validações, e `situacao_pr` exige o mesmo que o `prs.js`: nenhuma sugestão
+  segurando o merge e, com bots/revisor configurados, o `--pronto` OK para o `sha` atual. Sem sugestões configuradas,
+  vale só a revisão, como antes. Ao reiniciar o servidor, o detector espera a 1ª rodada da thread `pronto` antes de ler
+  os PRs (`pronto_carregado`), e a thread troca o `PRONTO` sem esvaziá-lo: antes, todo PR já pronto repetia o alerta a
+  cada reinício e o lembrete de 24 h recomeçava. Com bots/revisor configurados, se a caixa de sugestões não puder ser
+  lida numa rodada, o detector pula os PRs em vez de usar só a revisão. `ferramentas/testar_alertas.py` cobre os casos,
+  incluindo o reinício.
+- **Agente esperando comando longo aparece trabalhando** (`registrar_evento.py`, `instalar.py`, `escritorio.js`): o hook
+  só gravava o evento no fim da ferramenta, e o painel apagava o "trabalhando" 60 s depois; quem esperava um build ou
+  teste de vários minutos aparecia ocioso. O instalador agora liga também o `PreToolUse` (só `Bash|PowerShell`), que
+  grava o início do comando com `espera_s` (o timeout dele), e o painel mantém o agente trabalhando até o comando acabar
+  (até o timeout do comando, no máximo 10 min). Rode `instalar.py` de novo para ganhar o hook.
+- **Pacote do instalador completo** (`instalar.PACOTE`): passa a copiar `modelos/` (citado no README e no guia),
+  `skills-candidatos/externo/README.md`, `docs/SDD.md`, `VERSION`, `CHANGELOG.md` e `LICENSE`. O
+  `ferramentas/testar_instalacao.py` falha se um arquivo versionado ficar fora da lista.
+- **Documento de projeto** (`docs/SDD.md`, novo): arquitetura, componentes, modelo de dados, rotas, CLI, configuração,
+  variáveis de ambiente, fluxos, segurança, limites, testes e decisões, com a fonte de cada afirmação. Link no README.
+- **SDD conferido no CI** (`ferramentas/verificar_docs.py`, novo, só biblioteca padrão): falha listando toda rota HTTP,
+  tabela do banco, script com CLI e flag, chave de primeiro nível do config ou variável `OFFICE_*` que não esteja no
+  SDD. Regra: o que é novo entra no SDD na mesma mudança (seção 13 do SDD).
+- **CI** (`ci.yml`): instala `cryptography` e roda também `testar_alertas.py`, `testar_rede.py` e `verificar_docs.py`.
+- **Textos corrigidos**: docstring do `sugestoes_bot.py` (as reviews são lidas de todo PR aberto, não só dos que tiveram
+  comentário novo); docstring do `servidor.py` (o celular com permissão "conferir" marca e desfaz conferidos); docstring
+  do `pronto_laco` (custo real: ~3 chamadas REST sem ETag por PR aberto + 1 lista); `INSTALACAO.md` §9 (o
+  `dados/dispositivos.json` também guarda o token anti-CSRF da sessão, em texto puro; Tailscale só com o flag) e §10
+  (regra do alerta "PR pronto"); exemplo de nome do aparelho na página de pareamento ("Meu celular").
+
 ## 1.11.0
 - **Uso do plano no Placar** (`statusline_uso.py`, novo): o Claude Code passa à statusline, pelo stdin, os limites do plano
   (`rate_limits.five_hour` e `rate_limits.seven_day`: percentual usado e hora do reinício). A statusline mostra uma linha

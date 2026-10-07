@@ -17,6 +17,7 @@ O assistente pergunta, passo a passo, quais pastas monitorar, quem é o time, o 
 instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (ou `./abrir_escritorio.sh`).
 
 - Guia completo: [INSTALACAO.md](INSTALACAO.md)
+- Documento de projeto (arquitetura, rotas, dados, segurança, decisões): [docs/SDD.md](docs/SDD.md)
 - Exemplo de configuração: [config.exemplo.json](config.exemplo.json)
 - Desinstalar os hooks: `python instalar.py --desinstalar`
 

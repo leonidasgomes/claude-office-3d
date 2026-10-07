@@ -23,6 +23,7 @@ const TEMPO_SUBAGENTE = 20;         // s de vida do subagente
 const TEMPO_BALAO_TRABALHO = 5;     // s
 const PAUSA_OCIOSO_MIN = 25;        // s ocioso (fila vazia) antes de poder ir a uma pausa
 const TRABALHO_EXPIRA = 60;         // s sem eventos e o agente volta a "ocioso"
+const MAX_COMANDO = 1800;           // s: teto de um comando longo em andamento (evento `inicio` do PreToolUse)
 const MAX_MESAS = 10;
 const INTERVALO_POLL = 2000;
 const INTERVALO_POLL_OCULTO = 15000;   // aba oculta (celular com a tela apagada ou em outro app): quase não consulta
@@ -1512,7 +1513,7 @@ function atualizarAgente(a, dt, t) {
     if (t - a.ociosoDesde >= PAUSA_OCIOSO_MIN * (demo ? 0.25 : 1) && t >= prox && !iniciarPausa(a)) a.proxPausa = t + 8;
   }
   // expiração do trabalho
-  if (a.base === 'trabalhando' && t - a.ultimoTrabalho > TRABALHO_EXPIRA) { a.base = 'ocioso'; if (!a.atual && !a.fila.length) a.estado = 'ocioso'; }
+  if (a.base === 'trabalhando' && t - a.ultimoTrabalho > TRABALHO_EXPIRA && t > (a.ocupadoAte || 0)) { a.base = 'ocioso'; if (!a.atual && !a.fila.length) a.estado = 'ocioso'; }
   // monitores
   const acende = a.base === 'trabalhando';
   for (const m of a.mesa.monitores) {
@@ -1763,6 +1764,13 @@ function processar(ev, animar = true) {
   guardarHist(a, ev, 'fez');
   if (tipo === 'trabalho') a.agoraFaz = ev;
   else if (tipo === 'ocioso') a.agoraFaz = null;
+  // comando longo em andamento (PreToolUse, `inicio`): o PostToolUse só chega no fim; até lá o agente segue trabalhando.
+  // Qualquer outro evento do agente (o fim do comando, ocioso) encerra a espera.
+  if (ev.inicio) {
+    const resta = Math.min(Number(ev.espera_s) || 120, MAX_COMANDO) - (Date.now() - Date.parse(ev.ts)) / 1000;
+    a.ocupadoAte = resta > 0 && resta <= MAX_COMANDO ? agora() + resta : 0;
+  } else a.ocupadoAte = 0;
+  if (!animar && a.ocupadoAte) { a.base = 'trabalhando'; a.ultimoTrabalho = agora(); a.estado = 'trabalhando'; }
   const recebem = para.includes('*') ? ordemAgentes.filter((x) => x !== a)
     : para.map((n) => agentes.get(n)).filter((x) => x && x !== a);
   if (tipo === 'fala' || tipo === 'reuniao') recebem.forEach((r) => guardarHist(r, ev, 'recebeu'));

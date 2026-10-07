@@ -243,6 +243,52 @@ def pr(n, **k):
     return dict({"numero": n, "titulo": f"titulo {n}", "rascunho": False, "conflito": False, "guardiao": "", "revisao": ""}, **k)
 
 
+# PRONTO da thread de validações do servidor (sugestoes_bot.pronto), já OK para os PRs do teste do detector
+PRONTO_OK = {str(n): {"ok": True, "sha": "", "motivos": [], "avisos": []} for n in range(10, 16)}
+
+
+def testar_pronto_igual_ao_painel():
+    """pr_pronto usa a mesma regra do painel PRs (prs.js, `situacao`): revisão aprovada + nada segurando + --pronto OK
+    no commit atual quando há bots/revisor (`ativo`); sem sugestões configuradas, vale só a revisão."""
+    sp = alertas.situacao_pr
+    aprovado = pr(30, revisao="SUCCESS", sha="abc")
+    assert sp(aprovado) == "pronto" and sp(aprovado, None) == "pronto"
+    assert sp(aprovado, {"ativo": False, "pronto": {}, "seguram_merge": {}}) == "pronto"
+    ok("sem bots/revisor configurados (ou sem a fonte de sugestões): vale só a revisão, como antes")
+    assert sp(aprovado, {"ativo": True, "pronto": {}}) == "espera"
+    assert sp(aprovado, {"ativo": True, "pronto": {"30": {"ok": True, "sha": "velho"}}}) == "espera"
+    assert sp(aprovado, {"ativo": True, "pronto": {"30": {"ok": False, "sha": "abc", "motivos": ["bot X não revisou"]}}}) == "espera"
+    assert sp(aprovado, {"ativo": True, "pronto": {"30": {"ok": True, "sha": "abc"}}, "seguram_merge": {"30": 2}}) == "espera"
+    assert sp(aprovado, {"ativo": True, "pronto": {"30": {"ok": True, "sha": "abc"}}, "seguram_merge": {}}) == "pronto"
+    assert sp(pr(30, revisao="SUCCESS", sha="abc", conflito=True), {"ativo": True, "pronto": {"30": {"ok": True, "sha": "abc"}}}) == "conflito"
+    assert sp(pr(30, revisao="FAILURE"), {"ativo": True, "pronto": {}}) == "reprovado"
+    ok("com bots: sem --pronto, --pronto de outro commit, --pronto não OK ou sugestão segurando = espera; OK no commit atual = pronto")
+    with tempfile.TemporaryDirectory() as tmp:
+        est = {"prs": {"prs": [pr(30, revisao="PENDING", sha="abc")], "erro": ""}, "sug": {"ativo": True, "itens": [], "pronto": {}}}
+        a = alertas.Alertas(tmp, {"prs": lambda: est["prs"], "sugestoes": lambda: est["sug"]}, {"limite_push_hora": 20})
+        t0 = 1_800_000_000
+        assert a.passo(t0) == []
+        est["prs"]["prs"][0] = pr(30, revisao="SUCCESS", sha="abc")
+        assert a.passo(t0 + 60) == [], "aprovado, mas o --pronto ainda não conferiu o commit atual: sem alerta"
+        est["sug"]["pronto"] = {"30": {"ok": True, "sha": "abc"}}
+        r = a.passo(t0 + 120)
+        assert [x["tipo"] for x in r] == ["pr_pronto"] and "#30" in r[0]["corpo"], r
+    ok("alerta pr_pronto só sai quando o painel ficaria verde (--pronto OK no commit atual)")
+    with tempfile.TemporaryDirectory() as tmp:   # reinício do servidor: PRONTO vazio até a 1ª rodada da thread pronto
+        est = {"prs": {"prs": [pr(30, revisao="SUCCESS", sha="abc")], "erro": ""},
+               "sug": {"ativo": True, "itens": [], "pronto": {"30": {"ok": True, "sha": "abc"}}, "pronto_carregado": True}}
+        fontes = {"prs": lambda: est["prs"], "sugestoes": lambda: est["sug"]}
+        t0 = 1_800_000_000
+        assert alertas.Alertas(tmp, fontes, {"limite_push_hora": 20}).passo(t0) == []   # baseline: #30 já pronto
+        a = alertas.Alertas(tmp, fontes, {"limite_push_hora": 20})                       # reinício 2 h depois
+        est["sug"].update(pronto={}, pronto_carregado=False)
+        assert a.passo(t0 + 7200) == [], "PRONTO ainda não calculado: sem alerta e sem mexer no estado"
+        est["sug"].update(pronto={"30": {"ok": True, "sha": "abc"}}, pronto_carregado=True)
+        assert a.passo(t0 + 7260) == [], "PR que já estava pronto antes do reinício não alerta de novo"
+        assert a.estado["prs"]["30"]["desde"] == t0, "o lembrete de 24 h conta desde o pronto original"
+    ok("reinício do servidor: com o PRONTO ainda vazio o detector espera; PR já pronto não repete pr_pronto nem zera o lembrete")
+
+
 def testar_detector():
     H = 3600
     t0 = 1_800_000_000
@@ -250,7 +296,8 @@ def testar_detector():
         estado = {"prs": {"prs": [pr(10, guardiao="SUCCESS"), pr(11, guardiao="PENDING")], "erro": ""},
                   "placar": {"agentes": {"A": {"auditoria": [{"pr": 5}], "conferir": [{"pr": 6}]}}},
                   "esc": {}, "eventos": [],
-                  "sug": {"ativo": True, "itens": [{"id": "1", "pr": 10, "prioridade": "P1", "titulo": "antiga"}, {"id": "2", "pr": 10, "prioridade": "P2", "titulo": "menor"}]}}
+                  "sug": {"ativo": True, "pronto": PRONTO_OK,
+                          "itens": [{"id": "1", "pr": 10, "prioridade": "P1", "titulo": "antiga"}, {"id": "2", "pr": 10, "prioridade": "P2", "titulo": "menor"}]}}
         fontes = {"prs": lambda: estado["prs"], "placar": lambda: estado["placar"], "escalonamentos": lambda: estado["esc"],
                   "eventos": lambda desde: (len(estado["eventos"]), estado["eventos"][desde:]),   # como o ler_eventos do servidor
                   "sugestoes": lambda: estado["sug"]}
@@ -319,7 +366,7 @@ def testar_detector():
         r = a.passo(t0 + 53 * H + 1800)
         assert [x["tipo"] for x in r] == ["sugestao"] and "#11" in r[0]["corpo"] and "P1" in r[0]["titulo"] and "grave" in r[0]["detalhe"], r
         assert a.passo(t0 + 53 * H + 1860) == []
-        estado["sug"] = {"ativo": True, "erro": "x", "itens": []}   # tratadas/PR fechado: some sem alerta
+        estado["sug"] = {"ativo": True, "erro": "x", "itens": [], "pronto": PRONTO_OK}   # tratadas/PR fechado: some sem alerta
         assert a.passo(t0 + 53 * H + 1920) == []
         estado["sug"]["itens"] = [{"id": "4", "pr": 11, "prioridade": "P1", "titulo": "grave"}]   # reaberta: alerta de novo
         assert [x["tipo"] for x in a.passo(t0 + 53 * H + 1980)] == ["sugestao"]
@@ -404,6 +451,7 @@ def main():
     testar_sanear_e_endpoints()
     testar_envio()
     testar_detector()
+    testar_pronto_igual_ao_painel()
     testar_cota()
     print(f"OK: {len(feitos)} verificações em {time.time() - t:.1f} s")
 

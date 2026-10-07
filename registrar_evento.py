@@ -1,6 +1,6 @@
 """Hook do Claude Code que alimenta o Claude Office 3D.
 
-Ligado em PostToolUse / TeammateIdle / Stop / SubagentStop. Lê o JSON do hook no stdin e acrescenta UMA linha
+Ligado em PreToolUse (só Bash/PowerShell) / PostToolUse / TeammateIdle / Stop / SubagentStop. Lê o JSON do hook no stdin e acrescenta UMA linha
 na tabela evento do banco local (banco.py, dados/escritorio.db, na pasta ao lado deste script). Nunca bloqueia o
 agente: qualquer erro sai com código 0 e sem saída; se o banco estiver ocupado ou quebrado, a linha vai para
 dados/eventos.falha.jsonl.
@@ -12,6 +12,8 @@ Formato de cada linha:
 {"ts": "2026-10-01T14:30:00", "agente": "Dev", "tipo": "trabalho|fala|reuniao|subagente|ocioso",
  "para": ["Lider"], "ferramenta": "Bash", "resumo": "texto curto (até 90 caracteres)",
  "texto": "mensagem completa (só fala/reunião)", "detalhe": "comando ou arquivo (só trabalho)"}
+No início de um comando Bash/PowerShell em primeiro plano (PreToolUse), o `trabalho` leva também "inicio": true e
+"espera_s" (o timeout do comando em s, padrão 120, de 1 a 600).
 """
 import json
 import os
@@ -131,6 +133,9 @@ def chama_reuniao(entrada):
     return any(p in alvo for p in PALAVRAS_REUNIAO)
 
 
+FERRAMENTAS_LONGAS = ("Bash", "PowerShell")   # PreToolUse só registra o início destas (ver evento())
+
+
 def evento(d):
     nome_evento = d.get("hook_event_name", "")
     agente = quem(d)
@@ -139,6 +144,17 @@ def evento(d):
         return {**base, "tipo": "ocioso", "para": [], "ferramenta": "", "resumo": "aguardando"}
     ferramenta = d.get("tool_name", "")
     entrada = d.get("tool_input") or {}
+    if nome_evento == "PreToolUse":
+        # início de comando que pode demorar (Bash/PowerShell em primeiro plano): o PostToolUse só chega no fim, e o
+        # painel apagaria o "trabalhando" depois de 60 s. `espera_s` = o timeout do comando (padrão 120 s, até 600 s).
+        if ferramenta not in FERRAMENTAS_LONGAS or entrada.get("run_in_background"):
+            return None
+        try:
+            espera = int(float(entrada.get("timeout") or 120000) / 1000)
+        except (TypeError, ValueError, OverflowError):
+            espera = 120
+        return {**base, "tipo": "trabalho", "inicio": True, "espera_s": max(1, min(espera, 600)), "para": [],
+                "ferramenta": ferramenta, "resumo": resumo_de(ferramenta, entrada), "detalhe": detalhe_de(entrada)}
     if ferramenta == "SendMessage":
         alvo = entrada.get("to") or entrada.get("recipient") or ""
         alvos = alvo if isinstance(alvo, list) else [alvo]
@@ -168,6 +184,8 @@ def main():
             sys.exit(0)
         PASTA.mkdir(exist_ok=True)
         ev = evento(d)
+        if ev is None:
+            sys.exit(0)
         try:
             import banco  # ao lado deste script; importado só depois do filtro de projeto
             banco.gravar_evento(ev)

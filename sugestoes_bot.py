@@ -5,7 +5,7 @@ tudo numa caixa local para o líder do time decidir o que corrigir, ignorar ou l
 Custo de API mínimo (REST pelo `gh`, com ETag: resposta 304 não conta no limite):
   - 1 chamada a /pulls/comments?since=<último> (traz os comentários de TODOS os PRs; ETag guardado);
   - 1 chamada a /pulls?state=open (quais PRs estão abertos, branch, autor, rótulos; ETag guardado);
-  - reviews (/pulls/{n}/reviews) só dos PRs abertos que tiveram comentário novo do bot.
+  - reviews (/pulls/{n}/reviews) de CADA PR aberto, a cada coleta (desde a 1.4.0; sem ETag; até 100 PRs abertos).
 Triagem barata e opcional: se há itens novos, UMA chamada de `claude -p` com um modelo pequeno (padrão Haiku), sem
 ferramentas, sugere para cada item corrigir | ignorar | discutir. Falhou? Os itens ficam "nova" e o líder tria.
 

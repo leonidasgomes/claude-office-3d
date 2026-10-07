@@ -70,14 +70,26 @@ def normalizar_opcoes(bruto):
 
 
 # ---------------------------------------------------------------- detector (puro: não faz E/S)
-def situacao_pr(pr):
-    """pronto | conflito | reprovado | espera (mesma regra do painel de PRs)."""
+def situacao_pr(pr, sugestoes=None):
+    """pronto | conflito | reprovado | espera (mesma regra do painel de PRs, `situacao` do prs.js).
+    sugestoes: o GET /api/sugestoes do servidor (`sugestoes_bot.resumo()` + "pronto", o PRONTO da thread de validações).
+    Revisão aprovada só vira "pronto" sem sugestão segurando o merge e, com bots/revisor configurados (`ativo`), com o
+    --pronto OK calculado para o commit atual do PR. Sem sugestões configuradas (ou sem a fonte), vale só a revisão."""
     if pr.get("rascunho"):
         return "espera"
     if pr.get("conflito"):
         return "conflito"
     g = str(pr.get("revisao") or pr.get("guardiao") or "").upper()
     if g == "SUCCESS":
+        sg = sugestoes if isinstance(sugestoes, dict) else {}
+        n = str(pr.get("numero"))
+        if (sg.get("seguram_merge") or {}).get(n):
+            return "espera"
+        p = (sg.get("pronto") or {}).get(n)
+        if sg.get("ativo") and (not isinstance(p, dict) or (pr.get("sha") and p.get("sha") and p["sha"] != pr["sha"])):
+            return "espera"
+        if isinstance(p, dict) and not p.get("ok"):
+            return "espera"
         return "pronto"
     if g in ("FAILURE", "ERROR"):
         return "reprovado"
@@ -104,7 +116,7 @@ def _repetido(est, chave, agora, janela):
     return False
 
 
-def _detectar_prs(est, d, agora, opc, novos):
+def _detectar_prs(est, d, agora, opc, novos, sugestoes=None):
     base = est.setdefault("base", {})
     registro, atual = est.setdefault("prs", {}), {}
     primeira = not base.get("prs")
@@ -112,7 +124,7 @@ def _detectar_prs(est, d, agora, opc, novos):
     for pr in d["prs"]:
         if not isinstance(pr, dict) or not isinstance(pr.get("numero"), int):
             continue
-        n, s = pr["numero"], situacao_pr(pr)
+        n, s = pr["numero"], situacao_pr(pr, sugestoes)
         ant = registro.get(str(n))
         antes = ant.get("s") if ant else None
         atual[str(n)] = {"s": s, "desde": ((ant.get("desde") or agora) if antes == "pronto" else agora) if s == "pronto" else 0}
@@ -263,12 +275,17 @@ def _detectar_eventos(est, total, eventos, opc, novos):
 
 def detectar(est, entradas, agora, opc):
     """Compara as entradas com o estado `est` (alterado no lugar) e devolve a lista de alertas novos (sem id/ts).
-    entradas: {"prs": dict do /prs, "placar": dict do /xp, "eventos": (total, [eventos novos]), "escalonamentos": dict}.
+    entradas: {"prs": dict do /prs, "placar": dict do /xp, "eventos": (total, [eventos novos]), "escalonamentos": dict,
+    "sugestoes": dict do /api/sugestoes (com "pronto"), "cota": dict do vigia da cota}.
     Fonte ausente, com erro ou vazia por falha não apaga o estado (nada de alerta falso quando o gh cai)."""
     novos = []
-    d = entradas.get("prs")
-    if isinstance(d, dict) and not d.get("erro") and d.get("configurado") is not False and isinstance(d.get("prs"), list):
-        _detectar_prs(est, d, agora, opc, novos)
+    d, sg = entradas.get("prs"), entradas.get("sugestoes")
+    # com bots/revisor ativos, o PRONTO ainda não calculado (logo depois de reiniciar) não conta: sem ele todo PR aprovado
+    # viraria "espera" e voltaria a "pronto" na rodada seguinte, repetindo o pr_pronto e zerando o lembrete
+    esperando_pronto = isinstance(sg, dict) and sg.get("ativo") and sg.get("pronto_carregado") is False
+    if (isinstance(d, dict) and not d.get("erro") and d.get("configurado") is not False and isinstance(d.get("prs"), list)
+            and not esperando_pronto):
+        _detectar_prs(est, d, agora, opc, novos, sg if isinstance(sg, dict) else None)
     p = entradas.get("placar")
     if isinstance(p, dict) and not p.get("erro") and p.get("ativo") is not False and isinstance(p.get("agentes"), dict):
         _detectar_placar(est, p, agora, novos)
@@ -278,7 +295,6 @@ def detectar(est, entradas, agora, opc):
     ev = entradas.get("eventos")
     if isinstance(ev, tuple) and len(ev) == 2:
         _detectar_eventos(est, ev[0], ev[1], opc, novos)
-    sg = entradas.get("sugestoes")
     if isinstance(sg, dict) and sg.get("ativo") is not False and isinstance(sg.get("itens"), list):
         _detectar_sugestoes(est, sg, novos)
     ct = entradas.get("cota")

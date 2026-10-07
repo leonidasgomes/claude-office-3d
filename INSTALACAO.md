@@ -163,6 +163,7 @@ statusline de uso do plano; veja a seção 12, **Uso do plano**).
 ```json
 {
   "hooks": {
+    "PreToolUse":   [{"matcher": "Bash|PowerShell", "hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
     "PostToolUse":  [{"matcher": "*", "hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
     "TeammateIdle": [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
     "Stop":         [{"hooks": [{"type": "command", "command": "python \"C:/ferramentas/claude-office-3d/registrar_evento.py\"", "timeout": 5, "async": true}]}],
@@ -257,7 +258,8 @@ navegador <──GET /eventos a cada 2 s── servidor.py (127.0.0.1) <──�
           <──GET /config, /kanban, /prs (gh, em cache)
 ```
 
-1. A cada ferramenta usada (`PostToolUse`), quando um colega fica ocioso (`TeammateIdle`) ou uma sessão/subagente
+1. No início de um comando Bash/PowerShell (`PreToolUse`, para o agente não parecer ocioso enquanto espera), a cada
+   ferramenta usada (`PostToolUse`), quando um colega fica ocioso (`TeammateIdle`) ou uma sessão/subagente
    termina (`Stop`, `SubagentStop`), o Claude Code chama `registrar_evento.py` com um JSON no stdin.
 2. O hook descobre **quem** gerou o evento (nome do colega, id `nome@time`, metadados do subagente, tipo do
    subagente; sem nada disso, é a sessão principal = líder), resume o que foi feito e acrescenta uma linha na tabela
@@ -523,9 +525,10 @@ No PC, abra o escritório em `http://127.0.0.1:8765/` e clique em **📱 Celular
      `ca.key` nunca é servida.
 2. **Parear**: escolha a permissão ("Só ver" ou "Ver e conferir"), clique em "Gerar QR code" e leia o QR com o celular. O
    código é de **uso único**, vale **10 minutos** e só o hash dele fica guardado. O celular mostra uma página pedindo o
-   **nome do aparelho** ("Celular do Leo"); ao tocar em "Parear" ele ganha uma sessão própria (cookie `HttpOnly`,
-   `Secure`, `SameSite=Strict`, 30 dias). Em `dados/dispositivos.json` ficam só o **hash (sha256)** da sessão, o nome, a
-   permissão, quando foi pareado e o último acesso/IP.
+   **nome do aparelho** ("Meu celular"); ao tocar em "Parear" ele ganha uma sessão própria (cookie `HttpOnly`,
+   `Secure`, `SameSite=Strict`, 30 dias). Em `dados/dispositivos.json` ficam o **hash (sha256)** da sessão, o nome, a
+   permissão, quando foi pareado, o último acesso/IP e o **token anti-CSRF** da sessão, este em texto puro (o servidor
+   precisa dele para conferir o cabeçalho `X-Office-Csrf`; sozinho, sem o cookie, ele não abre a sessão).
 
 ### Permissões
 
@@ -556,8 +559,8 @@ entregue em `GET /api/sessao`). O celular tem no máximo **10 ações por minuto
 
 ### Riscos e limites
 
-- Só IPs de rede privada entram (`192.168/16`, `10/8`, `172.16/12`, `fd00::/8`, mais `100.64/10` do Tailscale);
-  qualquer outro IP recebe 403 e quem não tem sessão recebe 401 em tudo, com uma página que não revela nada.
+- Só IPs de rede privada entram (`192.168/16`, `10/8`, `172.16/12`, `fd00::/8`, mais `100.64/10` do Tailscale só com
+  `"rede_tailscale": true` — desligado, essa faixa é recusada); qualquer outro IP recebe 403 e quem não tem sessão recebe 401 em tudo, com uma página que não revela nada.
 - **Com HTTPS** (padrão) o tráfego na rede local é criptografado. **Sem HTTPS** (modo de queda para HTTP) a conexão não é
   criptografada: quem estiver no mesmo Wi-Fi poderia ver o tráfego e **copiar o cookie** do celular pareado. O impacto é
   limitado: com o cookie dá para ver o escritório e, se o aparelho for "ver e conferir", marcar/desfazer "conferido" (no
@@ -583,7 +586,7 @@ desliga no botão **🔔 Alertas** (no topo da página, ou no menu ☰ do celula
 
 | Tipo | Quando avisa | Padrão |
 |---|---|---|
-| PR pronto para o seu merge | PR novo, ou que ficou pronto, com o check de revisão em SUCCESS, sem conflito e fora de rascunho | ligado |
+| PR pronto para o seu merge | PR novo, ou que ficou pronto, pela mesma regra do painel PRs: check de revisão em SUCCESS, sem conflito, fora de rascunho, sem sugestão segurando o merge e, com bots/revisor configurados, com o `--pronto` OK no commit atual | ligado |
 | PR com conflito ou reprovado | PR que passou a ter conflito ou foi reprovado na revisão | ligado |
 | Auditoria vermelha nova | item novo na lista 🔴 do Placar de XP (precisa de `xp.ativo`) | ligado |
 | Item novo para conferir | item novo na lista 🟡 do Placar | **desligado** |

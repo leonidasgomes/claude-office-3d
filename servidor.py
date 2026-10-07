@@ -14,7 +14,8 @@ O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por s
 sugestões a cada sugestoes.intervalo_min (padrão 15) minutos.
 Só escuta em 127.0.0.1, na porta do config.json (padrão 8765) — a não ser que o acesso pelo celular esteja ligado
 ("rede_local": true no config.json ou --rede-local): aí escuta em 0.0.0.0 e só aceita IPs de rede privada que tenham
-o cookie do QR code (rede.py). O celular é só leitura.
+o cookie do QR code (rede.py). O celular lê tudo; com a permissão "conferir" ele também marca e desfaz "conferido"
+(POST /api/xp/conferido e /api/xp/desfazer); liberar vermelho e tratar sugestões são só do PC (rede.PERMISSAO_ROTA).
 
 Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador)  --rede-local (liga o acesso pelo celular)
 """
@@ -492,6 +493,9 @@ _sug_trava = threading.Lock()   # uma coleta por vez
 # verde com a revisão aprovada E isto OK para o commit atual (antes ficava verde antes de os bots revisarem).
 PRONTO = {}
 PRONTO_A_CADA_S = 180
+# Liga quando o PRONTO foi calculado pela 1ª vez (ou não há o que calcular). Antes disso o detector de alertas não lê os
+# PRs: com o PRONTO vazio todo PR aprovado viraria "espera" e, ao encher, dispararia pr_pronto de novo a cada reinício.
+PRONTO_CARREGADO = threading.Event()
 
 
 def atualizar_pronto(c):
@@ -507,12 +511,17 @@ def atualizar_pronto(c):
             novo[str(pr["number"])] = {"ok": ok, "sha": info.get("sha", ""), "quando": time.time(),
                                        "motivos": [m for m in motivos if not m.startswith("(aviso)")][:3],
                                        "avisos": [m[9:] for m in motivos if m.startswith("(aviso)")][:3]}
-        PRONTO.clear()
-        PRONTO.update(novo)
+        PRONTO.update(novo)   # troca sem esvaziar: entre clear() e update() o detector leria tudo como "espera"
+        for k in [k for k in PRONTO if k not in novo]:
+            PRONTO.pop(k, None)
+        PRONTO_CARREGADO.set()
 
 
 def pronto_laco(parar):
-    """Thread: recalcula o pronto de cada PR aberto a cada 3 min (só REST com ETag; sem tokens)."""
+    """Thread: recalcula o pronto de cada PR aberto a cada 3 min (só REST; sem tokens). Custo por rodada: a coleta sem
+    triagem (comentários e lista de PRs com ETag + 1 chamada de reviews por PR aberto), 1 lista de PRs abertos sem ETag
+    (até 50) e, por PR aberto, até 3 chamadas REST sem ETag no `sugestoes_bot.pronto` (o PR, as reviews e, às vezes, o
+    commit da cabeça)."""
     if parar.wait(40):
         return
     while not parar.is_set():
@@ -520,6 +529,8 @@ def pronto_laco(parar):
             c = sugestoes_bot.configuracao()
             if (c["bots"] or c["revisor"]) and c["repo"]:
                 atualizar_pronto(c)
+            else:
+                PRONTO_CARREGADO.set()   # sem bots/revisor o painel não usa o PRONTO
         except Exception as e:   # nunca derruba o servidor; o painel cai no "aguardando"
             print(f"[pronto] ERRO: {type(e).__name__}: {str(e)[:150]}", flush=True)
         parar.wait(PRONTO_A_CADA_S)
@@ -608,8 +619,24 @@ def criar_alertas(obj_rede):
     def escalonamentos():   # opcional: alertas.escalonamentos = caminho de um JSON {"semana": [{cartao, motivo, aberto, fechado, resultado}]}
         caminho = cfg()["alertas"].get("escalonamentos") or ""
         return _ler_json(caminho, None) if caminho and Path(caminho).is_file() else None
+    def sugestoes():
+        try:
+            return dict(sugestoes_bot.resumo(), pronto=dict(PRONTO), pronto_carregado=PRONTO_CARREGADO.is_set())
+        except Exception as e:
+            # caixa ilegível com bots/revisor ligados: o detector pula os PRs nesta rodada em vez de cair no "só a
+            # revisão" (alerta pr_pronto falso); sem `itens`, também não mexe nas sugestões
+            try:
+                c = sugestoes_bot.configuracao()
+                configurado = bool(c["bots"] or c["revisor"])
+            except Exception:
+                configurado = True   # nem a configuração leu: na dúvida, pula os PRs (sem alerta falso)
+            if configurado:
+                return {"ativo": True, "pronto_carregado": False, "erro": str(e)[:200]}
+            raise
     fontes = {"prs": prs, "placar": placar, "eventos": lambda desde: ler_eventos(desde), "escalonamentos": escalonamentos,
-              "sugestoes": lambda: sugestoes_bot.resumo(), "cota": VIGIA.resumo}
+              "sugestoes": sugestoes, "cota": VIGIA.resumo}
+    # "sugestoes" leva o PRONTO da thread de validações: o alerta pr_pronto usa a mesma regra do painel PRs (prs.js);
+    # antes da 1ª rodada do PRONTO (pronto_carregado False) o detector não mexe no estado dos PRs
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
     obj_rede.ao_revogar.append(ALERTAS.push.remover_aparelhos)   # revogar o aparelho apaga a inscrição de push
     return ALERTAS
@@ -743,7 +770,7 @@ def abrir_servidores(args, porta, em_rede, https, tailscale):
     """Sobe os servidores. Modo rede com HTTPS: HTTP só em 127.0.0.1:porta (o PC), HTTPS em 0.0.0.0:porta+1 (celular) e
     uma porta auxiliar 0.0.0.0:porta+2 só com o certificado público da CA. Sem HTTPS (ou sem como gerar o certificado):
     HTTP em 0.0.0.0:porta, com aviso. Devolve (principal, [extras]) ou (None, []) se a porta estiver ocupada."""
-    obj = Handler.rede = rede.Rede(PASTA, em_rede)
+    obj = Handler.rede = rede.Rede(PASTA, em_rede, tailscale)
     usa_https = bool(em_rede and https and "--sem-https" not in args and obj.iniciar_tls(porta, tailscale))
     if em_rede and https and "--sem-https" not in args and not usa_https:
         print("AVISO: HTTPS indisponível (" + obj.tls_info.get("erro", "?") + "). Caindo para HTTP na rede local.")

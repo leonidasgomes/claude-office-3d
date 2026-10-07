@@ -48,12 +48,17 @@ for _fluxo in (sys.stdout, sys.stderr):
 WINDOWS = os.name == "nt"
 PYTHON_CMD = "python" if WINDOWS else "python3"
 TOTAL_PASSOS = 7
-EVENTOS_HOOK = ("PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
+EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "TeammateIdle", "Stop", "SubagentStop")
+# PreToolUse só nos comandos que podem demorar: marca o início, para o agente não parecer ocioso enquanto espera
+MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*"}
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "push.py", "cota.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
-          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore"]
+          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
+          # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
+          "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
+          "skills-candidatos/externo/README.md", "docs/SDD.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]
@@ -251,7 +256,7 @@ def bloco_hooks(pasta):
     # async: o registrar_evento.py só grava o evento (não imprime nem decide), então não precisa travar cada chamada de
     # ferramenta do agente esperando o Python subir (doc hooks: "Run hooks in the background").
     h = {"type": "command", "command": comando_hook(pasta), "timeout": 5, "async": True}
-    return {"hooks": {ev: [({"matcher": "*"} if ev == "PostToolUse" else {}) | {"hooks": [dict(h)]}]
+    return {"hooks": {ev: [({"matcher": MATCHER_HOOK[ev]} if ev in MATCHER_HOOK else {}) | {"hooks": [dict(h)]}]
                       for ev in EVENTOS_HOOK}}
 
 
