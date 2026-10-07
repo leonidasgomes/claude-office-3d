@@ -210,8 +210,8 @@ function tocar(tipo) {   // plim (PR pronto), fanfarra (merge/nível), bip (coma
 }
 function aplicarSom() {
   const b = $('btnSom'); if (!b) return;
-  b.textContent = somLigado ? '🔊 Som' : '🔇 Som';
-  b.setAttribute('aria-pressed', String(somLigado));
+  b.textContent = somLigado ? '🔊 Som: ligado' : '🔇 Som: desligado';   // item do menu ⚙️ Opções (menuitemcheckbox)
+  b.setAttribute('aria-checked', String(somLigado));
   b.title = somLigado ? 'Sons ligados (PR pronto, merge, nível, comando que falhou). Clique para desligar' : 'Sons desligados. Clique para ligar';
 }
 aplicarSom();
@@ -3055,6 +3055,9 @@ const selo = $('selo'), btnDemo = $('btnDemo');
 function atualizarSelo() {
   const ativo = demoForcada || demoAuto;
   selo.hidden = !ativo; btnDemo.classList.toggle('ativo', demoForcada);
+  const txt = demoForcada ? '🎬 Demo: ligado' : demoAuto ? '🎬 Demo: automática (sem servidor)' : '🎬 Demo: desligado';
+  if (btnDemo.textContent !== txt) btnDemo.textContent = txt;   // item do menu ⚙️ Opções (menuitemcheckbox)
+  btnDemo.setAttribute('aria-checked', demoForcada ? 'true' : demoAuto ? 'mixed' : 'false');
 }
 btnDemo.addEventListener('click', () => { demoForcada = !demoForcada; atualizarSelo(); });
 $('btnApelidos').addEventListener('click', () => {

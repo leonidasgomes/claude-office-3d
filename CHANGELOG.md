@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.1
+- **Menu ⚙️ Opções** (`opcoes.js`, novo; `index.html`, `estilo.css`, `escritorio.js`): no cabeçalho do painel ficam só os
+  painéis (PRs, Kanban, Placar, Alertas, Saúde, Arquitetura, Replay); Visão geral, Apelidos, Animações, Som, Demo e
+  📱 Celular (só no PC) foram para o menu do botão ⚙️, e cada opção mostra o estado atual ("Animações: auto", "Som:
+  desligado", "Demo: ligado"). Teclado: Enter/Espaço/↓ abrem, ↑/↓/Home/End andam, Tab circula dentro, Esc fecha e devolve
+  o foco ao ⚙️; clique fora fecha. No celular as opções viram a seção "⚙️ Opções" do menu ☰. Os botões e ids são os
+  mesmos de antes (links diretos, `__office` e atalhos continuam iguais).
+
 ## 1.17.0
 - **Grafo de arquitetura para agentes** (`grafo/`, nova; copiada pelo instalador): `python grafo/grafo.py` mantém um grafo
   de arquitetura do seu projeto **conferido contra o código** (imports/includes reais de Python, C/C++, JS/TS, C# e

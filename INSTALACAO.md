@@ -302,7 +302,7 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
   e PRs para conferir (amarelo), com os botões **✓ Conferido** / **Liberar pontos** / **Desfazer**; o nível também aparece
   no crachá da mesa e na aba "XP" da ficha. O **ⓘ** de cada número explica como ele é calculado (com os pesos, a data
   inicial e o check de revisão do seu config). Veja a seção 8.
-- **📱 Celular** — (só no PC, quando ligado) QR para instalar o certificado e parear o celular; lista e revoga aparelhos.
+- **📱 Celular** — (menu ⚙️ Opções; só no PC, quando ligado) QR para instalar o certificado e parear o celular; lista e revoga aparelhos.
   Veja a seção 9.
 - **🩺 Saúde** — trabalho duplicado (a mesma tarefa em duas branches ou PRs), agentes andando em círculos (o mesmo
   arquivo editado e o mesmo comando rodado de novo e de novo), PRs parados e o risco dos PRs abertos, com links para o
@@ -339,15 +339,17 @@ vidro), `subagente` (bonequinho temporário, ou tarefa para a mesa do agente se 
   PRs na parede e um sino na mesa do líder que toca com PR pronto; um fio vermelho liga dois agentes que editam o mesmo
   arquivo; o gaveteiro ao lado da mesa ganha objetos com o nível. Passe o mouse para ver a dica e clique para abrir o
   painel certo; **📍 Seguir** na ficha faz a câmera acompanhar o agente (arrastar a cena devolve a câmera).
-- **Animações** — auto (segue a opção "reduzir movimento" do sistema), reduzidas (sem confete, pulinhos nem transição
+- **⚙️ Opções** — no cabeçalho ficam só os painéis; o botão ⚙️ abre o menu com Visão geral, Apelidos, Animações, Som,
+  Demo e 📱 Celular (só no PC), cada um mostrando o estado atual (Esc fecha; no celular, seção "⚙️ Opções" do menu ☰).
+- **Animações** (menu ⚙️) — auto (segue a opção "reduzir movimento" do sistema), reduzidas (sem confete, pulinhos nem transição
   de câmera) ou completas. **🔇/🔊 Som** — sons curtos e opcionais (PR pronto, merge/nível, comando que falhou, o gato),
   desligados por padrão.
 - **Modo leve** — num PC sem aceleração de vídeo (renderização por software) o escritório entra sozinho em modo leve
   (menos quadros por segundo, sem confete, gato e fios) e avisa no canto da cena. Force com `?leve=1` no endereço ou
   desligue com `?leve=0`.
-- **Visão geral** — volta a câmera. Arraste para girar, roda do mouse para zoom.
-- **Apelidos** — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
-- **Demo** — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
+- **Visão geral** (menu ⚙️) — volta a câmera. Arraste para girar, roda do mouse para zoom.
+- **Apelidos** (menu ⚙️) — alterna brasileiros / cinema / desligado (só na tela; a escolha fica no navegador).
+- **Demo** (menu ⚙️) — eventos de mentira para ver tudo funcionando. Sem servidor (abrindo o `index.html` direto do disco),
   a página entra sozinha em modo demonstração.
 - `reiniciar_escritorio` (`.bat`/`.sh`) encerra o servidor da porta configurada e sobe de novo; a página aberta
   reconecta sozinha.
@@ -560,7 +562,7 @@ esse comando com o seu caminho do Python e as suas portas (só mostra; nunca exe
 
 ### Instalar o certificado (uma vez por celular) e parear
 
-No PC, abra o escritório em `http://127.0.0.1:8765/` e clique em **📱 Celular** (o botão só existe no PC, em `localhost`):
+No PC, abra o escritório em `http://127.0.0.1:8765/` e clique em **⚙️ → 📱 Celular** (a opção só existe no PC, em `localhost`):
 
 1. **Instalar o certificado**: leia o primeiro QR (aponta para `http://<ip do PC>:8767/`).
    - iPhone (Safari): baixe o perfil; Ajustes > Geral > VPN e Gerenciamento de Dispositivos > instalar; depois Ajustes >

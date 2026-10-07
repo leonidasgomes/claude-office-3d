@@ -180,3 +180,18 @@ html.compacto button.chip { min-height: 40px; font-size: 14px; }
 #agentes li.esmaecido { opacity: .45; }
 #feed li.falhou { border-left-style: double; }
 #feed li.vazio { color: #8b98a8; border-left-color: transparent; }
+
+/* Menu ⚙️ Opções (opcoes.js): popover fixo na tela no PC; no celular, seção "⚙️ Opções" do menu ☰ */
+.opcoes { position: relative; display: inline-flex; }
+#btnOpcoes { font-size: 16px; line-height: 1; padding: 4px 9px; }
+#btnOpcoes[aria-expanded="true"] { background: #2d3a4b; border-color: #f59e0b; }
+#menuOpcoes { position: fixed; z-index: 60; min-width: 230px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; background: #161c24; border: 1px solid #3a4756; border-radius: 10px; box-shadow: 0 10px 30px #000c; }
+#menuOpcoes .titulo-opcoes { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #8b98a8; padding: 4px 8px 2px; }
+#menuOpcoes button { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 7px 10px; white-space: nowrap; }
+#menuOpcoes button:hover, #menuOpcoes button:focus-visible { background: #2d3a4b; border-color: #3a4756; outline: none; }
+#menuOpcoes button[aria-checked="true"] { color: #fde68a; }
+html.compacto #opcoes { display: contents; }
+html.compacto #btnOpcoes { display: none !important; }
+html.compacto #menuOpcoes.secao { position: static; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; max-width: none; padding: 8px 0 0; background: none; border: 0; border-top: 1px solid #2a3340; border-radius: 0; box-shadow: none; }
+html.compacto #menuOpcoes .titulo-opcoes { grid-column: 1 / -1; padding: 0; }
+html.compacto #menuOpcoes button { background: #232d3a; border-color: #3a4756; white-space: normal; text-align: center; }

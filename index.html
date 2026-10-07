@@ -109,13 +109,19 @@
         <button id="btnAlertas" title="Alertas: avisa quando há algo esperando por você (PR pronto, pergunta do Diretor...)" hidden>🔔 Alertas <span id="alertasConta" hidden></span></button>
         <button id="btnArquitetura" title="Arquitetura do projeto: sistemas, camadas, imports reais e quem está mexendo onde" hidden>🗺️ Arquitetura</button>
         <button id="btnSaude" title="Saúde do time: trabalho duplicado, agentes em círculos, PRs parados e risco dos PRs" hidden>🩺 Saúde</button>
-        <button id="btnCelular" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
-        <button id="btnVisao" title="Voltar à visão geral">Visão geral</button>
-        <button id="btnApelidos" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
-        <button id="btnMovimento" title="Trocar as animações do escritório 3D">Animações: auto</button>
         <button id="btnReplay" title="Rever o que aconteceu num dia, acelerado. Ao sair, a cena recarrega os últimos eventos (os que chegaram no meio aparecem no feed, sem animação)">⏪ Replay</button>
-        <button id="btnSom" title="Sons desligados. Clique para ligar" aria-pressed="false">🔇 Som</button>
-        <button id="btnDemo" title="Forçar o modo demonstração">Demo</button>
+        <div id="opcoes" class="opcoes">
+          <button id="btnOpcoes" type="button" aria-label="Opções" title="Opções: visão geral, apelidos, animações, som, demonstração e celular" aria-haspopup="menu" aria-expanded="false" aria-controls="menuOpcoes">⚙️</button>
+          <div id="menuOpcoes" role="menu" aria-label="Opções" hidden>
+            <div class="titulo-opcoes" aria-hidden="true">⚙️ Opções</div>
+            <button id="btnVisao" type="button" role="menuitem" data-fecha="1" title="Voltar a câmera à visão geral">🎯 Visão geral</button>
+            <button id="btnApelidos" type="button" role="menuitem" title="Trocar os apelidos dos agentes (só na tela)">Apelidos</button>
+            <button id="btnMovimento" type="button" role="menuitem" title="Trocar as animações do escritório 3D">Animações: auto</button>
+            <button id="btnSom" type="button" role="menuitemcheckbox" aria-checked="false" title="Sons desligados. Clique para ligar">🔇 Som: desligado</button>
+            <button id="btnDemo" type="button" role="menuitemcheckbox" aria-checked="false" title="Forçar o modo demonstração">🎬 Demo: desligado</button>
+            <button id="btnCelular" type="button" role="menuitem" data-fecha="1" title="Abrir o escritório no celular (rede local)" hidden>📱 Celular</button>
+          </div>
+        </div>
       </div>
     </header>
     <div id="gavetaCorpo">
@@ -135,6 +141,7 @@
   </aside>
 </div>
 <script type="module" src="escritorio.js"></script>
+<script type="module" src="opcoes.js"></script>
 <script type="module" src="kanban.js"></script>
 <script type="module" src="prs.js"></script>
 <script type="module" src="placar.js"></script>
