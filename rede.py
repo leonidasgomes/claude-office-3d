@@ -490,6 +490,7 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
 
     # ------------------------------------------------------------------ respostas
     def responder(self, corpo, tipo="application/json; charset=utf-8", codigo=200, extras=()):
+        self._drenar_corpo()
         if not isinstance(corpo, bytes):
             corpo = json.dumps(corpo, ensure_ascii=False).encode("utf-8")
         self.send_response(codigo)
@@ -510,9 +511,33 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
     def _ler_corpo(self, limite=4096):
         try:
             n = int(self.headers.get("Content-Length") or 0)
-            return self.rfile.read(n) if 0 < n <= limite else None
+            if not 0 < n <= limite:
+                return None   # grande demais: responder() descarta (ou fecha a conexão)
+            self._corpo_pendente = False
+            return self.rfile.read(n)
         except (ValueError, OSError):
             return None
+
+    _corpo_pendente = False   # POST/PUT... cujo corpo ainda não foi lido
+
+    def _drenar_corpo(self, maximo=65536):
+        """Descarta o corpo não lido antes de responder. Recusar um POST sem ler o corpo deixa bytes no socket e, ao
+        fechar, o Windows manda RST: o cliente recebia "conexão anulada" no lugar do 403/405."""
+        if not self._corpo_pendente:
+            return
+        self._corpo_pendente = False
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if 0 < n <= maximo:
+            try:
+                self.rfile.read(n)
+                return
+            except OSError:
+                pass
+        if n:
+            self.close_connection = True
 
     # ------------------------------------------------------------------ guarda
     def _host_local(self):
@@ -616,6 +641,7 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
             SimpleHTTPRequestHandler.do_HEAD(self)
 
     def do_POST(self):
+        self._corpo_pendente = True
         if not self._guarda():
             return
         if urlparse(self.path).path.startswith(("/api/", "/rede/")):
@@ -628,7 +654,10 @@ class HandlerSeguro(SimpleHTTPRequestHandler):
     def __getattr__(self, nome):
         # PUT, DELETE, PATCH, OPTIONS... qualquer outro método: 405 (depois da guarda de acesso)
         if nome.startswith("do_"):
-            return lambda: self._guarda() and self.nao_permitido()
+            def metodo():
+                self._corpo_pendente = True
+                return self._guarda() and self.nao_permitido()
+            return metodo
         raise AttributeError(nome)
 
     # ------------------------------------------------------------------ rotas de rede (GET)

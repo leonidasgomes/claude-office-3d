@@ -747,7 +747,8 @@ def testar_pedidos():
             saude.PASTA_DADOS = Path(tmp) / "d"
             saude.ARQ = saude.PASTA_DADOS / "saude.json"
             saude.PASTA_DADOS.mkdir()
-            saude.ARQ.write_text(json.dumps({"ts": time.time(), "duplicados": {"fortes": [DUP], "fracos": []}, "circulos": [CIRC]}),
+            # ts dos dados ANTES do pedido (no mesmo milissegundo, o ts arredondado do pedido podia ficar antes e ele saía como cancelado)
+            saude.ARQ.write_text(json.dumps({"ts": time.time() - 5, "duplicados": {"fortes": [DUP], "fracos": []}, "circulos": [CIRC]}),
                                  encoding="utf-8")
             saude.definir_ignorado(saude.chave_circulo(CIRC), True)
             saude.registrar_pedido("parado:9", "feche o #9")
