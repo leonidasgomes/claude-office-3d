@@ -483,7 +483,9 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
         res["erro"] = f"{type(e).__name__}: {str(e)[:200]}"
         _anotar_erro(cfg, res)
         return res
-    if triagem and res["novas"] and cfg["modelo"]:
+    # tria o que estiver "nova" na caixa, não só as desta coleta: a thread `pronto` do servidor coleta sem triagem a cada
+    # 3 min e pegava as novas primeiro, então a coleta com triagem achava 0 novas e a triagem nunca rodava (7 out. 2026)
+    if triagem and cfg["modelo"] and (res["novas"] or _ha_para_triar(cfg)):
         try:
             res["triadas"] = triar(cfg, log)
         except Exception as e:
@@ -567,6 +569,21 @@ def _json_da_resposta(texto):
     return json.loads(t[i:j + 1])
 
 
+MAX_TENTATIVAS_TRIAGEM = 2   # item que o modelo não classificou em 2 chamadas fica "nova" (o líder trata) sem novo custo
+
+
+def _para_triar(caixa):
+    return [x for x in caixa if x.get("situacao") == "nova" and int(x.get("tentativas_triagem") or 0) < MAX_TENTATIVAS_TRIAGEM]
+
+
+def _ha_para_triar(cfg):
+    try:
+        with trava(cfg["pasta"]):
+            return bool(_para_triar(ler_caixa(cfg)))
+    except Exception:
+        return False
+
+
 def triar(cfg, log=None, itens_max=MAX_TRIAGEM):
     """Triagem de até 30 itens 'nova' em UMA chamada de `claude -p` (Haiku, sem ferramentas). Devolve quantos foram triados."""
     log = log or (lambda m: None)
@@ -574,7 +591,14 @@ def triar(cfg, log=None, itens_max=MAX_TRIAGEM):
     if not exe or not cfg["modelo"]:
         return 0
     with trava(cfg["pasta"]):
-        alvo = [x for x in ler_caixa(cfg) if x.get("situacao") == "nova"][:itens_max]
+        alvo = _para_triar(ler_caixa(cfg))[:itens_max]
+        if alvo:   # conta a tentativa ANTES de chamar: resposta inválida ou falha não vira chamada sem fim
+            ids = {str(x["id"]) for x in alvo}
+            caixa = ler_caixa(cfg)
+            for x in caixa:
+                if str(x["id"]) in ids:
+                    x["tentativas_triagem"] = int(x.get("tentativas_triagem") or 0) + 1
+            gravar_caixa(cfg, caixa)
     if not alvo:
         return 0
     times = ", ".join(cfg["agentes"])
@@ -638,6 +662,7 @@ def tratar(cfg, id_, acao, nota=""):
         if acao == "reabrir":
             x["situacao"] = "triada" if x.get("acao_sugerida") else "nova"
             x["tratada_em"] = ""
+            x["tentativas_triagem"] = 0   # reaberto sem triagem: volta a ser triado na próxima coleta
         else:
             x["situacao"], x["tratada_em"] = ACOES_TRATAR[acao], _iso(_agora())
         if nota:

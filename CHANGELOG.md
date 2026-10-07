@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.16.1
+- **A triagem das sugestões dos bots voltou a rodar** (`sugestoes_bot.py`): a thread `pronto` do servidor coleta a cada
+  3 min sem triagem e pegava as sugestões novas antes da coleta com triagem, que então achava 0 novas e nunca chamava o
+  modelo. Agora a coleta tria tudo o que estiver `nova` na caixa.
+- **No máximo 2 tentativas por item**: a tentativa é contada antes de chamar o modelo; um item que o modelo não
+  classificou (ou que falhou) em 2 chamadas fica `nova` para o líder, sem novo custo. Reabrir o item zera a contagem.
+- Novo teste `ferramentas/testar_sugestoes_triagem.py` (sem rede e sem modelo), no CI.
+
 ## 1.16.0
 - **Atenção ao atualizar:** a triagem vem LIGADA por padrão (até 30 chamadas por dia do modelo barato no seu plano).
   Para desligar: `"sugestoes": {"saude_triagem": ""}` no `config.json`.

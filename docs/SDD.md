@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.16.0 (arquivo `VERSION`) |
+| Versão descrita | 1.16.1 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -374,8 +374,11 @@ Princípios que aparecem em todo o código:
   aceita `Copilot` — `APELIDOS_BOT`) e a marca `[revisor-ia]`. Extrai prioridade do selo P0–P3 ou da gravidade do
   índice do Copilot (`PRIO_GRAVIDADE`), itens "Previously missed" (`_achados_do_indice`), ignora revisões "sem cota".
 - **Arquivamento**: sugestões de PR fechado viram `arquivada` (`_arquivar`; guardadas `GUARDAR_ARQUIVADAS_DIAS = 30`).
-- **Triagem** (`triar`): uma chamada `claude -p` por coleta com itens novos, até 30 itens, timeout 120 s, com o
-  `glossario_triagem.md` e as últimas 20 sugestões ignoradas com motivo (`contexto_triagem`, `MAX_APRENDIDAS`).
+- **Triagem** (`triar`): uma chamada `claude -p` por coleta quando há itens `nova` na caixa (`_ha_para_triar`; não só os
+  desta coleta: a thread `pronto` coleta sem triagem e pegava as novas antes), até 30 itens, timeout 120 s, com o
+  `glossario_triagem.md` e as últimas 20 sugestões ignoradas com motivo (`contexto_triagem`, `MAX_APRENDIDAS`). Cada item
+  vai ao modelo no máximo `MAX_TENTATIVAS_TRIAGEM = 2` vezes (`tentativas_triagem`, contado ANTES da chamada em `_para_triar`;
+  falha ou resposta sem classificação também conta); depois fica `nova` para o líder, sem novo custo. Reabrir zera o contador.
 - **Tratamento** (`tratar`), **listagens** (`texto_pendentes`, `texto_listar`, `resumo`) e **pronto** (`pronto`).
 - **Concorrência**: arquivo `.trava` em `dados/sugestoes/` (classe `trava`; trava com mais de 120 s é considerada
   velha), gravação atômica via `.tmp` + `os.replace` (`_gravar`).
@@ -665,7 +668,7 @@ StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\
 | `plugins_projeto.py` | `[--projeto P] [--desligar ids] [--religar ids]` |
 | `modelos/briefing_diretor.py` | `[--config config.json] [--dias-parado 14] [--saida arquivo.md]` (padrão `dados/diretor/briefing.md`) |
 | `ferramentas/verificar.py` | `[--termos arquivo.txt]` |
-| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
+| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
 | Atalhos | `abrir_escritorio[.bat\|.sh] [celular]`, `reiniciar_escritorio[.bat\|.sh] [celular]` |
 
 ### 5.4 `config.json` — chaves principais
@@ -970,7 +973,7 @@ three.js ou cópia em `vendor/` (`INSTALACAO.md` §2, `instalar.py`).
 
 | Workflow | Gatilho | Passos |
 |---|---|---|
-| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_eventos.py`; `ferramentas/build.py` |
+| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_eventos.py`; `ferramentas/testar_sugestoes_triagem.py`; `ferramentas/build.py` |
 | `release.yml` | tag `v*` | `ferramentas/build.py`; `ferramentas/notas_versao.py <tag> > NOTAS.md` (falha se a tag não bater com `VERSION`); `gh release create` com `dist/*.zip` e `dist/*.sha256` |
 
 O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/build.py`).
@@ -988,6 +991,7 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | `ferramentas/testar_saude.py` | `saude.py` (número e nome da tarefa na branch; duplicados fortes e fracos, só PR aberto ou branch local com commit < 48 h, forte por nome só sem issue em comum; círculos, sem contar o `inicio`, com `notebook_path`; `risco_pr` com `CHECKS_FALHOS`; `parados` com a regra do painel; `resumo` sem PRs = só círculos; `branches_locais` num repositório git temporário; `--pendentes` sem contagens), os alertas `duplicado`/`circulo`/`pr_parado` com fontes falsas (sem repetir; fonte com erro ou sem PRs não mexe no estado; PR parado não repete enquanto aberto), o orçamento de atenção em `Alertas.passo` (imediatos na hora; push de resumo `resumo_horas` depois do 1º aviso pendente, também com estado antigo sem `resumo_desde`; `conferir` chega pelo resumo ao aparelho que o ligou, com push real e HTTP falso; contagem `hoje`), `servidor.saude_atual` (sem `projetos`/`github.repo`, GitHub fora, PRONTO não carregado, PR segurado por sugestão), `servidor.saude_laco` e o passo `saude` do vigia; painel Saúde (chaves, ignorar/reativar nos alertas e no `--pendentes`, pedidos ao líder entregues uma vez, `vigia_lider.rodada` sem repetir e com uma linha por pedido, `descrever` sem texto externo, `texto_linha`/`_alvo` contra linha forjada, entrega antes de gravar o estado, janela de 24 h, rotação em 200, trava entre processos, validação dos POST `/api/saude/*` com surrogate, concorrência em threads e troca atômica com `PermissionError`, e POST HTTP real em porta aleatória exigindo `Sec-Fetch-*` com o User-Agent no histórico); `saude.rodada` (resolvidos, ignorar só a ocorrência, pedido cancelado, `sem_prs`/`sem_locais`), triagem barata com modelo FALSO (validação estrita, cache por ocorrência, teto do dia, oscilação, aviso por template, injeção no dado e na resposta, falso positivo `alta` não silencia, desfazer, `claude -p` com `subprocess.run` falso: argumentos sem shell nem ferramentas, envelope quebrado, `achar_claude` recusa `.cmd`/`.bat` e aceita o `claude` sem extensão), `segurados` e o `--pendentes`; nunca chama o modelo de verdade | CI e local, com `python -W error` |
 | `ferramentas/testar_registrar_evento.py` | hook `registrar_evento.py`: `resultado_de` (PostToolUse com `stdout`/`stderr` → `ok: true`; `PostToolUseFailure` "Exit code N" → `ok: false` com `codigo` e a 1ª linha em `erro`, até 120; `exit_code`/`exitCode`/`returncode`, `interrupted`, texto "Error: Exit code N"; `run_in_background` sem resultado; só Bash/PowerShell), `evento` (início sem resultado, Edit/SendMessage sem `ok`) e `main` (entrada quebrada, `cwd` fora de `projetos`, banco falhando, exceção: sempre sai 0, sem saída e rápido), com `banco` falso e pasta temporária | CI e local, com `python -W error` |
 | `ferramentas/testar_eventos.py` | replay: `banco.eventos_periodo` (dia inteiro, horas com `ate` exclusivo, paginação por `apos` sem repetir, `ts` fora da ordem do id, linha quebrada, evento sem `ts`, concorrência com gravações) e `servidor.eventos_periodo` (400 para data inválida/impossível/não ASCII, injeção, `ate <= de`, `apos` inválido ou gigante; 503 com o banco quebrado), a rota HTTP real em porta aleatória (modo novo e o `/eventos` de sempre); banco temporário | CI e local, com `python -W error` |
+| `ferramentas/testar_sugestoes_triagem.py` | triagem das sugestões (`sugestoes_bot.triar`, `_para_triar`, `_ha_para_triar` e o ramo de triagem do `coletar`): item `nova` já na caixa é triado na coleta seguinte mesmo sem novas; `coletar(triagem=False)` nunca chama o modelo; tentativa contada antes da chamada e teto `MAX_TENTATIVAS_TRIAGEM`; falha e resposta sem JSON contam; item tratado pelo líder no meio da chamada não é sobrescrito; sem `claude` não gasta tentativa; só os 30 enviados contam. Caixa em pasta temporária, `gh_api` e `subprocess.run` falsos (sem rede e sem modelo) | CI e local, com `python -W error` |
 | `ferramentas/verificar_docs.py` | este documento contra o código (seção 13) | CI e local |
 | `ferramentas/build.py` | roda a verificação e monta o zip | CI e release |
 
@@ -1121,3 +1125,4 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.14.0 | UX: dica ⓘ nas métricas do Placar e no selo de risco do PR; lista de agentes e ficha com atividade e tempo relativo; "Alertas recentes" no topo e tipos/push recolhidos; responsividade, foco visível, `aria-label`s e contraste | `dica.js`, `placar.js`, `prs.js`, `escritorio.js`, `alertas.js`, `index.html`, CSS, `instalar.py` |
 | 1.15.0 | escritório 3D vivo (anel e ícone de estado, poses, relógio do comando longo, círculos e PRs parados na cena, festa no merge, gaveteiro por nível, dica/clique/Seguir, dia e noite, movimento reduzido); ✔/✖ dos comandos (hook `PostToolUseFailure`); tela de PRs e sino; fio de mesmo arquivo; envelope/pasta; gato; sons; modo leve; painel 🩺 Saúde com ignorar/avisar o líder; replay do dia (`GET /eventos?de=&ate=`) e filtros por agente | `escritorio.js`, `saude_painel.js`, `saude_painel.css`, `saude.py`, `servidor.py`, `rede.py`, `alertas.py`, `vigia_lider.py`, `registrar_evento.py`, `banco.py`, `instalar.py`, `placar.js`, `prs.js`, `index.html`, `estilo.css`, `ferramentas/` |
 | 1.16.0 | saúde com triagem por modelo barato (aviso automático ao líder, falso positivo silenciado até resolver, item novo espera o veredicto até 15 min); ignorar vale só para a ocorrência; "Resolvidos (24 h)"; pedido cancelado se o item se resolveu; `sugestoes.saude_triagem` | `saude_triagem.py`, `saude.py`, `servidor.py`, `rede.py`, `configuracao.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `instalar.py`, `ferramentas/testar_saude.py` |
+| 1.16.1 | triagem das sugestões dos bots volta a rodar com itens `nova` já na caixa; no máximo 2 tentativas por item | `sugestoes_bot.py`, `ferramentas/testar_sugestoes_triagem.py` |

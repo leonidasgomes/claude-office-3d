@@ -37,5 +37,7 @@ jobs:
         run: python -W error ferramentas/testar_registrar_evento.py
       - name: Replay do dia (GET /eventos?de=&ate=)
         run: python -W error ferramentas/testar_eventos.py
+      - name: Triagem das sugestões dos bots (itens já na caixa, teto de tentativas)
+        run: python -W error ferramentas/testar_sugestoes_triagem.py
       - name: Build do pacote
         run: python ferramentas/build.py
