@@ -597,6 +597,16 @@ class TesteConsultas(Base):
         self.g("sync-rules", "--saida", pasta, "--escrever")
         self.assertFalse((pasta / "arq-velho.md").exists())
         self.assertTrue((pasta / "arq-manual.md").exists())
+        self.assertIn("`python grafo.py slice sys.core`", (pasta / "arq-core.md").read_text(encoding="utf-8"))
+        # com a cópia no projeto (instalar_grafo --copiar), a regra cita a cópia, rode quem rodar
+        copia = self.raiz / ".claude" / "grafo" / "grafo.py"
+        copia.parent.mkdir(parents=True)
+        try:
+            shutil.copy2(grafo.__file__, copia)
+            self.g("sync-rules", "--saida", pasta, "--escrever")
+            self.assertIn("`python .claude/grafo/grafo.py slice sys.core`", (pasta / "arq-core.md").read_text(encoding="utf-8"))
+        finally:
+            shutil.rmtree(copia.parent)
 
 
 class TesteInit(unittest.TestCase):
@@ -884,7 +894,15 @@ class TesteVerificador(Base):
             self.assertIn("--python python3", p.stderr)   # aviso
             s = json.loads((proj / ".claude" / "settings.json").read_text(encoding="utf-8"))
             cmds = [h["command"] for grupos in s["hooks"].values() for g in grupos for h in g["hooks"]]
-            self.assertTrue(cmds and all(c.startswith('python "$CLAUDE_PROJECT_DIR/') for c in cmds), cmds)
+            self.assertTrue(cmds and all(c.startswith('f="$CLAUDE_PROJECT_DIR/.claude/grafo/grafo_hook.py"; if [ -f "$f" ]; then python "$f" ')
+                                         and c.endswith("; else exit 0; fi") for c in cmds), cmds)
+            # sem a cópia (clone antigo), o hook não bloqueia: sai 0
+            bash = shutil.which("bash")
+            if bash:
+                pre = next(c for c in cmds if '"$f" pre;' in c)
+                r = subprocess.run([bash, "-c", pre], input=b"{}", capture_output=True, timeout=30,
+                                   env={**os.environ, "CLAUDE_PROJECT_DIR": str(Path(t) / "nao-existe")})
+                self.assertEqual(r.returncode, 0, r.stderr)
             self.assertFalse(any(Path(sys.executable).as_posix() in c for c in cmds))
 
     def test_nome_e_status_nao_texto_no_index(self):

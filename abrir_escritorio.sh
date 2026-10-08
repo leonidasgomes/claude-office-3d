@@ -5,4 +5,6 @@
 cd "$(dirname "$0")" || exit 1
 echo "Iniciando o Claude Office 3D..."
 if [ "$1" = "celular" ]; then shift; set -- --rede-local "$@"; fi
-exec python3 servidor.py "$@"
+PY=python3
+[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
+exec "$PY" servidor.py "$@"

@@ -14,7 +14,9 @@ O Claude Office 3D é um escritório em 3D, aberto no navegador, que mostra em t
 - quem fica **ocioso** vai para as áreas de pausa: sofá e TV, fliperama, ping-pong, refeitório e banheiro;
 - painéis opcionais de **Kanban** (GitHub Projects) e **PRs** abertos esperando o seu merge;
 - painel **🗺️ Arquitetura**: o grafo de sistemas do seu projeto (camadas, imports reais, violações) e quem está mexendo
-  onde, com a ferramenta `grafo/` para os agentes consultarem a arquitetura gastando pouco (seção 16).
+  onde, com a ferramenta `grafo/` para os agentes consultarem a arquitetura gastando pouco (seção 16);
+- **boas práticas do projeto**: confere o básico de que o time de agentes precisa em cada projeto (git, `.gitignore`,
+  CLAUDE.md, definição de cada agente, `.venv` do Python, testes) e corrige o que é seguro (seção 17).
 
 ## 2. Requisitos
 
@@ -26,7 +28,10 @@ O Claude Office 3D é um escritório em 3D, aberto no navegador, que mostra em t
 | Internet na primeira carga | não | o three.js vem do CDN jsDelivr — ou baixe para `vendor/` no instalador e funcione offline |
 | GitHub CLI (`gh`) logado | não | só para os painéis de Kanban e PRs (`gh auth login`; para o Kanban, `gh auth refresh -s project`) |
 
-Windows, macOS e Linux. No Windows o comando do hook usa `python`; no macOS/Linux, `python3`.
+Windows, macOS e Linux. O instalador cria o **`.venv` do escritório** (`<pasta>/.venv`, sem pip: o escritório só usa a
+biblioteca padrão) e o hook, a statusline e os atalhos chamam o Python dele (`.venv/Scripts/python.exe` no Windows,
+`.venv/bin/python` no macOS/Linux), entre aspas. Sem `.venv` (`--sem-venv` ou se a criação falhar), o comando usa o
+`python` do PATH no Windows e o `python3` no macOS/Linux.
 
 ## 3. Instalação com o assistente (recomendado)
 
@@ -35,23 +40,31 @@ Na pasta do Claude Office 3D:
 - **Windows:** duplo clique em `instalar.bat` (ou `python instalar.py`)
 - **macOS/Linux:** `./instalar.sh` (ou `python3 instalar.py`)
 
-O assistente tem 7 passos. Em cada pergunta o valor padrão aparece entre colchetes e **Enter aceita**. Nada é gravado
+O assistente tem 10 passos. Em cada pergunta o valor padrão aparece entre colchetes e **Enter aceita**. Nada é gravado
 até a confirmação final; Ctrl+C cancela.
 
 1. **Boas-vindas e checagens** — versão do Python, `claude --version`, `gh` e `gh auth status`.
 2. **Onde instalar** — padrão: a própria pasta. Se escolher outra, os arquivos são copiados para lá.
-3. **Pastas de projeto** — uma ou mais. O hook só registra sessões abertas dentro delas (e subpastas).
-4. **Agentes do time** — time genérico (Líder, Dev, Designer, Pesquisa), importar dos `.claude/agents/*.md`
+3. **Python do escritório (.venv)** — cria `<pasta>/.venv` (ou reaproveita um que já funcione) para o escritório não
+   depender do Python do sistema. Uma pasta `.venv` que não seja um venv nunca é mexida. Se o `.venv` existe mas o Python
+   dele não roda, o assistente pergunta antes de apagar e recriar (padrão não); o modo silencioso só avisa.
+4. **Pastas de projeto** — uma ou mais. O hook só registra sessões abertas dentro delas (e subpastas).
+5. **Agentes do time** — time genérico (Líder, Dev, Designer, Pesquisa), importar dos `.claude/agents/*.md`
    encontrados nos projetos (o nome é o campo `name`) ou digitar um a um. Título, função e cor são sugeridos.
-5. **GitHub (opcional)** — repositório para os PRs (sugere o `git remote get-url origin` do projeto), quadro do
+6. **GitHub (opcional)** — repositório para os PRs (sugere o `git remote get-url origin` do projeto), quadro do
    GitHub Projects para o Kanban (lista os projects do dono com `gh project list`) e o nome do status check que
    significa "aprovado pela revisão".
-6. **Aparência e servidor** — título, tema, apelidos, XP, porta, **"Permitir acesso pelo celular na rede local? [s/N]"**
+7. **Revisão de PR (líder + revisor)** — padrão **sim**: põe o agente **Revisor** no time e cria
+   `.claude/agents/revisor.md` em cada projeto (se já existir, fica como está). Com um repositório no passo 6, oferece
+   também o revisor-ia (padrão não; custa por commit, veja a seção 11). Detalhes na seção 18.
+8. **Aparência e servidor** — título, tema, apelidos, XP, porta, **"Permitir acesso pelo celular na rede local? [s/N]"**
    (padrão **não**; se sim, "Usar HTTPS (recomendado)? [S/n]", veja a seção 9) e se quer baixar o three.js para usar offline.
-7. **Hook do Claude Code** — escopo **usuário** (`~/.claude/settings.json`, vale para todos os projetos; o filtro
-   de pastas do passo 3 continua valendo) ou **projeto** (`<projeto>/.claude/settings.local.json`). O assistente mostra
+9. **Hook do Claude Code** — escopo **usuário** (`~/.claude/settings.json`, vale para todos os projetos; o filtro
+   de pastas do passo 4 continua valendo) ou **projeto** (`<projeto>/.claude/settings.local.json`). O assistente mostra
    o bloco JSON, faz **backup com data** do arquivo, acrescenta sem apagar os hooks que você já tem e não duplica se
-   rodar de novo.
+   rodar de novo. O comando do hook chama o Python do `.venv` do escritório.
+10. **Projeto: boas práticas** — mostra o relatório de cada pasta de projeto (seção 17) e pergunta se aplica as correções
+   seguras (padrão **não**) e, se for criar o `.venv` do projeto, se instala o `requirements.txt`.
 
 No fim ele grava o `config.json`, cria os atalhos `abrir_escritorio` e `reiniciar_escritorio` (`.bat` e `.sh`) e
 pergunta se você quer abrir o escritório agora.
@@ -148,13 +161,17 @@ O arquivo tem o formato do `config.json` e pode trazer um bloco extra `instalaca
 {
   "projetos": ["/home/voce/projetos/loja"],
   "tema": "neutro",
-  "instalacao": {"destino": "/home/voce/ferramentas/claude-office-3d", "hook": "usuario", "statusline": false, "three_offline": false, "abrir": false}
+  "instalacao": {"destino": "/home/voce/ferramentas/claude-office-3d", "hook": "usuario", "statusline": false, "three_offline": false, "abrir": false, "venv": true, "revisao": true},
+  "praticas": {"corrigir": false, "instalar_deps": false}
 }
 ```
 
 Opções úteis: `--hook usuario|projeto|nenhum`, `--destino PASTA`, `--settings-usuario CAMINHO` (usa outro
 `settings.json` no lugar de `~/.claude/settings.json` — bom para testar), `--sem-abrir`, `--statusline` (liga a
-statusline de uso do plano; veja a seção 12, **Uso do plano**).
+statusline de uso do plano; veja a seção 12, **Uso do plano**), `--sem-venv` (não cria o `.venv` do escritório; o mesmo
+que `"venv": false` no bloco `instalacao`), `--sem-revisao` (não põe o Revisor no time nem cria o `revisor.md`; o
+mesmo que `"revisao": false`). O relatório de boas práticas dos projetos sai sempre no fim; as correções
+seguras só rodam com `"praticas": {"corrigir": true}` (seção 17).
 
 ## 4. Instalação manual
 
@@ -362,7 +379,7 @@ no boneco abre a ficha. A animação pausa e a consulta ao servidor fica mais le
 
 ## 8. XP, níveis e skills
 
-Opcional (`"xp": {"ativo": true}`; o assistente pergunta no passo 6). O escritório mostra o **nível** de cada
+Opcional (`"xp": {"ativo": true}`; o assistente pergunta no passo 8). O escritório mostra o **nível** de cada
 agente no crachá da mesa (estrelas, título e barra até o próximo nível), um painel **Placar** (botão no cabeçalho)
 e a aba **XP** na ficha do agente. Quando alguém sobe de nível, o boneco comemora com confete. O placar é
 **cooperativo**: ordena só por nome ou nível, sem medalhas nem pódio. Sem dados reais, o botão Demo mostra pontos de
@@ -496,7 +513,7 @@ uma lista de regras bem fechada (resumo no fim da seção).
 
 - Windows: `abrir_escritorio.bat celular` (ou `reiniciar_escritorio.bat celular` para reiniciar já ligado). Linux/macOS:
   `./abrir_escritorio.sh celular`. Também vale `python servidor.py --rede-local` ou `"rede_local": true` no `config.json`.
-- O assistente de instalação pergunta no passo 6 "Permitir acesso pelo celular na rede local? [s/N]" (padrão **não**) e, se
+- O assistente de instalação pergunta no passo 8 "Permitir acesso pelo celular na rede local? [s/N]" (padrão **não**) e, se
   você disser que sim, "Usar HTTPS (recomendado)? [S/n]".
 - Chaves do `config.json`: `rede_local` (padrão `false`), `rede_https` (padrão `true`) e `rede_tailscale` (padrão `false`,
   veja "Fora de casa").
@@ -557,7 +574,7 @@ copiar (com o caminho do Python e as portas deste servidor). Confira **nesta ord
    ("AP isolation", "client isolation" ou "isolamento de clientes" na página do roteador).
 
 **Teste:** no celular, abra `http://<IP do PC>:<porta+2>` (padrão `8767`). Se aparecer a página do certificado, a rede e o
-Firewall estão certos e o resto é o pareamento. O `instalar.py`, quando você ativa o celular no passo 6, mostra no final
+Firewall estão certos e o resto é o pareamento. O `instalar.py`, quando você ativa o celular no passo 8, mostra no final
 esse comando com o seu caminho do Python e as suas portas (só mostra; nunca executa nem altera o Firewall).
 
 ### Instalar o certificado (uma vez por celular) e parear
@@ -997,7 +1014,7 @@ Limites, para não surpreender:
 - A leitura só acontece com o Claude Code aberto (a statusline roda a cada mensagem); o consumo por dia soma as subidas
   entre leituras, e uma queda é tratada como reinício.
 
-**Ligar:** o assistente pergunta no passo 7 (ou use `--statusline` na instalação silenciosa). Ele grava no
+**Ligar:** o assistente pergunta no passo 9 (ou use `--statusline` na instalação silenciosa). Ele grava no
 `~/.claude/settings.json`, com backup:
 
 ```json
@@ -1156,3 +1173,103 @@ projeto** o painel explica como criar um (os comandos acima) e nada mais muda. P
 Custo: nenhum token; a rodada lê o repositório pelo git (sem checkout, nunca escreve nele) e leva alguns segundos num
 projeto de algumas centenas de arquivos. Testes: `python -W error grafo/testes/testar_grafo.py` e
 `python -W error ferramentas/testar_grafo_painel.py`.
+
+## 17. Boas práticas do projeto
+
+`boas_praticas.py` (copiado pelo instalador) confere, em cada pasta de `projetos`, o básico de que o time de agentes
+precisa e corrige o que é seguro. Só biblioteca padrão; validar é rápido (sem rede, sem pip, git com tempo curto) e nunca
+escreve nada.
+
+```bash
+python boas_praticas.py validar [PROJETO] [--json]          # sai com 1 se algum ERRO falhar (2 = pasta não existe)
+python boas_praticas.py corrigir [PROJETO]                  # só mostra o plano
+python boas_praticas.py corrigir [PROJETO] --aplicar [--so id1,id2] [--instalar-deps]
+```
+
+Sem `PROJETO`, usa as pastas de `projetos` do `config.json`. Rode na pasta do escritório (com o Python do `.venv` dele ou
+o do sistema, tanto faz).
+
+| Checagem | Nível | Correção automática |
+|---|---|---|
+| `git` — a pasta é um repositório | erro | não (`git init`) |
+| `gitignore` — existe | aviso | cria |
+| `segredos-ignorados` — `.env`, `*.pem`, `*.key` fora do git | erro | acrescenta ao `.gitignore` |
+| `settings-local-ignorado` — `.claude/settings.local.json` fora do git | aviso | acrescenta |
+| `env-versionado` — nenhum `.env`/`.env.*` versionado (`.example`, `.sample`, `.template` podem) | erro | não (`git rm --cached` e troque as chaves) |
+| `claude-md` — CLAUDE.md do projeto | aviso | não (`/init` no Claude Code) |
+| `agente-<nome>` — `.claude/agents/<nome>.md` de cada agente do `config.json` | erro (aviso para o líder) | cria do modelo (`modelos/time/`) |
+| `revisao-pr` — alguém revisa os PRs: agente revisor (no `config.json` ou em `.claude/agents/`), revisor-ia ativo, `bots_revisao` ou `check_revisao` | aviso | cria `.claude/agents/revisor.md` (seção 18) |
+| `hook-escritorio` — hook do escritório no settings do projeto ou do usuário | aviso | não (instalador) |
+| `testes` — comando de teste conhecido (pytest, unittest, `npm test`, `dotnet test`) | aviso | não |
+| `grafo` — grafo de arquitetura (seção 16) | dica | não |
+| `ci` — `.github/workflows/*.yml` (ou GitLab/Azure) | dica | não |
+| Python: `python-venv` — `.venv` do projeto | aviso | cria (`python -m venv .venv`; `--instalar-deps` roda `pip install -r requirements.txt`) |
+| Python: `python-venv-ignorado`, `python-dependencias`, `python-regra-venv` | aviso | `.gitignore`; não; grava `.claude/rules/python-venv.md` |
+| Python: `python-hooks-venv` — hooks do projeto com o Python do `.venv` | aviso | só os hooks do grafo, e só se o `.venv` existir (com backup do settings) |
+| Python: `python-agentes-venv` — definições que rodam `python` citam o `.venv` | aviso | não |
+| Node: `node-modules-ignorado`, `node-lockfile` | aviso | `.gitignore`; não |
+| Unreal: `unreal-ignorados` (`Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/` ao lado do `.uproject`) | aviso | `.gitignore` |
+| .NET: `dotnet-ignorados` (`bin/`, `obj/`) | aviso | `.gitignore` |
+
+As tecnologias são detectadas pelos nomes de arquivo (até 3 pastas abaixo da raiz, no máximo 4000 arquivos, sem
+`node_modules/`, `.venv/` e afins). O `.gitignore` é conferido pelo `git check-ignore` (sem git, por uma leitura
+simplificada do arquivo), só com as regras do projeto (`.gitignore` e `.git/info/exclude`): o ignore global do seu
+usuário (`core.excludesFile`) não conta, porque quem clona o projeto não o tem.
+
+**O que a correção nunca faz:** sobrescrever arquivo (definição de agente e regra só são criadas se não existirem),
+escrever no `~/.claude/settings.json` do usuário (só é lido), trocar hook que não é do grafo, apagar nada. O `.gitignore`
+só ganha linhas no fim (com o comentário `# boas práticas (Claude Office 3D)`), mantendo o conteúdo e as quebras de linha
+(CRLF continua CRLF). Antes de mexer no `.claude/settings.json` do projeto fica um backup `settings.json.bak-AAAAMMDD-HHMMSS`.
+Rodar `--aplicar` de novo não faz nada.
+
+As definições criadas seguem o guia do time enxuto: uma tarefa por vida do agente, handoff de até 10 linhas ao líder,
+o comando de teste do projeto e as regras da tecnologia (por exemplo, "use sempre o Python do `.venv`"). Revise a
+descrição do produto e ajuste o que for do seu projeto.
+
+**No escritório:** o painel 🩺 Saúde tem a seção **Boas práticas do projeto** (`GET /api/praticas`): o que falta em cada
+projeto, ERRO primeiro, com o "como corrigir" e o comando da CLI. A validação roda numa thread, no máximo a cada 10 min;
+no celular aparece só o nome da pasta, e os caminhos absolutos no detalhe e no erro viram `…/<nome>`. As correções rodam pelo terminal, no PC.
+
+**No instalador:** o passo 10 mostra o relatório e pergunta se aplica (padrão não); no modo silencioso, o relatório sai
+sempre e as correções seguras rodam com `"praticas": {"corrigir": true, "instalar_deps": false}` no `config.json`.
+Teste: `python -W error ferramentas/testar_praticas.py`.
+
+## 18. Revisão de PR (líder + revisor)
+
+O fluxo de PR do time enxuto: ninguém revisa o próprio código e o merge é sempre do desenvolvedor (você).
+
+1. O colega termina a tarefa e abre o PR (`gh pr create`), citando a issue ou o cartão e os testes que rodou.
+2. O líder cria o **revisor** numa vida nova para cada PR e manda só o número ("revise o PR #42").
+3. O revisor roda os testes e publica a revisão no próprio PR com `gh pr review <n> --comment` (1ª linha `[revisor]`),
+   com os achados P0 (quebra/segurança), P1 (bug provável) e P2 (melhoria), cada um com arquivo:linha.
+4. O líder decide: P0 ou P1 → o PR volta ao autor (vida nova, com os achados); sem P0/P1 → avisa você que o PR está
+   pronto. O líder nunca faz merge, e o revisor nunca usa `--approve`/`--request-changes`.
+
+**No instalador** (passo 7, padrão sim; no modo silencioso também, a menos que venha `--sem-revisao` ou
+`"revisao": false` no bloco `instalacao`):
+
+- o agente **Revisor** entra no time do `config.json` (mesa própria; se o time já tem um revisor, nada muda — o nome casa
+  por palavra: revisor, revisora, reviewer, code-reviewer, revisao; "previsao" e "preview" não contam);
+- `.claude/agents/revisor.md` é criado em cada projeto a partir de `modelos/time/revisor.md` — **nunca** sobrescreve um
+  que já exista (nem um `code-reviewer.md` seu);
+- se o `.claude/agents/<líder>.md` do projeto não tem a seção "Fluxo de PR", o instalador **mostra** o texto para você
+  colar (o arquivo do líder não é alterado). Os líderes novos já vêm com ela (`modelos/time/lider.md`);
+- se o projeto **não tem** `.claude/agents/lider.md` (a sessão principal do Claude Code faz o papel de líder), o
+  instalador avisa e mostra a seção "Fluxo de PR" para você colar no `CLAUDE.md` do projeto (ou `.claude/CLAUDE.md`). O
+  `CLAUDE.md` não é criado nem alterado; com a seção já lá, nada aparece;
+- com um repositório configurado, oferece também o **revisor-ia** (seção 11): uma revisão automática por commit novo de PR,
+  cerca de US$ 0,18 cada no Sonnet. Padrão não; ele soma, não substitui o revisor do time.
+
+**Numa instalação que já existe** (o escritório já roda e só falta a revisão):
+
+```bash
+python instalar.py --revisao <pasta do projeto> [--destino <pasta do escritório>] [--sem-perguntas]
+```
+
+Mostra quem revisa hoje, o **diff** do `config.json`, o que vai criar no projeto e pede confirmação; grava com backup
+(`config.json.bak-AAAAMMDD-HHMMSS`) e cria o `revisor.md`. Rodar de novo não faz nada ("Nada a fazer."). Sem
+`--destino`, usa a pasta onde está o `instalar.py`. O `config.json` é regravado com indentação de 2 espaços. Reinicie o
+escritório para ver a mesa do Revisor.
+
+**Validação:** a checagem `revisao-pr` de `python boas_praticas.py validar` avisa quando ninguém revisa os PRs (nem agente
+revisor, nem revisor-ia, nem bot de revisão, nem status check); `corrigir --aplicar --so revisao-pr` cria o `revisor.md`.

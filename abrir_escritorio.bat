@@ -7,6 +7,9 @@ cd /d "%~dp0"
 set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
 echo Iniciando o Claude Office 3D...
-where python >nul 2>nul
-if %errorlevel%==0 (python "servidor.py" %EXTRA%) else (py -3 "servidor.py" %EXTRA%)
+rem Python do .venv do escritorio, se existir; senao o do PATH
+set PY=python
+where python >nul 2>nul || set PY=py -3
+if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
+%PY% "servidor.py" %EXTRA%
 pause

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-IGNORAR = {".git", "dist", "vendor", "dados", "__pycache__", "node_modules"}
+IGNORAR = {".git", ".venv", "dist", "vendor", "dados", "__pycache__", "node_modules"}
 TEXTO = {".py", ".js", ".css", ".html", ".md", ".json", ".bat", ".sh", ".txt", ".yml", ".yaml", ""}
 
 # Padrões genéricos de vazamento (sem nada pessoal aqui dentro)

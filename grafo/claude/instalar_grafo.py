@@ -65,13 +65,18 @@ def comandos(args):
         alvo = '"' + HOOK.as_posix() + '"'
     # com --copiar o settings.json vai para o git do time: nada de caminho absoluto do Python desta máquina
     py = args.python or ("python" if args.copiar else '"' + Path(sys.executable).as_posix() + '"')
-    base = f"{py} {alvo}"
-    fim = f"{base} fim" + (" --bloquear" if args.bloquear else "")
+
+    def cmd(sub):
+        if args.copiar:  # a cópia pode faltar num clone antigo: sem ela o hook sai 0 (código 2 no PreToolUse bloquearia Edit/Write)
+            return f'f={alvo}; if [ -f "$f" ]; then {py} "$f" {sub}; else exit 0; fi'
+        return f"{py} {alvo} {sub}"
+
+    fim = cmd("fim" + (" --bloquear" if args.bloquear else ""))
     entradas = {
         "PreToolUse": {"matcher": "Edit|Write|MultiEdit", "hooks": [
-            {"type": "command", "command": f"{base} pre", "timeout": 15, "statusMessage": "Grafo: contexto do sistema"}]},
+            {"type": "command", "command": cmd("pre"), "timeout": 15, "statusMessage": "Grafo: contexto do sistema"}]},
         "PostToolUse": {"matcher": "Write", "hooks": [
-            {"type": "command", "command": f"{base} post", "timeout": 30, "statusMessage": "Grafo: dono do arquivo novo"}]},
+            {"type": "command", "command": cmd("post"), "timeout": 30, "statusMessage": "Grafo: dono do arquivo novo"}]},
     }
     for ev in [e.strip() for e in args.fim.split(",") if e.strip()]:
         entradas[ev] = {"hooks": [{"type": "command", "command": fim, "timeout": 120,

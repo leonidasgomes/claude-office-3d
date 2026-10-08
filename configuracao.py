@@ -122,6 +122,9 @@ PADRAO = {
               "ref": "origin/main",                    # branch/ref do git de onde o grafo e o código são lidos (só leitura)
               "arquivo": "",                           # YAML do grafo no repositório; "" = procurar (grafo.json, nomes padrão)
               "intervalo_min": 60},                    # de quanto em quanto tempo recalcula (só se o commit mudou)
+    # boas_praticas.py no instalador silencioso: aplicar as correções seguras nos projetos? (padrão: só relatar)
+    "praticas": {"corrigir": False,                    # True: cria .venv, completa .gitignore, regra e agentes que faltam
+                 "instalar_deps": False},              # True: ao criar o .venv, pip install -r requirements.txt
     "alertas": {"ativo": True, "tipos": ALERTAS_TIPOS, "lembrete_horas": 24, "limite_push_hora": 20, "toast_windows": False,
                 "contato": "", "escalonamentos": "", "agentes_pergunta": [], "imediatos": ALERTAS_IMEDIATOS,
                 "resumo_horas": 3, "parado_horas": 24},
@@ -307,6 +310,12 @@ def normalizar_grafo(bruto):
     return g
 
 
+def normalizar_praticas(bruto):
+    """Bloco "praticas" do config (passo de boas práticas do instalador silencioso): só booleanos; o resto vira o padrão."""
+    bruto = bruto if isinstance(bruto, dict) else {}
+    return {k: bruto[k] if isinstance(bruto.get(k), bool) else v for k, v in PADRAO["praticas"].items()}
+
+
 def normalizar_vigia(bruto):
     """Bloco "vigia" do config (vigia_lider.py): intervalo em minutos (5 a 240), sugestões ligadas por padrão e comandos
     extras do projeto, cada um com rótulo, comando de shell e a ação que o líder faz quando o comando tiver saída."""
@@ -442,6 +451,7 @@ def normalizar(cfg):
     base["auditor"] = normalizar_auditor(cfg.get("auditor"))
     base["vigia"] = normalizar_vigia(cfg.get("vigia"))
     base["grafo"] = normalizar_grafo(cfg.get("grafo"))
+    base["praticas"] = normalizar_praticas(cfg.get("praticas"))
     if base["tema"] not in TEMAS:
         base["tema"] = "neutro"
     if base["apelidos"] not in MODOS_APELIDO:

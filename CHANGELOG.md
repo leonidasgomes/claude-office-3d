@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.18.0
+- **O escritório no próprio .venv** (`instalar.py`, `abrir_escritorio.*`, `reiniciar_escritorio.*`, `.gitignore`,
+  `ferramentas/verificar.py`): o instalador ganhou o passo "Python do escritório (.venv)", que cria `<destino>/.venv` sem
+  pip (o escritório só usa a biblioteca padrão) ou reaproveita um que já funcione; uma pasta `.venv` que não seja um venv
+  nunca é mexida, e um `.venv` cujo Python não roda só é recriado se você confirmar no assistente (no modo silencioso,
+  aviso e nada apagado). Reinstalar com o mesmo `config.json` não grava nem faz backup dele (backup só quando muda). O hook e a statusline chamam o Python do `.venv`, **entre aspas** (`"…/.venv/Scripts/python.exe"` no
+  Windows, `"…/.venv/bin/python"` no macOS/Linux); reinstalar troca o comando antigo no lugar, sem duplicar. Os atalhos
+  preferem o `.venv`. `--sem-venv` (ou `"venv": false` no bloco `instalacao`) mantém o `python` do PATH. `.venv/` fora do
+  git e da varredura do `verificar.py`.
+- **Boas práticas do projeto** (`boas_praticas.py`, novo; `modelos/praticas/python-venv.md`, `modelos/time/*.md`,
+  novos): `python boas_praticas.py validar [PROJETO] [--json]` confere em cada pasta de `projetos` o básico do time de
+  agentes — git, `.gitignore` cobrindo segredos (`.env`, `*.pem`, `*.key`), `.claude/settings.local.json` e as pastas
+  geradas da tecnologia (`.venv/`, `node_modules/`, `Binaries/`…, `bin/`/`obj/`; só as regras do projeto, `.gitignore`
+  e `.git/info/exclude`, contam: o ignore global do usuário não vale para quem clona), `.env` versionado, CLAUDE.md,
+  `.claude/agents/<nome>.md` de cada agente do `config.json`, hook do escritório, comando de teste, grafo, CI e, em
+  projeto Python, `.venv`, dependências declaradas, a regra `.claude/rules/python-venv.md`, hooks e agentes usando o
+  Python do `.venv`. Níveis erro/aviso/dica; sai com 1 se algum erro falhar. `corrigir` mostra o plano e, com
+  `--aplicar` (`--so ids`, `--instalar-deps`), faz só o seguro: cria o `.venv`, acrescenta ao `.gitignore` (CRLF
+  preservado), grava a regra e as definições de agente que faltam (modelos no formato do time enxuto) e troca o python dos
+  hooks do grafo pelo do `.venv` (com backup do settings do projeto). Nunca sobrescreve arquivo e nunca escreve no
+  settings do usuário. Veja `INSTALACAO.md` §17.
+- **Instalador: passo "Projeto: boas práticas"** (`instalar.py`, `configuracao.py`): mostra o relatório de cada projeto e
+  pergunta se aplica as correções (padrão não). No modo silencioso o relatório sai sempre e as correções rodam com o novo
+  bloco `"praticas": {"corrigir": true, "instalar_deps": false}` do `config.json`.
+- **Painel 🩺 Saúde: seção "Boas práticas do projeto"** (`servidor.py`, `saude_painel.js`, `saude_painel.css`): nova rota
+  `GET /api/praticas` (validação numa thread, cache de 10 min, espera no máximo 3 s; o celular recebe só o nome da pasta,
+  e os caminhos absolutos no detalhe e no erro viram `…/<nome>`) e a seção com o que falta em cada projeto, ERRO primeiro, o "como corrigir" e o comando da CLI.
+- **Testes** (`ferramentas/testar_praticas.py`, novo; `ferramentas/testar_instalacao.py`, `.github/workflows/ci.yml`):
+  detecção, cada checagem (com repositório git temporário), plano sem efeito, aplicar idempotente, backup, CRLF, caminho
+  do `.venv` no Windows e no POSIX, CLI e códigos de saída e a rota com o servidor numa thread; a instalação confere o
+  `.venv`, o comando do hook entre aspas, `--sem-venv` e `"praticas": {"corrigir": true}`.
+- **Revisão de PR (líder + revisor)** (`instalar.py`, `boas_praticas.py`, `modelos/time/lider.md`,
+  `modelos/time/revisor.md`): novo passo do assistente, padrão sim (o assistente passou a ter 10 passos): põe o agente
+  **Revisor** no time do `config.json` e cria `.claude/agents/revisor.md` em cada projeto (nunca sobrescreve; um revisor
+  de outro nome, como `code-reviewer.md`, também conta; o nome casa por palavra — revisor, reviewer, revisao —, então
+  "previsao" e "preview" não contam) e, com repositório configurado, oferece o revisor-ia explicando o
+  custo por commit. O modelo do líder ganhou a seção "Fluxo de PR" (revisor numa vida nova por PR, só com o número; P0/P1
+  voltam ao autor; aprovado, o líder avisa o desenvolvedor, que faz o merge) e o do revisor publica a revisão no PR com
+  `gh pr review <n> --comment` (1ª linha `[revisor]`; nunca `--approve`, nunca merge). Um líder existente sem a seção
+  não é alterado: o instalador mostra o texto. Sem `.claude/agents/lider.md` (a sessão principal faz o papel de líder),
+  o instalador avisa e mostra a seção para colar no `CLAUDE.md` do projeto, sem mexer nele. O modo silencioso faz o mesmo; `--sem-revisao` (ou `"revisao": false` em
+  `instalacao`) pula. `python instalar.py --revisao <projeto>` aplica só isso numa instalação existente, com o diff do
+  `config.json`, confirmação e backup. `boas_praticas.py` ganhou a checagem `revisao-pr` (agente revisor, revisor-ia,
+  `bots_revisao` ou `check_revisao`), corrigível criando o `revisor.md`. Testes em `ferramentas/testar_praticas.py` e
+  `ferramentas/testar_instalacao.py`. Veja `INSTALACAO.md` §18.
+- **Versão no painel** (`servidor.py`, `opcoes.js`, `index.html`, `estilo.css`): nova rota `GET /api/versao`
+  (`{"local": "<conteúdo do VERSION>"}`, sem consultar o GitHub) e "Versão 1.18.0" no pé do menu ⚙️ (no celular, na seção
+  de opções do menu ☰); sem servidor, a linha não aparece.
+- **grafo** (`grafo/grafo.py`, `grafo/claude/instalar_grafo.py`): a busca pontua o "id citado" no texto; o índice de
+  eventos usa caller/callee antes de producer/consumers; as regras geradas por `sync-rules` citam a cópia do projeto
+  (`.claude/grafo/grafo.py`) quando ela existe, seja qual for o `grafo.py` que rodou; `instalar_grafo --copiar` gera hooks
+  com guarda: se `.claude/grafo/grafo_hook.py` faltar no clone, o hook sai com 0 em vez de bloquear Edit/Write.
+
+### Correções
+- **Servidor: POST recusado** (`rede.py`): o corpo é descartado antes da resposta; no Windows a conexão era encerrada com
+  RST e o cliente via "conexão anulada" no lugar do 403. O teste de `--pendentes` (`ferramentas/testar_saude.py`) não
+  depende mais do milissegundo.
+- **Servidor: prazo de 15 s no socket do `HandlerSeguro`** (`rede.py`): um cliente lento não prende mais a thread lendo
+  o cabeçalho ou o corpo.
+
 ## 1.17.1
 - **Menu ⚙️ Opções** (`opcoes.js`, novo; `index.html`, `estilo.css`, `escritorio.js`): no cabeçalho do painel ficam só os
   painéis (PRs, Kanban, Placar, Alertas, Saúde, Arquitetura, Replay); Visão geral, Apelidos, Animações, Som, Demo e

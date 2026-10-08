@@ -3,6 +3,7 @@
 NOTAS.md
 glossario_triagem.md
 __pycache__/
+.venv/
 config.json
 config.json.bak-*
 dados/

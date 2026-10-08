@@ -4,7 +4,8 @@
 // a seção "⚙️ Opções" do menu ☰ (movel.js), sempre visível dentro dele.
 // Teclado: Enter/Espaço/↓ no ⚙️ abre e foca o 1º item (↑: o último); ↑/↓/Home/End andam; Tab circula dentro do menu;
 // Esc fecha e devolve o foco ao ⚙️; clique fora fecha. Opção de estado (Apelidos, Animações, Som, Demo) mantém o menu
-// aberto para ver o estado novo; ação (Visão geral, Celular) fecha.
+// aberto para ver o estado novo; ação (Visão geral, Celular) fecha. No pé do menu, "Versão X" (GET /api/versao; sem
+// servidor, não aparece).
 import './movel.js';   // html.compacto e o resize do movel antes dos deste módulo (não depender da ordem do escritorio.js)
 
 const $ = (id) => document.getElementById(id);
@@ -66,4 +67,11 @@ if (caixa && botao && menu) {
   window.addEventListener('resize', () => { aplicarModo(); if (aberto) posicionar(); });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && aberto) fechar(true); });
   window.__opcoes = { abrir, fechar, get aberto() { return aberto; } };
+}
+
+const versao = $('versaoOpcoes');
+if (versao) {
+  fetch('/api/versao', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (d && d.local) { versao.textContent = `Versão ${d.local}`; versao.hidden = false; }
+  }).catch(() => {});
 }

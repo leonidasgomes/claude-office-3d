@@ -76,3 +76,13 @@ html.compacto #saudeCorpo .saude-acoes .botao { flex: 1 1 auto; justify-content:
 #saudeCorpo .saude-pedido.cancelado { color: #8b98a8; font-style: italic; }
 #saudeCorpo .saude-item.resolvido { border-left-color: #22c55e; opacity: .9; }
 html.compacto #saudeCorpo .saude-triagem { font-size: 13px; }
+
+/* boas práticas do projeto (boas_praticas.py): nível de cada checagem */
+#saudeCorpo .saude-item.pratica-erro { border-left-color: #e5484d; }
+#saudeCorpo .saude-item.pratica-aviso { border-left-color: #f59e0b; }
+#saudeCorpo .saude-item.pratica-dica { border-left-color: #3b82f6; }
+#saudeCorpo .saude-nivel { border-radius: 4px; padding: 0 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; background: #232d3a; color: #cbd5e1; }
+#saudeCorpo .saude-nivel.erro { background: #7f1d1d; color: #fecaca; }
+#saudeCorpo .saude-nivel.aviso { background: #713f12; color: #fde68a; }
+#saudeCorpo .saude-nivel.dica { background: #1e3a8a; color: #bfdbfe; }
+html.compacto #saudeCorpo .saude-nivel { font-size: 12px; }

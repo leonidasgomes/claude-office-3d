@@ -4,10 +4,12 @@
 cd "$(dirname "$0")" || exit 1
 EXTRA=""
 [ "$1" = "celular" ] && EXTRA="--rede-local"
-PORTA=$(python3 configuracao.py --porta 2>/dev/null || echo 8765)
+PY=python3
+[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
+PORTA=$("$PY" configuracao.py --porta 2>/dev/null || echo 8765)
 echo "Encerrando o servidor antigo do escritório (porta $PORTA)..."
 PIDS=$(lsof -ti tcp:"$PORTA" -sTCP:LISTEN 2>/dev/null)
 if [ -n "$PIDS" ]; then kill $PIDS 2>/dev/null; echo "  processo(s) $PIDS encerrado(s)"; sleep 1; fi
 echo "Subindo o escritório de novo..."
-nohup python3 servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
+nohup "$PY" servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
 echo "Pronto: http://127.0.0.1:$PORTA/"

@@ -45,5 +45,7 @@ jobs:
         run: python -W error grafo/testes/testar_grafo.py
       - name: Painel Arquitetura (base só leitura, GET /grafo, bloco grafo do config)
         run: python -W error ferramentas/testar_grafo_painel.py
+      - name: Boas práticas do projeto (checagens, correções seguras, .venv, CLI, GET /api/praticas)
+        run: python -W error ferramentas/testar_praticas.py
       - name: Build do pacote
         run: python ferramentas/build.py

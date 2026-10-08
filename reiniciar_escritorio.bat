@@ -7,6 +7,7 @@ set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
 set PY=python
 where python >nul 2>nul || set PY=py -3
+if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
 for /f "usebackq delims=" %%p in (`%PY% configuracao.py --porta`) do set PORTA=%%p
 if "%PORTA%"=="" set PORTA=8765
 echo Encerrando o servidor antigo do escritorio (porta %PORTA%)...

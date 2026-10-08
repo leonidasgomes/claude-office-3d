@@ -1,4 +1,5 @@
-"""Saúde do time (sem tokens): trabalho duplicado, agente andando em círculos, risco do PR e PR parado.
+"""Saúde do time (sem tokens): trabalho duplicado, agente andando em círculos, risco do PR, PR parado, cartão rascunho em
+coluna de trabalho e comando repetido (dica de script).
 
 Por quê (pesquisa de 7 out. 2026):
 - "Where Do AI Coding Agents Fail?" (arXiv 2601.15195, 33 mil PRs de agentes): 23% dos PRs rejeitados eram duplicados, 38% foram
@@ -13,11 +14,12 @@ recentes.
 Painel 🩺 Saúde (saude_painel.js): o desenvolvedor pode IGNORAR um item (dados/saude_ignorados.json; some dos alertas e do
 --pendentes, mas segue no painel em "Ignorados") e AVISAR O LÍDER (dados/saude_pedidos.jsonl; o --pendentes entrega cada pedido
 uma vez só, guardando o último ts entregue em dados/saude_pedidos_estado.json). Chave estável de cada item: chave_dup,
-chave_circulo e chave_parado.
+chave_circulo, chave_parado, chave_rascunho e chave_repetido.
 
-Uso: python saude.py --pendentes   imprime os pedidos do desenvolvedor ainda não entregues e o que o líder deve ver (duplicados
-                                   e círculos não ignorados) ou NADA (para o vigia do líder)
+Uso: python saude.py --pendentes   imprime os pedidos do desenvolvedor ainda não entregues e o que o líder deve ver (duplicados,
+                                   círculos e cartões rascunho não ignorados) ou NADA (para o vigia do líder)
 """
+import hashlib
 import json
 import math
 import os
@@ -48,7 +50,8 @@ RESOLVIDOS_H = 24                             # "Resolvidos" no painel: itens qu
 MAX_RESOLVIDOS, MAX_VISTOS = 100, 500
 GRAVIDADES = ("baixa", "media", "alta")
 ACOES_TRIAGEM = ("juntar", "fechar_um", "parar_e_repensar", "retomar_pr", "nenhuma")
-TIPO_DA_CHAVE = {"dup": "trabalho duplicado", "circulo": "agente andando em círculos", "parado": "PR parado"}
+TIPO_DA_CHAVE = {"dup": "trabalho duplicado", "circulo": "agente andando em círculos", "parado": "PR parado",
+                 "rascunho": "cartão rascunho em coluna de trabalho", "repetido": "comando repetido"}
 VALIDADE_ARQ = 1800        # s: saude.json mais velho que isso é ignorado pela linha de comando (servidor parado)
 JANELA_ATIVA_H = 48        # branch local com commit mais novo que isso conta como trabalho em andamento
 MIN_SLUG = 8               # nome de branch (sem prefixo e número) mais curto que isso não serve para comparar
@@ -60,6 +63,14 @@ RISCO = {"medio": (300, 10), "grande": (800, 25)}   # (linhas alteradas, arquivo
 FERRAMENTAS_EDICAO = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 CHECKS_FALHOS = ("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE")
 FERRAMENTAS_COMANDO = ("Bash", "PowerShell")
+JANELA_REPETIDOS_MIN = 60
+MIN_REPETIDOS = 8          # o mesmo começo de comando (atrás de cd/export/VAR=) rodado N vezes pelo mesmo agente = dica de script
+PREFIXO_REPETIDO = 40      # caracteres do começo do comando que agrupam (e que o painel mostra, sem caminho absoluto)
+MAX_REPETIDOS, MAX_RASCUNHOS = 10, 20
+# colunas do Kanban em que o cartão já é trabalho (Backlog, Sem status e as de concluído ficam de fora): rascunho aí não tem
+# número de issue, e branch, PR e "Closes #n" dependem dele
+COLUNAS_TRABALHO = ("todo", "to do", "ready", "a fazer", "in progress", "em andamento", "doing", "fazendo", "review",
+                    "in review", "em revisão", "em revisao")
 
 _RE_DATA = re.compile(r"\d{4}-?\d{2}-?\d{2}")
 # caracteres de controle (C0, DEL, C1) e separadores de linha/parágrafo do Unicode: nada disso vai para uma linha do --pendentes
@@ -189,6 +200,96 @@ def circulos(eventos, agora, janela_min=JANELA_CIRCULO_MIN, min_edicoes=MIN_EDIC
     return saida
 
 
+# caminho absoluto (C:\ ou C:/, \\servidor\, /a/b): o servidor também usa (boas práticas para o celular)
+RE_CAMINHO_ABS = re.compile(r"""(?:(?<!\w)[A-Za-z]:[\\/]|\\\\[^\s\\/]+[\\/]|(?<![\w.~$}/\\])/(?=[^\s/]+/))[^\s"'<>|;,]*""")
+
+
+def sem_caminhos(texto):
+    """Texto sem caminhos absolutos (celular, prefixo dos comandos repetidos): cada um vira "…/<última parte>"."""
+    if not isinstance(texto, str):
+        return texto
+    return RE_CAMINHO_ABS.sub(lambda m: "…/" + re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1], texto)
+
+
+_RE_TRECHO = re.compile(r"\s*(?:&&|\|\||;)\s*")
+_RE_PREAMBULO = re.compile(r"(?:cd|pushd|export|set)(?:\s|$)|\$env:|[A-Za-z_]\w*=\S*$", re.I)
+_RE_VAR_NA_FRENTE = re.compile(r"^(?:[A-Za-z_]\w*=(?![$\"'])\S*\s+)+")   # FOO=1 cmd (não X=$(cmd ...) nem X="a b")
+_RE_ATRIBUICAO = re.compile(r"^[A-Za-z_]\w*=")
+_RE_GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
+_RE_NUM_LONGO = re.compile(r"\d{5,}")
+
+
+def assinatura_comando(cmd):
+    """Começo (PREFIXO_REPETIDO caracteres) do 1º trecho de verdade de um comando com preâmbulo (cd, export, $env:, VAR=) ou
+    com $(...): o que um script do projeto ou uma variável de ambiente resolveria. None para comando simples ou só preâmbulo.
+    GUID e número longo viram <id> e <n> (cada sessão ou PR tem o seu: sem isso o mesmo comando não se agrupa)."""
+    cmd = str(cmd or "").strip()
+    trechos = [t for t in _RE_TRECHO.split(cmd) if t]
+    com_var = any(_RE_VAR_NA_FRENTE.match(t) for t in trechos)
+    resto = [t for t in (_RE_VAR_NA_FRENTE.sub("", t) for t in trechos) if t and not _RE_PREAMBULO.match(t)]
+    if not resto or (len(trechos) < 2 and not com_var and "$(" not in cmd):
+        return None
+    t = _RE_ATRIBUICAO.sub("", resto[0])   # X=$(az account ...) agrupa pelo comando, não pelo nome da variável
+    return _RE_NUM_LONGO.sub("<n>", _RE_GUID.sub("<id>", t))[:PREFIXO_REPETIDO]
+
+
+def repetidos(eventos, agora, janela_min=JANELA_REPETIDOS_MIN, minimo=MIN_REPETIDOS):
+    """Dica (não alerta, não vai ao líder): o mesmo agente rodou, na janela, `minimo` comandos ou mais com o mesmo começo
+    (assinatura_comando). [{"agente", "assinatura" (sha1 curto do começo), "prefixo" (sem caminho absoluto), "vezes", "desde"}].
+    O comando inteiro não sai daqui."""
+    limite = agora - janela_min * 60
+    cont = {}
+    for ev in eventos or []:
+        if not isinstance(ev, dict) or ev.get("inicio") or ev.get("tipo") != "trabalho":
+            continue   # o início de comando (PreToolUse) não conta: o mesmo comando teria 2 eventos
+        t = _epoch(ev.get("ts"))
+        alvo = _alvo(ev)
+        if t is None or t < limite or alvo is None or alvo[0] != "comando":
+            continue
+        sig = assinatura_comando(alvo[1])
+        if sig is None:
+            continue
+        c = cont.setdefault((texto_linha(ev.get("agente"), 40).replace(":", " ") or "?", sig), {"vezes": 0, "desde": t})
+        c["vezes"] += 1
+        c["desde"] = min(c["desde"], t)
+    saida = [{"agente": a, "assinatura": hashlib.sha1(sig.encode("utf-8")).hexdigest()[:10],
+              "prefixo": texto_linha(sem_caminhos(sig), PREFIXO_REPETIDO * 2), "vezes": c["vezes"], "desde": round(c["desde"])}
+             for (a, sig), c in cont.items() if c["vezes"] >= minimo]
+    saida.sort(key=lambda x: (-x["vezes"], x["agente"], x["prefixo"]))
+    return saida[:MAX_REPETIDOS]
+
+
+_RE_ITEM_ID = re.compile(r"[A-Za-z0-9_-]{1,100}")
+_RE_REPO = re.compile(r"[\w.-]+/[\w.-]+")
+
+
+def comando_converter(item_id, repo):
+    """Comando gh que converte o cartão rascunho em issue de `repo` (owner/nome) e devolve número e URL; "" sem repo válido."""
+    if not (_RE_ITEM_ID.fullmatch(str(item_id or "")) and _RE_REPO.fullmatch(str(repo or ""))):
+        return ""
+    return ("gh api graphql -f query='mutation($i:ID!,$r:ID!){convertProjectV2DraftIssueItemToIssue(input:{itemId:$i,"
+            "repositoryId:$r}){item{content{... on Issue{number url}}}}}' "
+            f"-f i={item_id} -f r=$(gh repo view {repo} --json id -q .id)")
+
+
+def rascunhos(cartoes, repo=""):
+    """Cartões rascunho (DraftIssue, sem número de issue) em coluna de trabalho (COLUNAS_TRABALHO): o líder não consegue
+    despachar sem número. [{"item_id", "titulo", "status", "url", "comando" ("" sem github.repo: converter pelo GitHub)}]."""
+    saida = []
+    for c in cartoes or []:
+        if not isinstance(c, dict) or c.get("tipo") != "DraftIssue":
+            continue
+        if " ".join(str(c.get("status") or "").lower().split()) not in COLUNAS_TRABALHO:
+            continue
+        iid = str(c.get("item_id") or "")
+        if not _RE_ITEM_ID.fullmatch(iid):
+            continue   # sem o id do item não há chave estável nem comando
+        url = str(c.get("url") or "")
+        saida.append({"item_id": iid, "titulo": texto_linha(c.get("titulo"), 120), "status": texto_linha(c.get("status"), 40),
+                      "url": url if url.startswith("https://github.com/") else "", "comando": comando_converter(iid, repo)})
+    return saida[:MAX_RASCUNHOS]
+
+
 def risco_pr(pr):
     """Selo do painel PRs: tamanho (linhas e arquivos) e checks que falharam. nivel: ok | medio | grande | ? (sem tamanho)."""
     linhas, arquivos = pr.get("linhas"), pr.get("arquivos")
@@ -239,21 +340,26 @@ def branches_locais(repo):
     return saida
 
 
-def resumo(prs, locais, eventos, agora, situacao=None, parado_h=PARADO_H):
+def resumo(prs, locais, eventos, agora, situacao=None, parado_h=PARADO_H, cartoes=None, repo=""):
     """Tudo o que o servidor publica em /saude e grava em dados/saude.json. prs None (GitHub fora do ar ou ainda sem o
-    PRONTO): só os círculos, que dependem só dos eventos locais; o detector não mexe em duplicados nem parados."""
+    PRONTO): só os círculos, repetidos e rascunhos, que não dependem dos PRs; o detector não mexe em duplicados nem parados.
+    cartoes None (Kanban não configurado ou fora do ar): `sem_kanban`, e nenhum rascunho conta como resolvido."""
+    extra = {"rascunhos": rascunhos(cartoes, repo), "repetidos": repetidos(eventos, agora)}
+    if cartoes is None:
+        extra["sem_kanban"] = True
     if prs is None:
-        return {"ts": round(agora), "circulos": circulos(eventos, agora), "sem_prs": True}
+        return {"ts": round(agora), "circulos": circulos(eventos, agora), "sem_prs": True, **extra}
     d = {"ts": round(agora), "duplicados": duplicados(prs, locais or [], agora), "circulos": circulos(eventos, agora),
          "parados": parados(prs, agora, parado_h, situacao),
-         "abertos": sorted(pr["numero"] for pr in prs or [] if isinstance(pr, dict) and isinstance(pr.get("numero"), int))}
+         "abertos": sorted(pr["numero"] for pr in prs or [] if isinstance(pr, dict) and isinstance(pr.get("numero"), int)), **extra}
     if locais is None:   # git falhou: duplicados só com os PRs; um duplicado ausente pode ser falta de dado (ausente())
         d["sem_locais"] = True
     return d
 
 
 # ---------------------------------------------------------------- chaves, ignorados e pedidos ao líder
-_RE_CHAVE = re.compile(r"(?:dup:[^\s,]+(?:,[^\s,]+)+|circulo:[^:\x00-\x1f]+:[^\x00-\x1f]+|parado:[1-9]\d{0,6})")
+_RE_CHAVE = re.compile(r"(?:dup:[^\s,]+(?:,[^\s,]+)+|circulo:[^:\x00-\x1f]+:[^\x00-\x1f]+|parado:[1-9]\d{0,6}"
+                       r"|rascunho:[A-Za-z0-9_-]{1,100}|repetido:[^:\x00-\x1f]+:[0-9a-f]{10})")
 _trava = threading.Lock()   # uma gravação por vez dentro do servidor (o arquivo é trocado de uma vez: tmp + replace)
 
 
@@ -269,8 +375,17 @@ def chave_parado(x):
     return f"parado:{x.get('numero')}"
 
 
+def chave_rascunho(r):
+    return f"rascunho:{r.get('item_id')}"
+
+
+def chave_repetido(r):
+    return f"repetido:{r.get('agente')}:{r.get('assinatura')}"
+
+
 def chave_valida(chave):
-    """dup:<branches ordenadas unidas por ","> | circulo:<agente>:<arquivo> | parado:<n>, até MAX_CHAVE caracteres."""
+    """dup:<branches ordenadas unidas por ","> | circulo:<agente>:<arquivo> | parado:<n> | rascunho:<id do item no Projects>
+    | repetido:<agente>:<sha1 curto do começo do comando>, até MAX_CHAVE caracteres."""
     return isinstance(chave, str) and 0 < len(chave) <= MAX_CHAVE and bool(_RE_CHAVE.fullmatch(chave))
 
 
@@ -287,6 +402,9 @@ def sem_ignorados(dados, ignorados):
         d["circulos"] = [c for c in d["circulos"] if not (isinstance(c, dict) and chave_circulo(c) in ign)]
     if isinstance(d.get("parados"), list):
         d["parados"] = [x for x in d["parados"] if not (isinstance(x, dict) and chave_parado(x) in ign)]
+    for campo, chave in (("rascunhos", chave_rascunho), ("repetidos", chave_repetido)):
+        if isinstance(d.get(campo), list):
+            d[campo] = [x for x in d[campo] if not (isinstance(x, dict) and chave(x) in ign)]
     return d
 
 
@@ -369,6 +487,8 @@ def descrever(chave, dados=None):
             if isinstance(x, dict) and chave_parado(x) == chave and isinstance(x.get("horas"), int) and not isinstance(x["horas"], bool):
                 return f"PR #{int(resto)} parado há {x['horas']} h"
         return f"PR #{int(resto)} parado"
+    if tipo in ("rascunho", "repetido"):
+        return TIPO_DA_CHAVE[tipo] + "; " + dado(chave)
     return dado(chave)
 
 
@@ -490,7 +610,8 @@ def pedidos_a_entregar(pasta=None, entregar=None, agora=None, dados=None):
 
 # ---------------------------------------------------------------- rodada: resolvidos, expiração e cancelamento
 def presentes(dados):
-    """{chave: descrição curta} de tudo o que `dados` (saude.resumo) mostra: duplicados (fortes e fracos), círculos e parados."""
+    """{chave: descrição curta} de tudo o que `dados` (saude.resumo) mostra: duplicados (fortes e fracos), círculos, parados,
+    rascunhos e repetidos."""
     out = {}
     if not isinstance(dados, dict):
         return out
@@ -504,15 +625,24 @@ def presentes(dados):
     for x in dados.get("parados") or []:
         if isinstance(x, dict):
             out[chave_parado(x)] = texto_linha(f"PR #{x.get('numero')} {x.get('titulo') or ''}", 200)
+    for r in dados.get("rascunhos") or []:
+        if isinstance(r, dict):
+            out[chave_rascunho(r)] = texto_linha(f"cartão rascunho {r.get('titulo') or ''} ({r.get('status') or ''})", 200)
+    for r in dados.get("repetidos") or []:
+        if isinstance(r, dict):
+            out[chave_repetido(r)] = texto_linha(f"{r.get('agente')} repete {r.get('prefixo') or ''}", 200)
     return out
 
 
 def ausente(chave, dados):
     """True só se `dados` é completo para o tipo da chave e ela não está lá. Com sem_prs (GitHub fora ou PRONTO não carregado)
-    duplicados e parados faltam por falta de dado, não por resolução: só um círculo pode estar ausente."""
+    duplicados e parados faltam por falta de dado, não por resolução (círculo, repetido e rascunho não dependem dos PRs). Com
+    sem_kanban (Kanban não configurado ou fora do ar), um rascunho ausente é falta de dado."""
     if not isinstance(dados, dict) or dados.get("erro") or not chave:
         return False
-    if dados.get("sem_prs") and not chave.startswith("circulo:"):
+    if dados.get("sem_prs") and not chave.startswith(("circulo:", "repetido:", "rascunho:")):
+        return False
+    if dados.get("sem_kanban") and chave.startswith("rascunho:"):
         return False
     if dados.get("sem_locais") and chave.startswith("dup:"):   # git falhou: duplicado ausente pode ser só falta das branches locais
         return False
@@ -637,7 +767,8 @@ def segurados(dados, triagem, ciclo, triagem_ativa, agora=None, max_por_chave=2)
 
 
 def pendentes(dados, agora=None, ignorados=()):
-    """Linhas para o líder (duplicados fortes e círculos, fora os ignorados); [] se não há nada ou o arquivo está velho."""
+    """Linhas para o líder (duplicados fortes, círculos e cartões rascunho em coluna de trabalho, fora os ignorados; os
+    comandos repetidos são só dica no painel); [] se não há nada ou o arquivo está velho."""
     agora = agora or time.time()
     if not isinstance(dados, dict) or agora - (dados.get("ts") or 0) > VALIDADE_ARQ:
         return []
@@ -648,6 +779,14 @@ def pendentes(dados, agora=None, ignorados=()):
     # sem as contagens: elas mudam a cada rodada e o vigia (que só não repete a MESMA saída) acordaria o líder de novo
     linhas += [f"círculo: {texto_linha(c.get('agente'), 40)} edita {texto_linha(c.get('arquivo'), 120)} e roda o mesmo comando "
                "de novo e de novo" for c in dados.get("circulos") or [] if isinstance(c, dict)]
+    for r in dados.get("rascunhos") or []:
+        if not isinstance(r, dict) or not _RE_ITEM_ID.fullmatch(str(r.get("item_id") or "")):
+            continue
+        titulo = texto_linha(r.get("titulo"), 120).replace('"', "'")
+        cmd = texto_linha(r.get("comando"), 400)
+        linhas.append(f'rascunho: o cartão "{titulo}" ({texto_linha(r.get("status"), 40)}) é rascunho, sem número de issue: '
+                      "converta em issue antes de despachar"
+                      + (f": {cmd}" if cmd else " (no projeto do GitHub: abra o cartão e use Convert to issue)"))
     return linhas
 
 

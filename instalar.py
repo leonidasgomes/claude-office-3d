@@ -3,6 +3,7 @@
     python instalar.py                                   instalação guiada, passo a passo
     python instalar.py --sem-perguntas --config X.json   instalação silenciosa (para automatizar)
     python instalar.py --desinstalar                     remove os hooks (e a statusline) deste escritório (com backup)
+    python instalar.py --revisao PROJETO                 numa instalação existente, só o passo "Revisão de PR"
 
 Opções:
     --settings-usuario CAMINHO   usa outro settings.json no lugar de ~/.claude/settings.json
@@ -10,14 +11,25 @@ Opções:
     --hook usuario|projeto|nenhum   escopo do hook no modo silencioso (padrão: usuario)
     --statusline                 liga a statusline de uso do plano no settings.json do usuário (modo silencioso;
                                  nunca substitui uma statusline que já exista)
+    --sem-venv                   não cria o .venv do escritório (hooks e atalhos usam o python do PATH)
+    --sem-revisao                pula o passo "Revisão de PR (líder + revisor)" (padrão: o Revisor entra no time)
     --sem-abrir                  não pergunta / não abre o escritório no final
 
 No modo silencioso, o arquivo de --config tem o formato do config.json e pode trazer um bloco extra
 "instalacao": {"destino": "...", "hook": "usuario|projeto|nenhum", "statusline": false, "three_offline": false,
-"abrir": false}.
+"abrir": false, "venv": true, "revisao": true} e o bloco "praticas": {"corrigir": false, "instalar_deps": false} (boas práticas dos projetos:
+o relatório sai sempre; as correções seguras só com "corrigir": true).
+
+O escritório roda no próprio .venv (<destino>/.venv, sem pip: só a biblioteca padrão), criado no passo do Python ou
+reaproveitado se já existir e funcionar; os hooks, a statusline e os atalhos chamam o Python dele.
+
+Revisão de PR (líder + revisor): o agente Revisor entra no time (config.json) e cada projeto ganha
+.claude/agents/revisor.md pelo modelo (nunca sobrescreve). --revisao PROJETO faz só isso numa instalação existente
+(--destino = pasta do escritório; mostra o diff do config.json e faz backup antes de gravar).
 """
 import argparse
 import copy
+import difflib
 import json
 import os
 import platform
@@ -28,6 +40,7 @@ import stat
 import subprocess
 import sys
 import urllib.request
+import venv
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -37,6 +50,7 @@ if sys.version_info < (3, 9):
 
 PASTA = Path(__file__).resolve().parent
 sys.path.insert(0, str(PASTA))
+import boas_praticas  # noqa: E402
 import configuracao  # noqa: E402
 
 for _fluxo in (sys.stdout, sys.stderr):
@@ -47,7 +61,7 @@ for _fluxo in (sys.stdout, sys.stderr):
 
 WINDOWS = os.name == "nt"
 PYTHON_CMD = "python" if WINDOWS else "python3"
-TOTAL_PASSOS = 7
+TOTAL_PASSOS = 10
 EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "PostToolUseFailure", "TeammateIdle", "Stop", "SubagentStop")
 # PreToolUse só nos comandos que podem demorar: marca o início, para o agente não parecer ocioso enquanto espera.
 # PostToolUseFailure só nos comandos: é onde chega a falha (exit code diferente de 0) para o ✖ do escritório.
@@ -56,10 +70,12 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "opcoes.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "arquitetura.js", "arquitetura.css", "grafo_painel.py", "dica.js", "push.py", "cota.py", "saude.py", "saude_triagem.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "sw.js",
-          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
+          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
           "grafo/grafo.py", "grafo/LEIAME.md", "grafo/claude/SKILL.md", "grafo/claude/hooks/grafo_hook.py",
           "grafo/claude/instalar_grafo.py", "grafo/testes/testar_grafo.py", "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
+          "modelos/praticas/python-venv.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
+          "modelos/time/pesquisa.md", "modelos/time/revisor.md", "modelos/time/agente.md",
           "skills-candidatos/externo/README.md", "docs/SDD.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
@@ -249,9 +265,62 @@ def listar_projects(gh, owner):
         return None
 
 
+# ---------------------------------------------------------------- Python do escritório (.venv)
+def python_venv(pasta):
+    """Executável do Python do .venv de uma pasta (não resolve link: no Linux/macOS o bin/python aponta para fora)."""
+    return Path(pasta).absolute() / ".venv" / ("Scripts/python.exe" if WINDOWS else "bin/python")
+
+
+def python_do_escritorio(pasta):
+    """Caminho absoluto do Python do .venv do escritório, se existir; senão o python do PATH (PYTHON_CMD)."""
+    exe = python_venv(pasta)
+    return exe.as_posix() if exe.is_file() else PYTHON_CMD
+
+
+def chamada_python(pasta):
+    """Python do escritório pronto para um comando de hook/statusline (entre aspas quando é o caminho do .venv)."""
+    py = python_do_escritorio(pasta)
+    return py if py == PYTHON_CMD else f'"{py}"'
+
+
+def preparar_venv(pasta, confirmar=None):
+    """Cria <pasta>/.venv sem pip (o escritório só usa a biblioteca padrão) ou reaproveita o que já funciona.
+    Um .venv que existe mas cujo Python não roda só é recriado (apagado e criado de novo) se confirmar() devolver True
+    (pergunta do modo interativo); sem confirmar (modo silencioso), fica como está e volta "falhou" com o aviso.
+    Devolve (situação, detalhe): "ja", "criado" ou "falhou"."""
+    pasta_venv = Path(pasta) / ".venv"
+    exe = python_venv(pasta)
+    recriar = False
+    if (pasta_venv / "pyvenv.cfg").is_file() and exe.is_file():
+        cod, out = rodar([str(exe), "-c", "import json, sqlite3, ssl"], timeout=30)
+        if cod == 0:
+            return "ja", str(pasta_venv)
+        erro = (out or "").strip()[-200:] or f"código {cod}"
+        if confirmar is None or not confirmar(f"o .venv em {pasta_venv} existe, mas o Python dele não roda ({erro})"):
+            return "falhou", (f"o .venv em {pasta_venv} existe, mas o Python dele não roda ({erro}); não recriei: apague a"
+                              " pasta .venv ou rode o instalador sem --sem-perguntas para recriar")
+        recriar = True
+    elif pasta_venv.exists() and any(pasta_venv.iterdir()):
+        return "falhou", f"{pasta_venv} existe e não é um .venv (não mexi nela)"
+    try:
+        venv.EnvBuilder(with_pip=False, clear=recriar).create(str(pasta_venv))
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return "falhou", str(e)
+    cod, out = rodar([str(exe), "-c", "import json, sqlite3, ssl"], timeout=30)
+    if cod != 0:
+        return "falhou", f"o .venv foi criado mas o Python dele não roda: {out.strip()[:200]}"
+    return "criado", str(pasta_venv)
+
+
+def confirmar_recriar_venv(motivo):
+    """Modo interativo: pergunta antes de apagar e recriar um .venv quebrado (padrão não)."""
+    print(f"  ! {motivo}.")
+    return sim_nao("  Apagar e recriar o .venv do escritório?", False)
+
+
 # ---------------------------------------------------------------- hooks do Claude Code
 def comando_hook(pasta):
-    return f'{PYTHON_CMD} "{(Path(pasta) / "registrar_evento.py").as_posix()}"'
+    return f'{chamada_python(pasta)} "{(Path(pasta) / "registrar_evento.py").as_posix()}"'
 
 
 def bloco_hooks(pasta):
@@ -378,7 +447,7 @@ def desinstalar_hook(arq, pasta):
 
 # ---------------------------------------------------------------- statusline (uso do plano, opcional)
 def comando_statusline(pasta):
-    return f'{PYTHON_CMD} "{(Path(pasta) / "statusline_uso.py").as_posix()}"'
+    return f'{chamada_python(pasta)} "{(Path(pasta) / "statusline_uso.py").as_posix()}"'
 
 
 def bloco_statusline(pasta):
@@ -450,8 +519,11 @@ cd /d "%~dp0"
 set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
 echo Iniciando o Claude Office 3D...
-where python >nul 2>nul
-if %errorlevel%==0 (python "servidor.py" %EXTRA%) else (py -3 "servidor.py" %EXTRA%)
+rem Python do .venv do escritorio, se existir; senao o do PATH
+set PY=python
+where python >nul 2>nul || set PY=py -3
+if exist ".venv\\Scripts\\python.exe" set PY=.venv\\Scripts\\python.exe
+%PY% "servidor.py" %EXTRA%
 pause
 """
 ATALHO_SH = """#!/usr/bin/env sh
@@ -461,7 +533,9 @@ ATALHO_SH = """#!/usr/bin/env sh
 cd "$(dirname "$0")" || exit 1
 echo "Iniciando o Claude Office 3D..."
 if [ "$1" = "celular" ]; then shift; set -- --rede-local "$@"; fi
-exec python3 servidor.py "$@"
+PY=python3
+[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
+exec "$PY" servidor.py "$@"
 """
 REINICIAR_BAT = """@echo off
 rem Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo, minimizado.
@@ -472,6 +546,7 @@ set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
 set PY=python
 where python >nul 2>nul || set PY=py -3
+if exist ".venv\\Scripts\\python.exe" set PY=.venv\\Scripts\\python.exe
 for /f "usebackq delims=" %%p in (`%PY% configuracao.py --porta`) do set PORTA=%%p
 if "%PORTA%"=="" set PORTA=8765
 echo Encerrando o servidor antigo do escritorio (porta %PORTA%)...
@@ -488,12 +563,14 @@ REINICIAR_SH = """#!/usr/bin/env sh
 cd "$(dirname "$0")" || exit 1
 EXTRA=""
 [ "$1" = "celular" ] && EXTRA="--rede-local"
-PORTA=$(python3 configuracao.py --porta 2>/dev/null || echo 8765)
+PY=python3
+[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
+PORTA=$("$PY" configuracao.py --porta 2>/dev/null || echo 8765)
 echo "Encerrando o servidor antigo do escritório (porta $PORTA)..."
 PIDS=$(lsof -ti tcp:"$PORTA" -sTCP:LISTEN 2>/dev/null)
 if [ -n "$PIDS" ]; then kill $PIDS 2>/dev/null; echo "  processo(s) $PIDS encerrado(s)"; sleep 1; fi
 echo "Subindo o escritório de novo..."
-nohup python3 servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
+nohup "$PY" servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
 echo "Pronto: http://127.0.0.1:$PORTA/"
 """
 ATALHOS = {"abrir_escritorio.bat": ATALHO_BAT, "abrir_escritorio.sh": ATALHO_SH,
@@ -547,10 +624,11 @@ def baixar_three(destino):
 
 def abrir_escritorio(destino):
     servidor = str(Path(destino) / "servidor.py")
+    py = str(python_venv(destino)) if python_venv(destino).is_file() else sys.executable
     if WINDOWS:
-        subprocess.Popen([sys.executable, servidor], cwd=str(destino), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        subprocess.Popen([py, servidor], cwd=str(destino), creationflags=subprocess.CREATE_NEW_CONSOLE)
     else:
-        subprocess.Popen([sys.executable, servidor], cwd=str(destino), stdout=subprocess.DEVNULL,
+        subprocess.Popen([py, servidor], cwd=str(destino), stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
 
 
@@ -560,13 +638,28 @@ def aplicar(plano, args, log=print):
     if destino != PASTA:
         n = copiar_pacote(destino)
         log(f"  {n} arquivos copiados para {destino}")
-    cfg = configuracao.normalizar(plano["config"])
+    if plano.get("venv", True):
+        situacao, detalhe = preparar_venv(destino, plano.get("confirmar_venv"))
+        if situacao == "falhou":
+            log(f"  ! .venv do escritório não criado ({detalhe}); hooks e atalhos usam o {PYTHON_CMD} do PATH")
+        else:
+            log(f"  .venv do escritório {'reaproveitado' if situacao == 'ja' else 'criado'}: {detalhe}")
+    bruto = boas_praticas.com_revisor(plano["config"])[0] if plano.get("revisao") else plano["config"]
+    cfg = configuracao.normalizar(bruto)
     arq_cfg = destino / "config.json"
-    if arq_cfg.exists():
-        b = backup(arq_cfg)
-        log(f"  config.json anterior guardado em {b.name}")
-    arq_cfg.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    log(f"  gravado {arq_cfg}")
+    texto_cfg = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+    try:
+        igual = arq_cfg.read_text(encoding="utf-8-sig") == texto_cfg
+    except (OSError, ValueError):
+        igual = False
+    if igual:   # reinstalar com o mesmo config não enche a pasta de backups
+        log(f"  {arq_cfg} sem mudanças (nada gravado)")
+    else:
+        if arq_cfg.exists():
+            b = backup(arq_cfg)
+            log(f"  config.json anterior guardado em {b.name}")
+        arq_cfg.write_text(texto_cfg, encoding="utf-8")
+        log(f"  gravado {arq_cfg}")
     (destino / "dados").mkdir(exist_ok=True)
     escrever_atalhos(destino)
     log(f"  atalhos: abrir_escritorio.{'bat' if WINDOWS else 'sh'} e reiniciar_escritorio.{'bat' if WINDOWS else 'sh'}")
@@ -590,7 +683,53 @@ def aplicar(plano, args, log=print):
         else:
             log(f"  statusline NÃO instalada: {arq} já tem outra statusline (ela foi mantida).")
             log(como_encadear(destino))
+    if plano.get("revisao"):
+        for p in cfg["projetos"]:
+            if Path(p).is_dir():
+                log_revisor(p, cfg, log)
+    praticas = plano.get("praticas") or {}
+    if praticas.get("corrigir"):
+        for p in cfg["projetos"]:
+            if not Path(p).is_dir():
+                continue
+            acoes = boas_praticas.corrigir(p, aplicar=True, instalar_deps=bool(praticas.get("instalar_deps")), config=cfg,
+                                           settings_usuario=settings_usuario(args))
+            for a in acoes:
+                log(f"  boas práticas em {p}: {a['acao']}" + (f" — FALHOU: {a['erro']}" if a["erro"] else ""))
     return destino, cfg
+
+
+def log_revisor(projeto, cfg, log=print):
+    """Cria a definição do revisor no projeto (se faltar) e avisa se o líder do projeto ainda não tem o "Fluxo de PR"."""
+    try:
+        criado = boas_praticas.criar_revisor(projeto, cfg)
+    except OSError as e:
+        log(f"  ! revisor não criado em {projeto}: {e}")
+        return
+    log(f"  revisão de PR em {projeto}: " + (f"criado {criado}" if criado else "o projeto já tem a definição do revisor (mantida)"))
+    lider = boas_praticas.lider_sem_fluxo_pr(projeto, cfg)
+    claude_md = None if lider else boas_praticas.claude_md_sem_fluxo_pr(projeto, cfg)
+    if lider:
+        log(f"  o {lider} não tem a seção \"Fluxo de PR\" (o arquivo não foi mexido); cole esta no fim dele:")
+    elif claude_md:
+        log("  o projeto não tem a definição do líder (.claude/agents/lider.md): a sessão principal faz o papel de líder.")
+        log(f"  Cole esta seção no {claude_md} (o arquivo não foi mexido; {'ainda não existe' if not claude_md.exists() else 'sem a seção hoje'}):")
+    if lider or claude_md:
+        for linha in boas_praticas.secao_fluxo_pr().splitlines():
+            log("    " + linha)
+
+
+def relatar_praticas(projetos, config, args, log=print):
+    """Relatório do boas_praticas.validar para cada projeto. Devolve quantas correções automáticas existem."""
+    corrigiveis = 0
+    for p in projetos:
+        if not Path(p).is_dir():
+            continue
+        itens = boas_praticas.validar(p, config, settings_usuario(args))
+        for linha in boas_praticas.relatorio(p, itens, boas_praticas.detectar_escopo(p)):
+            log("  " + linha)
+        corrigiveis += sum(1 for i in itens if i["corrigivel"])
+    return corrigiveis
 
 
 # ---------------------------------------------------------------- modo interativo
@@ -613,7 +752,15 @@ def assistente(args):
     if destino != PASTA:
         print(f"  Os arquivos serão copiados para {destino}")
 
-    titulo_passo(3, "Pastas de projeto a monitorar")
+    titulo_passo(3, "Python do escritório (.venv)")
+    print("  O escritório só usa a biblioteca padrão do Python. Com um .venv próprio, os hooks, a statusline e os atalhos")
+    print("  não dependem do python do PATH (que pode mudar ou sumir). O .venv não tem pip e fica fora do git.")
+    exe = python_venv(destino)
+    if exe.is_file():
+        print(f"  Já existe: {exe} (será reaproveitado se funcionar)")
+    usar_venv = not args.sem_venv and sim_nao(f"  Criar/usar {Path(destino) / '.venv'}?", True)
+
+    titulo_passo(4, "Pastas de projeto a monitorar")
     print("  O hook só registra sessões do Claude Code abertas DENTRO destas pastas (e subpastas).")
     projetos = []
     sugestao = str(Path.cwd()) if Path.cwd().resolve() not in (PASTA, destino) else ""
@@ -630,7 +777,7 @@ def assistente(args):
             print(f"    + {p}")
         sugestao = ""
 
-    titulo_passo(4, "Agentes do time")
+    titulo_passo(5, "Agentes do time")
     encontrados = ler_agentes_md(projetos)
     opcoes = ["Time genérico (Líder, Dev, Designer, Pesquisa)"]
     if encontrados:
@@ -652,7 +799,7 @@ def assistente(args):
     mostrar_agentes(agentes)
     print("  (títulos, funções e cores podem ser ajustados depois no config.json)")
 
-    titulo_passo(5, "GitHub (opcional): painel de PRs e Kanban")
+    titulo_passo(6, "GitHub (opcional): painel de PRs e Kanban")
     github = copy.deepcopy(configuracao.PADRAO["github"])
     if not amb["gh"]:
         print("  GitHub CLI (gh) não encontrado: você pode configurar agora e instalar o gh depois.")
@@ -684,7 +831,23 @@ def assistente(args):
             print("  Status check que significa \"aprovado pela revisão\" (ex.: o nome de um job do CI).")
             github["check_revisao"] = perguntar("  Nome do check (vazio = usar a aprovação de review do GitHub)", "")
 
-    titulo_passo(6, "Aparência e servidor")
+    titulo_passo(7, "Revisão de PR (líder + revisor)")
+    print("  Fluxo: o colega abre o PR → o líder cria o Revisor (vida nova por PR) → o Revisor roda os testes e publica a")
+    print("  revisão no PR (gh pr review --comment, P0/P1/P2) → o líder devolve P0/P1 ao autor ou avisa você que o merge")
+    print("  é seu (ninguém do time faz merge). O Revisor entra no time e cada projeto ganha .claude/agents/revisor.md")
+    print("  (um que já exista é mantido).")
+    revisao = not args.sem_revisao and sim_nao("  Ligar a revisão de PR com líder e revisor?", True)
+    revisor_ia = None
+    if revisao:
+        agentes = completar_agentes(boas_praticas.com_revisor({"agentes": agentes})[0]["agentes"])
+        if github["repo"]:
+            print("  Opcional: revisor-ia automático. O servidor revisa cada commit novo dos PRs abertos com `claude -p` e")
+            print(f"  comenta no PR ([revisor-ia]). Custo: uma chamada do modelo ({configuracao.REVISOR_MODELO}) por commit novo")
+            print("  de cada PR aberto (diff de até 90 mil caracteres) — no plano de assinatura, gasta o seu limite de uso.")
+            if sim_nao("  Ligar o revisor-ia?", False):
+                revisor_ia = {"ativo": True, "modelo": perguntar("  Modelo do revisor-ia", configuracao.REVISOR_MODELO)}
+
+    titulo_passo(8, "Aparência e servidor")
     titulo = perguntar("  Título do escritório", "Claude Office 3D")
     tema = ("neutro", "sao-paulo")[escolher("  Tema", ["neutro (escritório genérico)",
                                                   "sao-paulo (maquete de SP, placas de rua, orelhão, ipês, coxinha…)"], 1)]
@@ -699,16 +862,21 @@ def assistente(args):
     rede_https = sim_nao("  Usar HTTPS (recomendado)? (CA local gerada no seu PC; precisa instalar o certificado no celular uma vez)", True) if rede_local else True
     three_offline = sim_nao(f"  Baixar o three.js {configuracao.VERSAO_THREE} para vendor/ (funciona sem internet)?", False)
 
-    titulo_passo(7, "Hook (e statusline opcional) do Claude Code")
+    titulo_passo(9, "Hook (e statusline opcional) do Claude Code")
     print("  O hook chama o registrar_evento.py a cada ferramenta usada e quando um agente fica ocioso.")
     e = escolher("  Onde instalar o hook?", [
-        f"usuário — {settings_usuario(args)} (vale para todas as sessões; o filtro de pastas do passo 3 se aplica)",
-        "projeto — <projeto>/.claude/settings.local.json de cada pasta do passo 3",
+        f"usuário — {settings_usuario(args)} (vale para todas as sessões; o filtro de pastas do passo 4 se aplica)",
+        "projeto — <projeto>/.claude/settings.local.json de cada pasta do passo 4",
         "não instalar agora (instalação manual, veja INSTALACAO.md)"], 1)
     hook = ("usuario", "projeto", "nenhum")[e]
     if hook != "nenhum":
         print("  Bloco que será ACRESCENTADO (os hooks que você já tem são mantidos; antes é feito um backup):")
-        print("    " + json.dumps(bloco_hooks(destino), ensure_ascii=False, indent=2).replace("\n", "\n    "))
+        bloco = json.dumps(bloco_hooks(destino), ensure_ascii=False, indent=2)
+        if usar_venv and not exe.is_file():   # o .venv só nasce no fim: mostra o comando como ele vai ficar
+            novo = f'"{exe.as_posix()}" "{(Path(destino) / "registrar_evento.py").as_posix()}"'
+            bloco = bloco.replace(json.dumps(comando_hook(destino), ensure_ascii=False)[1:-1],
+                                  json.dumps(novo, ensure_ascii=False)[1:-1])
+        print("    " + bloco.replace("\n", "\n    "))
     print()
     print("  Opcional: statusline de uso do plano. Mostra na barra do Claude Code o uso da janela de 5 h e da semana e")
     print("  grava as leituras para o Placar (só planos de assinatura Pro/Max; com API key não aparece nada).")
@@ -726,11 +894,30 @@ def assistente(args):
     config = {"porta": porta, "titulo": titulo, "projetos": projetos, "agentes": agentes, "github": github,
               "tema": tema, "apelidos": apelidos, "rede_local": rede_local, "rede_https": rede_https,
               "xp": {"ativo": xp_ativo, "desde": (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")}}
+    if revisor_ia:
+        config["revisor"] = revisor_ia
+
+    titulo_passo(10, "Projeto: boas práticas")
+    print("  Confere o básico de que o time precisa em cada projeto: git, .gitignore cobrindo segredos e pastas geradas,")
+    print("  CLAUDE.md, definição de cada agente, .venv e comando de teste. Só leitura; nada muda sem a sua confirmação.")
+    praticas = {"corrigir": False, "instalar_deps": False}
+    if relatar_praticas(projetos, config, args):
+        print("  Correções seguras: criar o .venv do projeto, acrescentar linhas ao .gitignore, gravar a regra do .venv e as")
+        print("  definições de agente que faltam. Nunca sobrescreve arquivo; o settings do projeto ganha backup antes.")
+        praticas["corrigir"] = sim_nao("  Aplicar as correções seguras no fim da instalação?", False)
+        if praticas["corrigir"] and any((Path(p) / "requirements.txt").is_file() and not (Path(p) / ".venv").exists()
+                                        for p in projetos):
+            praticas["instalar_deps"] = sim_nao("  Instalar o requirements.txt no .venv novo (pip, precisa de internet)?",
+                                                False)
+    else:
+        print("  Nada a corrigir automaticamente (o que faltar acima é manual: veja a linha de cada item).")
+    config["praticas"] = praticas
     print()
     print("=" * 64)
     print(" Resumo")
     print("=" * 64)
     print(f"  Pasta:      {destino}")
+    print(f"  Python:     {('.venv do escritório (' + str(Path(destino) / '.venv') + ')') if usar_venv else PYTHON_CMD + ' do PATH'}")
     print(f"  Projetos:   {', '.join(projetos)}")
     print(f"  Agentes:    {', '.join(a['nome'] for a in agentes)}")
     print(f"  GitHub:     PRs={github['repo'] or '—'}  Kanban="
@@ -738,16 +925,19 @@ def assistente(args):
           f"  check={github['check_revisao'] or '(review)'}")
     print(f"  Tema:       {tema}   apelidos: {apelidos}   porta: {porta}   three.js: {'local' if three_offline else 'CDN'}")
     print(f"  Celular:    {('LIGADO (rede local, ' + ('HTTPS' if rede_https else 'HTTP') + '; veja a seção Acesso pelo celular do INSTALACAO.md)') if rede_local else 'desligado (só neste PC)'}")
+    print(f"  Revisão PR: {'líder + Revisor' + (' + revisor-ia (' + revisor_ia['modelo'] + ')' if revisor_ia else '') if revisao else 'desligada'}")
     print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o INSTALACAO.md)' if xp_ativo else 'desligado'}")
     print("  Alertas:    ligados (botão 🔔 Alertas; Web Push no celular: veja a seção Alertas no celular do INSTALACAO.md)")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
     print(f"  Statusline: {'uso do plano em ' + str(settings_usuario(args)) if statusline else 'não instalar'}")
+    print(f"  Práticas:   {'aplicar as correções seguras nos projetos' if praticas['corrigir'] else 'só o relatório (corrija depois com python boas_praticas.py corrigir)'}")
     if not sim_nao("  Gravar tudo isso agora?", True):
         raise Cancelado()
     print()
     destino, cfg = aplicar({"destino": destino, "config": config, "hook": hook, "statusline": statusline,
-                            "three_offline": three_offline}, args)
+                            "three_offline": three_offline, "venv": usar_venv, "praticas": praticas,
+                            "revisao": revisao, "confirmar_venv": confirmar_recriar_venv}, args)
     print()
     print("  Instalação concluída!")
     print(f"  Para abrir depois: {'abrir_escritorio.bat (duplo clique)' if WINDOWS else './abrir_escritorio.sh'}"
@@ -781,6 +971,9 @@ def silencioso(args):
         "hook": args.hook or inst.get("hook") or "usuario",
         "statusline": bool(args.statusline or inst.get("statusline")),
         "three_offline": bool(inst.get("three_offline")),
+        "venv": not args.sem_venv and inst.get("venv") is not False,
+        "revisao": not args.sem_revisao and inst.get("revisao") is not False,
+        "praticas": configuracao.normalizar(dados)["praticas"],
     }
     if plano["hook"] not in ("usuario", "projeto", "nenhum"):
         print("hook deve ser usuario, projeto ou nenhum")
@@ -790,9 +983,68 @@ def silencioso(args):
             print(f"Aviso: pasta de projeto não encontrada: {p}")
     print("Claude Office 3D — instalação silenciosa")
     destino, cfg = aplicar(plano, args)
+    print("Boas práticas dos projetos:")
+    if relatar_praticas(cfg["projetos"], cfg, args) and not plano["praticas"]["corrigir"]:
+        print('  (correções seguras: python boas_praticas.py corrigir <projeto> --aplicar, ou "praticas": {"corrigir": true})')
     print(f"Pronto. Abra com abrir_escritorio.{'bat' if WINDOWS else 'sh'} → http://127.0.0.1:{cfg['porta']}/")
     if inst.get("abrir") and not args.sem_abrir:
         abrir_escritorio(destino)
+    return 0
+
+
+def so_revisao(args):
+    """--revisao PROJETO: só o passo "Revisão de PR" numa instalação existente. Mostra o diff do config.json, faz backup
+    antes de gravar e cria .claude/agents/revisor.md no projeto (nunca sobrescreve)."""
+    destino = Path(args.destino).resolve() if args.destino else PASTA
+    projeto = Path(args.revisao).expanduser().resolve()
+    arq_cfg = destino / "config.json"
+    if not projeto.is_dir():
+        print(f"Pasta do projeto não encontrada: {projeto}")
+        return 2
+    if not arq_cfg.is_file():
+        print(f"config.json não encontrado em {destino} (use --destino <pasta do escritório>)")
+        return 2
+    try:
+        atual = json.loads(arq_cfg.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as e:
+        print(f"config.json inválido ({e}): nada foi mudado")
+        return 2
+    if not isinstance(atual, dict):
+        print("config.json inválido (não é um objeto JSON): nada foi mudado")
+        return 2
+    print("Claude Office 3D — revisão de PR (líder + revisor)")
+    motivos = boas_praticas.revisao_configurada(configuracao.normalizar(atual), projeto)
+    print(f"  Hoje quem revisa os PRs: {', '.join(motivos) or 'ninguém'}")
+    novo, _ = boas_praticas.com_revisor(atual)
+    norm = configuracao.normalizar(novo)
+    if not args.sem_perguntas and norm["github"]["repo"] and not norm["revisor"]["ativo"]:
+        print(f"  Opcional: revisor-ia automático (uma chamada de {configuracao.REVISOR_MODELO} por commit novo de cada PR"
+              " aberto; no plano de assinatura, gasta o seu limite de uso).")
+        if sim_nao("  Ligar o revisor-ia?", False):
+            bloco = dict(novo["revisor"]) if isinstance(novo.get("revisor"), dict) else {}
+            bloco.update(ativo=True, modelo=perguntar("  Modelo do revisor-ia", configuracao.REVISOR_MODELO))
+            novo["revisor"] = bloco
+    diff = list(difflib.unified_diff(json.dumps(atual, ensure_ascii=False, indent=2).splitlines(),
+                                     json.dumps(novo, ensure_ascii=False, indent=2).splitlines(),
+                                     "config.json (atual)", "config.json (novo)", lineterm=""))
+    alvo = boas_praticas.caminho_revisor(projeto, novo)
+    if diff:
+        print(f"  Mudanças em {arq_cfg} (o arquivo é regravado com indentação de 2 espaços):")
+        for linha in diff:
+            print("    " + linha)
+    else:
+        print("  config.json: o time já tem um revisor (nada muda)")
+    print(f"  {('vai criar ' + str(alvo)) if alvo else 'o projeto já tem a definição do revisor (mantida)'}")
+    if not diff and alvo is None:
+        print("  Nada a fazer.")
+    else:
+        if not args.sem_perguntas and not sim_nao("  Aplicar?", True):
+            raise Cancelado()
+        if diff:
+            copia = backup(arq_cfg)
+            arq_cfg.write_text(json.dumps(novo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"  gravado {arq_cfg} (backup: {copia.name}); reinicie o escritório para ver a mesa do Revisor")
+    log_revisor(projeto, norm)
     return 0
 
 
@@ -833,10 +1085,16 @@ def main():
     ap.add_argument("--statusline", action="store_true",
                     help="liga a statusline de uso do plano no settings.json do usuário (modo silencioso)")
     ap.add_argument("--sem-abrir", action="store_true", help="não abre o escritório no final")
+    ap.add_argument("--sem-venv", action="store_true", help="não cria o .venv do escritório (usa o python do PATH)")
+    ap.add_argument("--sem-revisao", action="store_true", help="pula o passo Revisão de PR (líder + revisor)")
+    ap.add_argument("--revisao", metavar="PROJETO",
+                    help="numa instalação existente, só o passo Revisão de PR para este projeto (diff e backup do config)")
     args = ap.parse_args()
     try:
         if args.desinstalar:
             return desinstalar(args)
+        if args.revisao:
+            return so_revisao(args)
         if args.sem_perguntas:
             return silencioso(args)
         assistente(args)

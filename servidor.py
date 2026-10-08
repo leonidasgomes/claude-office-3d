@@ -17,6 +17,9 @@ Serve esta pasta e expõe:
                                          drift e validação resumida; a thread `grafo` lê só leitura a `grafo.ref` da 1ª pasta
                                          de "projetos" a cada grafo.intervalo_min (sem grafo: diz como criar um)
   GET /api/sugestoes                  -> sugestões abertas dos bots de revisão, por PR (sugestoes_bot.py; o celular pareado também lê)
+  GET /api/praticas                   -> boas práticas dos projetos do config (boas_praticas.validar; recalculado no máximo a
+                                         cada 10 min numa thread; o celular lê sem os caminhos absolutos)
+  GET /api/versao                     -> {"local": versão instalada} (arquivo VERSION; mostrada no menu ⚙️ do painel)
   POST /api/sugestoes/tratar          -> encaminhar/ignorar/resolver uma sugestão (só o PC, com CSRF)
 O GitHub é consultado só por REST com cache (PRs 180 s, com ETag e cache por sha; Kanban 600 s) e uma thread coleta as
 sugestões a cada sugestoes.intervalo_min (padrão 15) minutos.
@@ -53,6 +56,7 @@ import rede  # noqa: E402
 import saude  # noqa: E402  (duplicados, círculos, risco do PR, PR parado: saude.py)
 import saude_triagem  # noqa: E402  (triagem barata dos itens novos da saúde: saude_triagem.py)
 import sugestoes_bot  # noqa: E402
+import boas_praticas  # noqa: E402  (boas práticas dos projetos: painel 🩺 Saúde)
 import grafo_painel  # noqa: E402  (painel 🗺️ Arquitetura: base só leitura + grafo/grafo.py)
 
 HOST = "127.0.0.1"
@@ -303,15 +307,18 @@ def _ler_kanban_rest(g):
     nomes = {"status": "status", "time": g["campo_time"], "prioridade": g["campo_prioridade"]}
     ids = {k: por_nome.get(str(n).lower()) for k, n in nomes.items() if n}
     brutos = _paginas_rest(f"{base}/items?per_page=100&fields=" + ",".join(str(i) for i in ids.values() if i))
+    url = f"https://github.com/{base.split('/')[0]}/{owner}/projects/{numero}"
     cartoes = []
     for i in brutos:
         c = i.get("content") or {}
         por_id = {f.get("id"): f for f in i.get("fields") or []}
         valor = {k: _valor_rest(por_id.get(ids.get(k))) for k in nomes}
-        cartoes.append({"numero": c.get("number"), "titulo": c.get("title") or "", "url": c.get("html_url") or "",
-                        "tipo": i.get("content_type") or "", "status": valor["status"] or "Sem status",
-                        "time": valor["time"], "prioridade": valor["prioridade"]})
-    url = f"https://github.com/{base.split('/')[0]}/{owner}/projects/{numero}"
+        tipo = i.get("content_type") or ""
+        # rascunho (DraftIssue) não tem número nem html_url: o link abre o item no próprio projeto (id numérico do item)
+        link = c.get("html_url") or (f"{url}?pane=issue&itemId={i['id']}" if tipo == "DraftIssue" and isinstance(i.get("id"), int) else "")
+        cartoes.append({"numero": c.get("number"), "titulo": c.get("title") or "", "url": link,
+                        "tipo": tipo, "status": valor["status"] or "Sem status",
+                        "time": valor["time"], "prioridade": valor["prioridade"], "item_id": str(i.get("node_id") or "")})
     return {"configurado": True, "projeto": url, "cartoes": cartoes, "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
 
 
@@ -335,7 +342,7 @@ def _ler_kanban_graphql(g):
                         "url": c.get("url") or "", "tipo": c.get("type") or "",
                         "status": i.get("status") or "Sem status",
                         "time": str(_campo(i, g["campo_time"]) or ""),
-                        "prioridade": str(_campo(i, g["campo_prioridade"]) or "")})
+                        "prioridade": str(_campo(i, g["campo_prioridade"]) or ""), "item_id": str(i.get("id") or "")})
     owner = g["projeto_owner"]
     url = _url_projeto.get((owner, g["projeto_numero"]))
     if not url:   # a URL não muda: o `project view` (uma chamada GraphQL a mais) só roda na primeira leitura
@@ -694,7 +701,7 @@ def saude_pasta():
 
 
 def saude_atual():
-    """Duplicados, círculos e PRs parados (saude.resumo), recalculado no máximo a cada SAUDE_VALIDADE e gravado em
+    """Duplicados, círculos, PRs parados, cartões rascunho e comandos repetidos (saude.resumo), recalculado no máximo a cada SAUDE_VALIDADE e gravado em
     dados/saude.json (lido por `saude.py --pendentes`, no vigia do líder). As branches locais vêm da 1ª pasta de "projetos"."""
     with _saude_trava:
         if _saude["dados"] is not None and time.time() - _saude["quando"] < SAUDE_VALIDADE:
@@ -719,8 +726,15 @@ def saude_atual():
             eventos = []
         projetos = cfg()["projetos"]
         locais = saude.branches_locais(projetos[0]) if projetos and lista is not None else []
+        cartoes = None   # Kanban não configurado ou com erro: sem_kanban (nenhum rascunho conta como resolvido)
+        try:
+            k = kanban()
+            if k.get("configurado") and not k.get("erro") and isinstance(k.get("cartoes"), list):
+                cartoes = k["cartoes"]
+        except Exception:
+            pass
         dados = saude.resumo(lista, locais, eventos, time.time(), lambda pr: alertas.situacao_pr(pr, sg),
-                             cfg()["alertas"]["parado_horas"])
+                             cfg()["alertas"]["parado_horas"], cartoes, cfg()["github"]["repo"])
         # só os círculos (GitHub fora ou PRONTO ainda não carregado, como logo depois de subir): tenta de novo em 60 s
         _saude.update(quando=time.time() - (SAUDE_VALIDADE - 60 if dados.get("sem_prs") else 0), dados=dados)
         try:   # resolvidos, ignorado/veredicto que expira e pedido cancelado (saude.rodada respeita sem_prs/sem_locais);
@@ -793,11 +807,81 @@ def saude_get():
     return dados
 
 
+PRATICAS_VALIDADE = 600   # s entre validações das boas práticas (git curto e leitura de arquivos, mas por projeto)
+_praticas = {"quando": 0.0, "dados": None, "thread": None}
+_praticas_trava = threading.Lock()
+
+
+def praticas_calcular():
+    """boas_praticas.validar de cada pasta de "projetos" (o settings do usuário só é lido)."""
+    projetos = None
+    try:
+        c = cfg()
+        projetos = []
+        for p in c["projetos"]:
+            item = {"projeto": str(p), "nome": Path(p).name or str(p), "stacks": [], "testes": "", "itens": [], "erro": ""}
+            try:
+                if not Path(p).is_dir():
+                    raise OSError("pasta não encontrada")
+                escopo = boas_praticas.detectar_escopo(p)
+                item.update(stacks=sorted(escopo["stacks"]), testes=escopo["testes"], itens=boas_praticas.validar(p, c))
+            except Exception as e:
+                item["erro"] = str(e)[:200]
+            projetos.append(item)
+    except Exception as e:
+        print(f"[praticas] {str(e)[:160]}", flush=True)
+    finally:
+        with _praticas_trava:
+            _praticas["thread"] = None
+            if projetos is not None:
+                _praticas.update(quando=time.time(), dados=projetos)
+
+
+def versao_get():
+    """GET /api/versao: a versão instalada, lida do VERSION do pacote ("" se faltar). Não consulta o GitHub."""
+    try:
+        local = (PASTA / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        local = ""
+    return 200, {"local": local}
+
+
+# caminho absoluto num texto: C:\... ou C:/..., \\servidor\..., /a/b... (pelo menos duas partes; "e/ou" e ".venv/" não)
+sem_caminhos = saude.sem_caminhos   # texto sem caminhos absolutos (para o celular): cada um vira "…/<última parte>"
+
+
+def _praticas_celular(p):
+    """Projeto do /api/praticas para quem não é o PC: sem o campo projeto e sem caminhos absolutos nos textos."""
+    out = {k: sem_caminhos(v) for k, v in p.items() if k != "projeto"}
+    out["itens"] = [{k: sem_caminhos(v) for k, v in i.items()} for i in p.get("itens") or []]
+    return out
+
+
+def praticas_get(ident):
+    """GET /api/praticas: resultado em cache; velho (ou ausente) dispara a validação numa thread e espera no máximo 3 s.
+    Para quem não é o PC (celular), sem o caminho absoluto dos projetos (só o nome da pasta) nem caminhos nos textos."""
+    with _praticas_trava:
+        velho = _praticas["dados"] is None or time.time() - _praticas["quando"] >= PRATICAS_VALIDADE
+        t = _praticas["thread"]
+        if velho and t is None:
+            t = _praticas["thread"] = threading.Thread(target=praticas_calcular, name="praticas", daemon=True)
+            t.start()
+    if t is not None and _praticas["dados"] is None:
+        t.join(3)
+    with _praticas_trava:
+        dados, quando = _praticas["dados"], _praticas["quando"]
+    pc = ident.get("permissao") == "pc"
+    projetos = [dict(p) if pc else _praticas_celular(p) for p in dados or []]
+    return 200, {"ok": True, "calculando": dados is None, "quando": quando, "validade": PRATICAS_VALIDADE,
+                 "projetos": projetos}
+
+
 def _validar_saude(dados, campo_texto, limite):
     """(chave, texto) válidos do corpo do POST, ou (None, erro)."""
     chave, texto = dados.get("chave"), dados.get(campo_texto, "")
     if not saude.chave_valida(chave):
-        return None, "chave inválida (dup:<branches>, circulo:<agente>:<arquivo> ou parado:<n>, até 300 caracteres)"
+        return None, ("chave inválida (dup:<branches>, circulo:<agente>:<arquivo>, parado:<n>, rascunho:<id do item> ou "
+                      "repetido:<agente>:<assinatura>, até 300 caracteres)")
     if texto is None:
         texto = ""
     if not isinstance(texto, str) or len(texto) > limite:
@@ -978,6 +1062,10 @@ class Handler(rede.HandlerSeguro):
     def api_get(self, rota, qs, ident):
         if rota == "/api/sugestoes":
             return sugestoes_get()
+        if rota == "/api/praticas":
+            return praticas_get(ident)
+        if rota == "/api/versao":
+            return versao_get()
         return alertas_get(rota, qs, ident)
 
     def caminho_bloqueado(self):

@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.17.1 (arquivo `VERSION`) |
+| Versão descrita | 1.18.0 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -138,7 +138,8 @@ Princípios que aparecem em todo o código:
 - **Responsabilidade**: ler `config.json` (ou o caminho de `OFFICE_CONFIG`), mesclar com `PADRAO` e corrigir tipos sem
   nunca levantar exceção (`normalizar`, `carregar`). Arquivo ausente ou inválido = configuração padrão.
 - **Normalizadores por bloco**: `normalizar_agente`, `normalizar_xp`, `normalizar_sugestoes`, `normalizar_vigia`,
-  `normalizar_revisor`, `normalizar_auditor`, `normalizar_alertas`.
+  `normalizar_revisor`, `normalizar_auditor`, `normalizar_alertas`, `normalizar_grafo`, `normalizar_praticas` (só
+  booleanos; o resto vira o padrão).
 - **Utilidades**: `lider(cfg)`, `chave(nome)` (minúsculas; `-` e espaço → `_`), `localizar_gh()` (PATH e caminhos padrão no
   Windows/macOS/Linux), `pasta_dentro(cwd, pastas)` (comparação sem diferenciar maiúsculas, `\` = `/`).
 - **Constantes**: `VERSAO_THREE = "0.160.0"`, `TEMAS`, `MODOS_APELIDO`, `TIPOS_MESA`, `PALETA`, `AGENTES_PADRAO`
@@ -469,7 +470,7 @@ Princípios que aparecem em todo o código:
 
 ### 3.17 `instalar.py` — instalador
 
-- Assistente em 7 passos (`assistente`, `TOTAL_PASSOS = 7`), modo silencioso (`silencioso`) e desinstalação
+- Assistente em 10 passos (`assistente`, `TOTAL_PASSOS = 10`), modo silencioso (`silencioso`) e desinstalação
   (`desinstalar`). Mescla hooks sem duplicar e com backup datado (`mesclar_hooks`, `remover_hooks`, `backup`),
   liga a statusline só se não houver outra (`instalar_statusline`), grava os hooks de `EVENTOS_HOOK` com `MATCHER_HOOK`
   (seção 5.2; rodar de novo acrescenta o `PostToolUseFailure` de quem instalou antes da 1.15.0), escreve os atalhos (`escrever_atalhos`), copia o
@@ -477,6 +478,26 @@ Princípios que aparecem em todo o código:
   `docs/SDD.md`, `VERSION`, `CHANGELOG.md` e `LICENSE`) e opcionalmente baixa o three.js para `vendor/` (`baixar_three`).
   O `ferramentas/testar_instalacao.py` falha se um arquivo versionado ficar fora do `PACOTE` sem estar na exclusão
   `FORA_DO_PACOTE`.
+- **.venv do escritório** (1.18.0): `preparar_venv` cria `<destino>/.venv` com `venv.EnvBuilder(with_pip=False)` (o
+  escritório só usa a biblioteca padrão) ou reaproveita o que já roda (`import json, sqlite3, ssl`); pasta `.venv` que não
+  é venv fica intocada (falha relatada, segue com o python do PATH); `.venv` cujo Python não roda só é recriado
+  (`clear=True`) se `confirmar` devolver verdadeiro (`confirmar_recriar_venv`, pergunta do assistente, padrão não); no
+  silencioso falha com o aviso e nada é apagado. `aplicar` só grava o `config.json` (e faz o backup) quando o conteúdo muda. `python_venv` (`.venv/Scripts/python.exe` no Windows,
+  `.venv/bin/python` fora), `python_do_escritorio` (o do .venv se existir, senão `PYTHON_CMD`) e `chamada_python` (entre
+  aspas quando é caminho) montam os comandos dos hooks, da statusline e dos atalhos. `--sem-venv` (ou `"venv": false` em
+  `instalacao`) pula o passo.
+- **Passo "Projeto: boas práticas"**: `relatar_praticas` mostra o `boas_praticas.validar` de cada pasta de `projetos`;
+  o assistente pergunta se aplica as correções seguras; o modo silencioso sempre mostra o relatório e só corrige com
+  `"praticas": {"corrigir": true}` (`boas_praticas.corrigir(..., aplicar=True)`). Nunca escreve no settings do usuário.
+- **Passo "Revisão de PR (líder + revisor)"** (padrão sim): `boas_praticas.com_revisor` acrescenta o `AGENTE_REVISOR` ao
+  time do config (sem duplicar quando já há um agente revisor) e `log_revisor` cria `.claude/agents/revisor.md` em cada
+  projeto (`boas_praticas.criar_revisor`, nunca sobrescreve) e mostra a seção "Fluxo de PR" quando o líder do projeto não a
+  tem (`lider_sem_fluxo_pr`; o arquivo do líder não é alterado). Com `github.repo`, o assistente oferece o revisor-ia
+  (bloco `revisor`, padrão não). O modo silencioso faz o mesmo salvo `--sem-revisao` ou `"revisao": false` em
+  `instalacao`. `--revisao PROJETO` (`so_revisao`) aplica só isso numa instalação existente: mostra quem revisa hoje
+  (`boas_praticas.revisao_configurada`), o diff unificado do `config.json` (`difflib`), confirma (salvo
+  `--sem-perguntas`), grava com `backup` e cria o `revisor.md`; sem mudança, "Nada a fazer."; projeto ou config inválido
+  sai com 2.
 
 ### 3.18 Front-end
 
@@ -489,11 +510,11 @@ Princípios que aparecem em todo o código:
 | `prs.js` | painel PRs (pronto / aguardando / bloqueado), selo de sugestões, botões Encaminhar/Ignorar/Resolvido só no PC; publica para o 3D `CustomEvent('prs', {prs: [{numero, titulo, classe, risco}], atualizado, erro})` só quando muda, e `window.__prs.dados` | `/prs` e `/api/sugestoes` a cada 60 s; `/api/sessao`; `POST /api/sugestoes/tratar` |
 | `placar.js` | Placar, níveis nas mesas, confete, botões Conferido/Liberar/Desfazer, tiles de custo e uso do plano; ⓘ em cada tile (`descricoes`: pesos, `desde`, janela e amostra lidos de `regras` do `placar.json`, check de `github.check_revisao`) e na legenda dos cartões; nível novo chama `__office.comemorar` e PR novo pontuado (`prs` do agente subiu, guardado em `office.xp.prs`) chama `__office.merge` (com o replay aberto não comemora nem grava como visto) | `/xp` a cada 60 s; `POST /api/xp/*`; `/api/acoes` |
 | `alertas.js` | painel 🔔 ("Alertas recentes" no topo; tipos e push num `<details>` recolhido, lembrado em `localStorage` `office.alertas.config`), toast, Notification API, registro do `sw.js` e inscrição Web Push | `/api/alertas?desde=` a cada 10 s (inclusive com a aba oculta); `/api/push/*` |
-| `saude_painel.js` + `saude_painel.css` | painel 🩺 Saúde (botão no cabeçalho, só com servidor): trabalho duplicado (fortes; fracos recolhidos), agentes em círculos, PRs parados, resumo do risco dos PRs abertos, e recolhidos "Ignorados", "Silenciados pela triagem (falso positivo)" (com "Desfazer falso positivo") e "Resolvidos (24 h)"; em cada item o veredicto 🤖 da triagem (problema com gravidade e ação, falso positivo, em andamento ou indisponível) e se o líder já foi avisado automaticamente; pedido "cancelado: resolvido"; ações Abrir no GitHub, 📨 Avisar o líder e 🙈 Ignorar / ↩️ Reativar (só no PC, com motivo/recado opcional num formulário na própria linha); cada ignorado e cada pedido mostra quem fez (origem e User-Agent resumido; o que não parece navegador fica em amarelo); Esc fecha | `/saude` e `/prs` ao abrir e a cada 60 s só com o painel aberto e a aba visível; `POST /api/saude/ignorar`, `/api/saude/avisar`, `/api/saude/triagem` |
+| `saude_painel.js` + `saude_painel.css` | painel 🩺 Saúde (botão no cabeçalho, só com servidor): trabalho duplicado (fortes; fracos recolhidos), agentes em círculos, PRs parados, resumo do risco dos PRs abertos, e recolhidos "Ignorados", "Silenciados pela triagem (falso positivo)" (com "Desfazer falso positivo") e "Resolvidos (24 h)"; em cada item o veredicto 🤖 da triagem (problema com gravidade e ação, falso positivo, em andamento ou indisponível) e se o líder já foi avisado automaticamente; pedido "cancelado: resolvido"; ações Abrir no GitHub, 📨 Avisar o líder e 🙈 Ignorar / ↩️ Reativar (só no PC, com motivo/recado opcional num formulário na própria linha); cada ignorado e cada pedido mostra quem fez (origem e User-Agent resumido; o que não parece navegador fica em amarelo); seção "Boas práticas do projeto" (depois do risco dos PRs; recolhida sem erro; itens erro → aviso → dica com o selo do nível, o detalhe e o comando `python boas_praticas.py corrigir "<projeto>"` — o painel só mostra, a correção roda no terminal do PC); Esc fecha | `/saude`, `/prs` e `/api/praticas` ao abrir e a cada 60 s só com o painel aberto e a aba visível; `POST /api/saude/ignorar`, `/api/saude/avisar`, `/api/saude/triagem` |
 | `sw.js` | service worker: mostra a notificação do push e abre o painel certo | evento `push`, `notificationclick` |
 | `celular.js` + `qr.js` | painel 📱 (só em localhost): QR da CA e de pareamento, aparelhos, ajuda de Firewall; QR gerado em JS puro | `/rede/status` a cada 5 s com o painel aberto; `POST /rede/*` |
 | `movel.js` | detecção de celular/tela compacta (< 760 px ou altura < 480 px), gaveta inferior, menu ☰ | — |
-| `opcoes.js` | menu ⚙️ Opções do cabeçalho do painel (`#btnOpcoes`, `aria-haspopup="menu"`, `aria-expanded`): reúne Visão geral, Apelidos, Animações, Som e Demo (`menuitemcheckbox` com `aria-checked`) e 📱 Celular (só no PC) — os mesmos botões e ids de antes, com os handlers do `escritorio.js`/`celular.js`/`placar.js`; cada item mostra o estado ("Animações: auto", "Som: desligado", "Demo: ligado"). Popover fixo na tela (o painel corta o que passa da borda); Enter/Espaço/↓ abrem e focam o 1º item (↑: o último), ↑/↓/Home/End andam, Tab circula dentro, Esc fecha e devolve o foco ao ⚙️, clique fora fecha; opção de estado mantém o menu aberto, ação (Visão geral, Celular: `data-fecha`) fecha. No celular (`html.compacto`) o ⚙️ some e as opções viram a seção "⚙️ Opções" do menu ☰. No cabeçalho ficam só os painéis (PRs, Kanban, Placar, Alertas, Saúde, Arquitetura, Replay) | — |
+| `opcoes.js` | menu ⚙️ Opções do cabeçalho do painel (`#btnOpcoes`, `aria-haspopup="menu"`, `aria-expanded`): reúne Visão geral, Apelidos, Animações, Som e Demo (`menuitemcheckbox` com `aria-checked`) e 📱 Celular (só no PC) — os mesmos botões e ids de antes, com os handlers do `escritorio.js`/`celular.js`/`placar.js`; cada item mostra o estado ("Animações: auto", "Som: desligado", "Demo: ligado"). Popover fixo na tela (o painel corta o que passa da borda); Enter/Espaço/↓ abrem e focam o 1º item (↑: o último), ↑/↓/Home/End andam, Tab circula dentro, Esc fecha e devolve o foco ao ⚙️, clique fora fecha; opção de estado mantém o menu aberto, ação (Visão geral, Celular: `data-fecha`) fecha. No celular (`html.compacto`) o ⚙️ some e as opções viram a seção "⚙️ Opções" do menu ☰. No cabeçalho ficam só os painéis (PRs, Kanban, Placar, Alertas, Saúde, Arquitetura, Replay); no pé do menu, "Versão X" (`#versaoOpcoes`, escondido sem servidor) | `/api/versao` uma vez |
 | `arquitetura.js` + `arquitetura.css` | painel 🗺️ Arquitetura (botão no menu, escondido sem servidor ou com `grafo.ativo` false; Esc fecha a ficha e depois o painel): grafo 2D em SVG gerado no JS (createElementNS/textContent), colunas por camada na ordem das `may_depend_on`, nós = sistemas (cor da camada, tamanho pelo nº de arquivos), arestas declaradas, imports reais não declarados e camadas violadas (vermelho tracejado) e ciclos reais (laranja); no celular (ou ☰ Lista) lista por camada; ficha do sistema (resumo, arquivos, depende de/usado por, imports não declarados, problemas do validate, eventos, testes, ADRs, quem mexeu hoje). Ao vivo, sem custo por quadro: eventos do escritório (`office-evento`, fora do replay) com `file_path`/`notebook_path` normalizados como o grafo (sem a raiz do projeto informada em `raiz` pelo `/grafo` e sem a do worktree `.claude/worktrees/<nome>/`) põem o anel do agente que mexeu nos últimos 10 min e o calor do dia (`/eventos?de=<hoje>` ao abrir); comando de teste/build com `ok:false` que cita um caminho do sistema põe ✖; círculos da `/saude` (`office-saude`) põem 🔁. Sem grafo no projeto (`sem_grafo`) mostra como criar um (`grafo.py init`). `window.__arquitetura` (`sistemaDe`, `nomeDe`) dá o "sistema atual" da ficha e da dica do agente (`escritorio.js`, último arquivo lido/editado) | `/grafo` 3 s depois de abrir a página, ao abrir o painel e a cada 5 min com ele aberto (30 min fechado); `/eventos?de=` |
 | `dica.js` | dica ⓘ acessível (`dica(texto, rotulo)` devolve o botão): abre com o mouse, o foco do teclado e o toque; Esc ou tocar fora fecha; um balão só para a página (`#dicaBalao`) e o texto também num `<span>` ligado por `aria-describedby`. Usada no Placar, no selo de risco do PR (`prs.js`; limites iguais a `saude.RISCO`) e nas seções do painel Saúde | — |
 
@@ -509,7 +530,10 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
 
 - `modelos/`: `diretor.md` (prompt genérico do Diretor), `briefing_diretor.py` (briefing a partir do config e do
   `gh`; CLI na seção 5.3), `sugestoes_lider.md` (modelo de skill do líder), `GUIA-TIME-ENXUTO.md` (`README.md`,
-  `CHANGELOG.md` 1.6.0). Copiados pelo instalador para a pasta de destino (`instalar.PACOTE`).
+  `CHANGELOG.md` 1.6.0), `praticas/python-venv.md` (regra do .venv gravada em `.claude/rules/` do projeto) e `time/`
+  (`lider.md`, `dev.md`, `designer.md`, `pesquisa.md`, `revisor.md`, `agente.md`: definições dos agentes com
+  `{{nome}}`, `{{projeto}}`, `{{stacks}}`, `{{testes}}`... — ambos usados pelo `boas_praticas.corrigir`). Copiados pelo
+  instalador para a pasta de destino (`instalar.PACOTE`).
 - `glossario_triagem.exemplo.md`: modelo do glossário usado pela triagem e pelo revisor.
 - `skills-candidatos/MODELO.md` e `skills-candidatos/externo/` (quarentena de skills de terceiros — `INSTALACAO.md` §12).
 
@@ -537,6 +561,34 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
   configuração atual — projeto|ref|arquivo —; senão `index` null e o aviso de que está sendo gerado; YAML do grafo acima de
   `MAX_YAML_BYTES` = 10 × `MAX_ARQ` é falha determinística); projeto = 1ª pasta de `projetos`, `ref`,
   `arquivo` e intervalo do bloco `grafo` do `config.json` (`servidor.opcoes_grafo`). Nunca escreve no repositório do projeto.
+
+### 3.21 `boas_praticas.py` — boas práticas do projeto
+
+- **Responsabilidade**: conferir (`validar`) e corrigir com segurança (`corrigir`) o básico de que o time de agentes
+  precisa num projeto. Só biblioteca padrão; validar é rápido (sem rede, sem pip; git com `TEMPO_GIT = 5` s; detecção de
+  tecnologias até `MAX_PROFUNDIDADE = 3` pastas e `MAX_ARQUIVOS = 4000`, pulando `PASTAS_IGNORADAS`).
+- **Checagens** (cada item: `id`, `titulo`, `nivel` em `NIVEIS` = erro/aviso/dica, `ok`, `detalhe`, `corrigivel`,
+  `como_corrigir`): `git` (erro), `gitignore`, `env-versionado` (erro: `.env` no índice do git), `claude-md`,
+  `hook-escritorio`, `testes`, `grafo` (dica), `ci` (dica); com Python: `python-venv`, `python-dependencias`,
+  `python-regra-venv`, `python-hooks-venv`, `python-agentes-venv`; com Node: `node-lockfile`; e `agente-<nome>`, as definições dos
+  agentes do config em `.claude/agents/` (faltar a de um agente comum é erro; a do líder, aviso); `revisao-pr` (aviso):
+  alguém revisa os PRs — agente revisor no config ou em `.claude/agents/` (palavra do nome em `PALAVRAS_REVISOR`:
+  revisor, reviewer, code-reviewer, revisao…; "previsao" e "preview" não), revisor-ia ativo, `github.bots_revisao` ou
+  `github.check_revisao` (`revisao_configurada`). `.gitignore` é lido por
+  `git -c core.excludesFile= check-ignore --no-index` (só `.gitignore` e `.git/info/exclude`; o ignore global do usuário
+  não conta), ou pelos padrões do arquivo fora de um repositório. Comandos e saídas mostrados no `detalhe` passam por
+  `_limpar(..., markdown=False)` (o `_` de `grafo_hook.py` fica). `claude_md_sem_fluxo_pr`: sem definição do líder no
+  projeto, o `CLAUDE.md` onde colar a seção "Fluxo de PR" (o `instalar.log_revisor` só mostra o texto).
+- **Correções** (`corrigir(projeto, ids, aplicar, instalar_deps)`; sem `aplicar` devolve só o plano): cria o `.venv` do
+  projeto (`python -m venv`; `pip install -r requirements.txt` só com `instalar_deps`), acrescenta ao `.gitignore` as linhas
+  que faltam preservando CRLF/LF (`acrescentar_gitignore`), grava `.claude/rules/python-venv.md` (`REGRA_VENV`), troca o
+  `python` dos hooks do grafo no settings do PROJETO pelo do `.venv` (`trocar_python_hooks_grafo`, com `backup`) e cria as
+  definições dos agentes que faltam (`texto_agente`, modelos em `modelos/time/`) e, para `revisao-pr`, o `revisor.md`
+  (`criar_revisor`). `com_revisor`, `secao_fluxo_pr` e `lider_sem_fluxo_pr` servem ao passo de revisão do instalador. Nunca sobrescreve arquivo existente, nunca
+  escreve no settings do usuário (só lido) e não corrige o que exige decisão (`git init`, tirar o `.env` do índice).
+- **Usado por**: CLI (seção 5.3), `instalar.py` (passo "Projeto: boas práticas") e `servidor.praticas_get`
+  (`GET /api/praticas`): validação numa thread `praticas`, cache de `PRATICAS_VALIDADE = 600` s, espera de no máximo 3 s
+  (depois responde `calculando`); para o celular, sem os caminhos absolutos dos projetos. Sem rota de correção.
 
 ## 4. Modelo de dados
 
@@ -636,6 +688,8 @@ além das marcas em `meta`.
 | GET | `/api/alertas` | `desde=<id>` | `ativo`, `alertas`, `ultimo`, `titulo`, `hoje`, `tipos`, `push` | idem |
 | GET | `/api/push/chave` | — | `disponivel`, `chave` (VAPID pública), `motivo` | idem |
 | GET | `/api/push/estado` | `h=<id 12 hex>` | `inscrito`, `tipos` | idem |
+| GET | `/api/praticas` | — | `projetos[]` (`nome`, `projeto` — caminho só para o PC; no celular, caminhos absolutos dos textos viram `…/<nome>` por `servidor.sem_caminhos` —, `stacks`, `testes`, `itens` do `boas_praticas.validar`, `erro`), `ok`, `calculando` (validação em andamento; espera no máximo 3 s), `quando`, `validade` (`servidor.praticas_get`) | PC; celular com sessão |
+| GET | `/api/versao` | — | `local` (conteúdo do arquivo `VERSION`; `""` se faltar; não consulta o GitHub) (`servidor.versao_get`) | PC; celular com sessão |
 | POST | `/api/xp/conferido`, `/api/xp/desfazer` | `{"pr": N}` | `{ok, placar}` ou erro 400/403/404/409/500 | PC e celular "conferir" (desfazer só de "conferido") |
 | POST | `/api/xp/liberar` | `{"pr": N}` | idem | só PC |
 | POST | `/api/sugestoes/tratar` | `{"id", "acao": encaminhada\|ignorada\|discutir\|resolvida\|reabrir, "nota"}` | `{ok, mensagem, sugestoes}` | só PC |
@@ -675,18 +729,20 @@ same-origin` e `Sec-Fetch-Mode` presentes (`rede.ROTAS_NAVEGADOR`); texto que n�
 | `Stop` | — | `ocioso` |
 | `SubagentStop` | — | `ocioso` |
 
-Comando: `python "<pasta>/registrar_evento.py"` (`python3` fora do Windows), `timeout: 5`, `async: true`
+Comando: `"<pasta>/.venv/Scripts/python.exe" "<pasta>/registrar_evento.py"` (`.venv/bin/python` fora do Windows; sem
+o `.venv` do escritório, `python`/`python3` do PATH — `instalar.chamada_python`), `timeout: 5`, `async: true`
 (`instalar.bloco_hooks`, `EVENTOS_HOOK`). Escopo do usuário (`~/.claude/settings.json`) ou do projeto
 (`<projeto>/.claude/settings.local.json`).
 
-StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\""}` (`instalar.bloco_statusline`).
+StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/statusline_uso.py\""}`
+(`instalar.bloco_statusline`; o mesmo Python dos hooks).
 
 ### 5.3 Linha de comando
 
 | Script | Uso |
 |---|---|
 | `servidor.py` | `[--porta N] [--sem-navegador] [--rede-local] [--sem-https]` |
-| `instalar.py` | sem argumentos (assistente); `--sem-perguntas --config X.json`; `--desinstalar`; `--settings-usuario CAMINHO`; `--destino PASTA`; `--hook usuario\|projeto\|nenhum`; `--statusline`; `--sem-abrir` |
+| `instalar.py` | sem argumentos (assistente); `--sem-perguntas --config X.json`; `--desinstalar`; `--settings-usuario CAMINHO`; `--destino PASTA`; `--hook usuario\|projeto\|nenhum`; `--statusline`; `--sem-abrir`; `--sem-venv`; `--sem-revisao`; `--revisao PROJETO` (só a revisão de PR numa instalação existente) |
 | `configuracao.py` | `--porta`; sem argumento imprime a configuração normalizada |
 | `xp.py` | sem argumentos; `--completo`; `--liberar N` \| `--conferido N` \| `--desfazer N` [`--origem T` `--motivo T`]; `--so-placar` |
 | `auditor_xp.py` | sem argumentos; `--seco` |
@@ -699,6 +755,7 @@ StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\
 | `vigia_lider.py` | sem argumentos (laço); `--uma` |
 | `saude.py` | `--pendentes` (pedidos do desenvolvedor ainda não entregues, depois os duplicados fortes e círculos não ignorados do `dados/saude.json`, ou `NADA`) |
 | `plugins_projeto.py` | `[--projeto P] [--desligar ids] [--religar ids]` |
+| `boas_praticas.py` | `validar [PROJETO] [--json]` (código 1 se alguma checagem `erro` falha); `corrigir [PROJETO] [--aplicar] [--so id1,id2] [--instalar-deps]` (sem `--aplicar`, só o plano); sem PROJETO, as pastas de `projetos` |
 | `modelos/briefing_diretor.py` | `[--config config.json] [--dias-parado 14] [--saida arquivo.md]` (padrão `dados/diretor/briefing.md`) |
 | `grafo/grafo.py` (`grafo.py`) | comuns a todos os comandos: `--raiz R`, `--grafo ARQ`; `--versao` |
 | `grafo.py init` | `[--saida ARQ] [--llm] [--ext .py,.ts] [--raizes a,b] [--max-arquivos 40]` (nunca sobrescreve) |
@@ -712,7 +769,7 @@ StatusLine: `{"type": "command", "command": "python \"<pasta>/statusline_uso.py\
 | `grafo/claude/hooks/grafo_hook.py` (`grafo_hook.py`) | `pre`; `post`; `fim [--bloquear] [--base REF]` (stdin do hook) |
 | `grafo/testes/testar_grafo.py` | sem opções (`python -W error`); `GRAFO_BASE_EXEMPLO=<raiz>` liga a fumaça num projeto seu |
 | `ferramentas/verificar.py` | `[--termos arquivo.txt]` |
-| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `testar_grafo_painel.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
+| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `testar_grafo_painel.py`, `testar_praticas.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
 | Atalhos | `abrir_escritorio[.bat\|.sh] [celular]`, `reiniciar_escritorio[.bat\|.sh] [celular]` |
 
 ### 5.4 `config.json` — chaves principais
@@ -732,7 +789,8 @@ Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.js
 | `grafo` | `ativo`, `ref`, `arquivo` (YAML do grafo no repositório; `""` = procurar: `grafo.json` do projeto, depois os nomes padrão do `grafo.py`), `intervalo_min` (5–1440) — painel 🗺️ Arquitetura (`configuracao.normalizar_grafo`: ref inválida volta ao padrão; arquivo absoluto, com `..` ou `:` vira `""`) | true, `origin/main`, `""`, 60 |
 | `alertas` | `ativo`, `tipos`, `lembrete_horas`, `limite_push_hora`, `toast_windows`, `contato`, `escalonamentos`, `agentes_pergunta`, `imediatos`, `resumo_horas`, `parado_horas` | ativo, 24, 20, false, …, `ALERTAS_IMEDIATOS`, 3, 24 |
 | rede | `rede_local`, `rede_https`, `rede_tailscale` | false, true, false |
-| `instalacao` (só no modo silencioso) | `destino`, `hook`, `statusline`, `three_offline`, `abrir` | — |
+| `instalacao` (só no modo silencioso) | `destino`, `hook`, `statusline`, `three_offline`, `abrir`, `venv` (false = como `--sem-venv`), `revisao` (false = como `--sem-revisao`) | — |
+| `praticas` | `corrigir` (instalador silencioso aplica as correções seguras do `boas_praticas.py` nos `projetos`; o relatório sai sempre) (`configuracao.normalizar_praticas`) | false |
 
 `rede_tailscale` só tem efeito com `rede_local`: ligado, aceita aparelhos na faixa `100.64.0.0/10` e põe o IP Tailscale
 na CA; desligado, essa faixa é recusada (`rede.ip_permitido`).
@@ -1030,7 +1088,7 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | Ferramenta | O que cobre | Onde roda |
 |---|---|---|
 | `ferramentas/verificar.py` | sintaxe Python (`ast.parse`) e JS (`node --check`, se houver Node); varredura de vazamento (e-mail, caminhos de usuário Windows/Unix, tokens do GitHub, chaves de API, IDs do Projects, chaves privadas) mais termos extras de `--termos` | CI e local; também antes do build |
-| `ferramentas/testar_instalacao.py` | lista `instalar.PACOTE` completa (todo item existe; todo arquivo versionado está nela ou em `FORA_DO_PACOTE`); instalação silenciosa numa pasta temporária, conferindo a cópia de `modelos/`, `VERSION`, `CHANGELOG.md` e `LICENSE`: instala duas vezes sem duplicar (6 hooks do escritório; `PreToolUse` e `PostToolUseFailure` só com o matcher `Bash|PowerShell`), preserva um hook alheio, desinstala só os seus, liga/remove a statusline do escritório e nunca troca nem remove uma statusline alheia | CI e local |
+| `ferramentas/testar_instalacao.py` | lista `instalar.PACOTE` completa (todo item existe; todo arquivo versionado está nela ou em `FORA_DO_PACOTE`); instalação silenciosa numa pasta temporária, conferindo a cópia de `modelos/`, `VERSION`, `CHANGELOG.md` e `LICENSE`: instala duas vezes sem duplicar (6 hooks do escritório; `PreToolUse` e `PostToolUseFailure` só com o matcher `Bash|PowerShell`), preserva um hook alheio, desinstala só os seus, liga/remove a statusline do escritório e nunca troca nem remove uma statusline alheia; `.venv` do escritório criado e reaproveitado, hooks e statusline com o Python dele entre aspas, `--sem-venv` sem `.venv`; relatório de boas práticas sempre e correções só com `"praticas": {"corrigir": true}` (sem tocar o settings do usuário); Revisor no time e `revisor.md` criado, mantido ao repetir, e nada disso com `--sem-revisao`; sem lider.md, a seção para o `CLAUDE.md` sem criá-lo; repetir com o mesmo config não faz backup dele; `.venv` quebrado não é recriado no silencioso | CI e local |
 | `ferramentas/testar_alertas.py` | RFC 8291 (exemplo oficial do apêndice A), cifra e decifra por implementação de referência, assinatura VAPID, saneamento e validação de endpoints, envio a um serviço de push local de mentira, detector com dados simulados, `pr_pronto` com a mesma regra do painel PRs e vigia da cota (`testar_rfc8291`, `testar_roundtrip`, `testar_vapid`, `testar_sanear_e_endpoints`, `testar_envio`, `testar_detector`, `testar_pronto_igual_ao_painel`, `testar_cota`) | CI e local, com `python -W error`; exige `cryptography` (sai se faltar) |
 | `ferramentas/testar_rede.py` | filtro de origem `rede.ip_permitido`: IP privado entra; `100.64.0.0/10` recusado com `rede_tailscale` desligado e aceito com ele ligado; IP público, loopback alheio, link-local, multicast e reservado recusados; `rede.Rede` guarda o flag | CI e local |
 | `ferramentas/testar_estaticos.py` | bloqueio de arquivos estáticos (`Handler.caminho_bloqueado`, `rede.HandlerSeguro.servir_estatico` e `do_HEAD`) com o Handler real em porta aleatória servindo uma pasta temporária, por pedidos HTTP crus em GET e HEAD: `dados/`, scripts (`.py`, `.sh`, `.bat`), documentos (`.md`, `.txt`), `.json` e pastas ocultas não saem por nenhum contorno (`%xx`, `%5c`, `//`, `/./`, `/x/../`, `dados.`, `dados `, `::$DATA`, NUL, maiúsculas, UTF-8 inválido, URL absoluta, query/fragmento, `servidor.py/.`, junção/symlink para `dados/` ou para fora); arquivos legítimos (js, css, png, `sw.js`, `vendor/three/...`, nomes com vários pontos, acentos e espaço) e as rotas `/manifest.webmanifest` e `/eventos` seguem funcionando; banco temporário | CI e local, com `python -W error` |
@@ -1040,6 +1098,7 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | `ferramentas/testar_sugestoes_triagem.py` | triagem das sugestões (`sugestoes_bot.triar`, `_para_triar`, `_ha_para_triar` e o ramo de triagem do `coletar`): item `nova` já na caixa é triado na coleta seguinte mesmo sem novas; `coletar(triagem=False)` nunca chama o modelo; tentativa contada antes da chamada e teto `MAX_TENTATIVAS_TRIAGEM`; falha e resposta sem JSON contam; item tratado pelo líder no meio da chamada não é sobrescrito; sem `claude` não gasta tentativa; só os 30 enviados contam. Caixa em pasta temporária, `gh_api` e `subprocess.run` falsos (sem rede e sem modelo) | CI e local, com `python -W error` |
 | `grafo/testes/testar_grafo.py` | `grafo.py` num repositório git temporário (Python/C++/TS falsos, grafo com aresta não declarada, ciclo real, camada violada, órfão e caminho inexistente): leitor YAML próprio x PyYAML, precedência de dono, `init` (não sobrescreve), `validate` (também `--base` e sem PyYAML), `owner`/`suggest`, `slice` (orçamento), `impact --diff`, `find`, `drift`, `index` e `sync-rules` determinísticos; hooks (JSON válido, uma vez por sessão, bloqueio, entrada quebrada) e instalador (sem duplicar, desinstalar, `--copiar`); fumaça num projeto seu só com `GRAFO_BASE_EXEMPLO` | CI e local, com `python -W error` (precisa de git) |
 | `ferramentas/testar_grafo_painel.py` | `grafo_painel.py` num repositório git temporário com a ref `origin/main`: `caminho_seguro`, o que vai para a base (cobertura e caminhos citados; pasta não citada fica fora), binário/grande vazios, `index.json`/`estado.json`, validate com camada violada e ciclo real, drift, mesmo commit não refaz / `forcar` refaz / commit novo atualiza, falhas mantêm o último index, sem grafo (`sem_grafo`, `como_criar`, também depois de reiniciar), `grafo.ativo` false, sem projeto, ref inválida, `grafo.arquivo` e `grafo.json` do projeto, `normalizar_grafo`, nomes perigosos na árvore, palavra solta não puxa pasta, leitura concorrente e `GET /grafo` em porta aleatória sem servir a cópia da base | CI e local, com `python -W error` (precisa de git) |
+| `ferramentas/testar_praticas.py` | `boas_praticas.py` em pastas temporárias: detecção de tecnologias e do comando de teste, sem git, repositório git real (`.env` versionado é erro), checagens de Python/Node/outras stacks, `corrigir` (plano não muda nada, aplicar, repetir sem mudar, backup do settings, nunca sobrescreve; só o `git` continua erro), `.venv` real, `.gitignore` CRLF/LF, caminhos do Python do venv por sistema, CLI (códigos 0/1/2, `OFFICE_CONFIG`), revisão de PR (`revisao-pr` com cada forma de revisão, `com_revisor`, `criar_revisor` sem sobrescrever, seção "Fluxo de PR" do líder ou do `CLAUDE.md` sem lider.md, revisor casado por palavra, `instalar.py --revisao` com diff, backup, repetição sem mudança e saída 2), ignore global do usuário fora da conta, comando do hook com "_", `.venv` quebrado não recriado sem confirmação, `GET /api/versao` e `GET /api/praticas` em porta aleatória (cache, celular sem caminhos no projeto, no detalhe e no erro, validação lenta responde `calculando` sem abrir segunda thread); settings do usuário sempre temporário | CI e local, com `python -W error` (precisa de git) |
 | `ferramentas/verificar_docs.py` | este documento contra o código (seção 13) | CI e local |
 | `ferramentas/build.py` | roda a verificação e monta o zip | CI e release |
 
@@ -1177,3 +1236,4 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.16.2 | segurança: `caminho_bloqueado` com caminho decodificado/normalizado e nome real (contorno de `dados/` e de scripts) | `servidor.py`, `ferramentas/testar_estaticos.py` |
 | 1.17.0 | grafo de arquitetura para agentes (`grafo/`: CLI init/validate/owner/suggest/slice/impact/find/drift/index/sync-rules, hooks do Claude Code e instalador por projeto); painel 🗺️ Arquitetura (`GET /grafo`, thread `grafo`, bloco `grafo` do config) com quem mexe onde ao vivo e "sistema atual" na ficha; `notebook_path` no detalhe do evento | `grafo/`, `grafo_painel.py`, `arquitetura.js`, `arquitetura.css`, `servidor.py`, `configuracao.py`, `escritorio.js`, `index.html`, `registrar_evento.py`, `instalar.py`, `ferramentas/` |
 | 1.17.1 | menu ⚙️ Opções no cabeçalho do painel (Visão geral, Apelidos, Animações, Som, Demo, Celular); no cabeçalho só os painéis | `opcoes.js`, `index.html`, `estilo.css`, `escritorio.js`, `instalar.py` |
+| 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |

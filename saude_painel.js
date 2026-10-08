@@ -2,6 +2,7 @@
 // (GET /saude, calculado sem tokens pelo saude.py, e GET /prs para os links e o risco). Ações: abrir no GitHub, ignorar /
 // reativar (POST /api/saude/ignorar: some dos alertas e do vigia do líder) e avisar o líder (POST /api/saude/avisar: o vigia
 // entrega como "[vigia saude] ... pedido do desenvolvedor: ..."). Ignorar e avisar são só do PC (rede.PERMISSAO_ROTA).
+// Seção "Boas práticas do projeto" (GET /api/praticas, boas_praticas.py): o que falta em cada projeto e como corrigir.
 // Consulta só com o painel aberto e a aba visível (a cada 60 s). Todo texto vindo de fora entra por textContent.
 
 import { dica } from './dica.js';
@@ -10,7 +11,7 @@ import { CONFIG, temServidor } from './config.js';
 const ATUALIZAR_MS = 60000;
 const $ = (id) => document.getElementById(id);
 const botao = $('btnSaude'), painel = $('saude'), corpo = $('saudeCorpo'), info = $('saudeInfo');
-let dados = null, prs = null, sessao = null, erro = '', carregando = false, timer = null;
+let dados = null, prs = null, praticas = null, sessao = null, erro = '', carregando = false, timer = null;
 const abertos = new Set();   // <details> abertos (sobrevive ao redesenho a cada 60 s)
 let formAberto = '';         // "acao|chave" do formulário inline aberto (ignorar / avisar)
 let rascunho = '';           // texto digitado no formulário aberto (sobrevive ao redesenho)
@@ -74,11 +75,13 @@ async function carregar() {
   if (!dados) desenhar();
   try {
     await pegarSessao();
-    const [rs, rp] = await Promise.all([fetch('/saude', { cache: 'no-store' }), CONFIG.github.prs ? fetch('/prs', { cache: 'no-store' }).catch(() => null) : null]);
+    const [rs, rp, rb] = await Promise.all([fetch('/saude', { cache: 'no-store' }), CONFIG.github.prs ? fetch('/prs', { cache: 'no-store' }).catch(() => null) : null,
+      fetch('/api/praticas', { cache: 'no-store' }).catch(() => null)]);
     const j = await rs.json();
     if (!rs.ok || !j || typeof j !== 'object') throw new Error('resposta inválida (' + rs.status + ')');
     dados = j; erro = j.erro ? String(j.erro) : '';
     if (rp && rp.ok) { try { prs = await rp.json(); } catch (e) { /* mantém o último */ } }
+    if (rb && rb.ok) { try { const jb = await rb.json(); if (jb && Array.isArray(jb.projetos)) praticas = jb; } catch (e) { /* mantém o último */ } }
   } catch (e) {
     erro = 'servidor do escritório fora do ar ou sem resposta (' + e.message + ')';
   } finally {
@@ -387,6 +390,50 @@ function blocoRisco() {
   return sec;
 }
 
+// ---------------------------------------------------------------- boas práticas (boas_praticas.py)
+const NIVEL_PRATICA = { erro: 0, aviso: 1, dica: 2 };
+const ROT_NIVEL = { erro: 'ERRO', aviso: 'aviso', dica: 'dica' };
+function itemPratica(i, nomeProjeto) {
+  const nivel = i.nivel in NIVEL_PRATICA ? i.nivel : 'dica';
+  const li = el('li', 'saude-item pratica-' + nivel);
+  const topo = el('div', 'saude-titulo');
+  topo.append(el('span', 'saude-nivel ' + nivel, ROT_NIVEL[nivel]), document.createTextNode(' ' + String(i.titulo || i.id || '')));
+  li.append(topo);
+  const meta = el('div', 'saude-meta');
+  meta.append(el('span', null, nomeProjeto), el('span', null, i.corrigivel ? 'correção automática' : 'correção manual'));
+  li.append(meta);
+  if (i.detalhe) li.append(el('div', 'saude-motivo', String(i.detalhe)));
+  if (i.como_corrigir) li.append(el('div', 'saude-pedido', 'Como corrigir: ' + String(i.como_corrigir)));
+  return li;
+}
+function blocoPraticas() {
+  const lista = (praticas && praticas.projetos) || [];
+  const itens = [];
+  let erros = 0, auto = 0;
+  const comandos = [];
+  for (const p of lista) {
+    const nome = String(p.nome || p.projeto || 'projeto');
+    if (p.erro) { itens.push(el('li', 'saude-item pratica-aviso', `${nome}: não consegui validar (${p.erro})`)); continue; }
+    const falhas = (Array.isArray(p.itens) ? p.itens : []).filter((i) => i && !i.ok)
+      .sort((a, b) => (NIVEL_PRATICA[a.nivel] ?? 3) - (NIVEL_PRATICA[b.nivel] ?? 3));
+    for (const i of falhas) { itens.push(itemPratica(i, nome)); if (i.nivel === 'erro') erros++; if (i.corrigivel) auto++; }
+    const alvo = String(p.projeto || p.nome || '');
+    if (falhas.some((i) => i.corrigivel)) comandos.push(`python boas_praticas.py corrigir "${alvo}"   (plano; depois --aplicar)`);
+  }
+  const vazio = !praticas ? 'Consultando…' : (praticas.calculando ? 'Validando os projetos… (aparece na próxima atualização)'
+    : (lista.length ? 'Tudo em ordem nos projetos. 👍' : 'Nenhuma pasta em "projetos" no config.json.'));
+  const sec = secao('prat', 'Boas práticas do projeto', 'O básico de que o time de agentes precisa em cada pasta de "projetos": git, '
+    + '.gitignore cobrindo segredos e pastas geradas, CLAUDE.md, definição de cada agente, .venv do Python, comando de teste, grafo e CI. '
+    + 'ERRO primeiro, depois aviso e dica. Recalcula no máximo a cada 10 min. As correções seguras rodam no PC, pelo terminal, '
+    + 'na pasta do escritório (nunca sobrescrevem arquivo).', itens, vazio, !erros);
+  if (comandos.length) {
+    sec.append(el('div', 'saude-msg', `${auto} com correção automática. No terminal, na pasta do escritório:`));
+    for (const c of comandos) sec.append(el('code', 'saude-cmd', c));
+  }
+  if (praticas && praticas.quando) sec.append(el('div', 'saude-msg', `validado às ${hora(praticas.quando)}`));
+  return sec;
+}
+
 function desenhar() {
   if (painel.hidden) return;
   const partes = [];
@@ -430,7 +477,7 @@ function desenhar() {
       partes.push(secao('par', 'PRs parados', 'PR aberto (fora rascunho e pronto para o merge, que já tem lembrete) sem atualização há mais '
         + 'de alertas.parado_horas (padrão 24 h, no config.json).', par.map(itemParado), 'Nenhum PR parado. 👍'));
     }
-    partes.push(blocoRisco());
+    partes.push(blocoRisco(), blocoPraticas());
     const atuais = new Set([...(dup.fortes || []), ...(dup.fracos || [])].map(chaveDup)
       .concat((dados.circulos || []).map(chaveCirculo), (dados.parados || []).map(chaveParado)));
     const chavesIgn = Object.keys(ign).sort((a, b) => (ign[b].quando || 0) - (ign[a].quando || 0));
@@ -450,6 +497,7 @@ function desenhar() {
       + 'expiram quando o item se resolve, e pedido ainda não entregue é cancelado.', res.map(itemResolvido), 'Nada resolvido nas últimas 24 h.', true));
     if (!ehPc()) partes.push(el('p', 'saude-msg', 'Ignorar e avisar o líder só pelo PC.'));
   }
+  else if (praticas) partes.push(blocoPraticas());
   corpo.replaceChildren(...partes);
   info.textContent = dados && dados.ts
     ? `calculado às ${hora(dados.ts)} (recalcula a cada 5 min)` + (carregando ? ' · atualizando…' : '')
@@ -475,5 +523,5 @@ if (botao && painel && temServidor) {   // sem servidor (demonstração) não h�
     fechar();
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !painel.hidden) carregar(); });
-  window.__saude = { carregar, get dados() { return dados; } };
+  window.__saude = { carregar, get dados() { return dados; }, get praticas() { return praticas; } };
 }

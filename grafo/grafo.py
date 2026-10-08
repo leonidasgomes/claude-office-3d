@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """grafo — grafo de arquitetura para agentes de IA (CLI; só biblioteca padrão, PyYAML opcional).
 
-Lê o grafo do projeto (formato com includes: ARCHITECTURE_GRAPH.yaml com includes SYSTEMS/EVENTS/FEATURES, ou um YAML
+Lê o grafo do projeto (formato modular: ARCHITECTURE_GRAPH.yaml com includes SYSTEMS/EVENTS/FEATURES, ou um YAML
 único com as mesmas seções), compara com os imports/includes reais do código e responde perguntas baratas para agentes.
 
 Comandos (rode `grafo.py <comando> -h`):
@@ -103,7 +103,7 @@ def sem_prefixo(sid: str) -> str:
 
 
 # ===================================================================================================== YAML
-# PyYAML é usado quando está instalado (com o leitor estrito que recusa chave repetida).
+# PyYAML é usado quando está instalado (com o leitor estrito que recusa chave repetida, como os validadores de grafo costumam fazer).
 # Sem PyYAML (ou com GRAFO_SEM_PYYAML=1) entra o leitor abaixo, que cobre o subconjunto usado pelo formato: mapas e
 # listas em bloco, listas/mapas em fluxo ([a, b] e {a: b}, inclusive em várias linhas), textos entre aspas, blocos > e |
 # (com - e +), comentários e escalares simples (null, bool, int, float; datas ficam texto). Âncoras, aliases, tags e
@@ -2490,6 +2490,12 @@ def buscar(proj: Projeto, g: Grafo, an: Analise, consulta: str) -> dict:
             e = entrada(sid)
             e["pontos"] += 30
             e["motivos"].append("parte do id")
+        else:   # id citado numa frase ("ciclo entre gameplay_data e ..." casa sys.gameplay_data)
+            idc = norm_txt(sem_prefixo(sid))
+            if len(idc) >= 4 and f" {idc} " in f" {qn} ":   # id de uma palavra ("agents", "locale") pesa menos
+                e = entrada(sid)
+                e["pontos"] += 40 if " " in idc else 20
+                e["motivos"].append("id citado")
         for c in as_list(n.get("classes")):
             if str(c).lower() == ql:
                 e = entrada(sid)
@@ -2640,8 +2646,10 @@ def montar_index(proj: Projeto, g: Grafo, an: Analise) -> dict:
     reais = [{"de": a, "para": b, "tipo": an.classe(a, b), "refs": len(lst),
               "exemplo": f"{lst[0][0]}:{lst[0][1]} -> {lst[0][2]}"} for (a, b), lst in an.arestas_sistema.items()]
     declaradas = [[a, b] for a in sorted(g.sistemas) for b in g.deps(a)]
-    eventos = [{"id": e.get("id"), "kind": e.get("kind"), "de": e.get("producer") or as_list(e.get("caller")),
-                "para": as_list(e.get("consumers")) + as_list(e.get("callee"))}
+    # sentido como nas arestas reais: caller -> callee quando declarados; senão producer -> consumers (sempre listas)
+    eventos = [{"id": e.get("id"), "kind": e.get("kind"),
+                "de": as_list(e.get("caller")) or as_list(e.get("producer")),
+                "para": as_list(e.get("callee")) or as_list(e.get("consumers"))}
                for e in sorted((e for e in g.nos["event"] if isinstance(e, dict)), key=lambda e: str(e.get("id")))]
     testes = {str(t.get("id")): {"covers": as_list(t.get("covers")), "paths": as_list(t.get("paths")),
                                  **({"command": t["command"]} if t.get("command") else {})}
@@ -2724,6 +2732,18 @@ def nome_regra(sid: str) -> str:
 MARCA_REGRA = "<!-- gerado por grafo.py sync-rules; edite o grafo, não este arquivo -->"
 
 
+def comando_grafo(raiz) -> str:
+    """Como as regras chamam esta ferramenta: caminho relativo à raiz quando o grafo.py está no projeto (instalado com
+    --copiar, ex. `.claude/grafo/grafo.py`); senão só `grafo.py` (caminho absoluto desta máquina não vai para o git).
+    A cópia do projeto vale mesmo quando quem roda é outra instalação: o texto das regras não muda conforme o grafo.py usado."""
+    if (Path(raiz) / ".claude" / "grafo" / "grafo.py").is_file():
+        return ".claude/grafo/grafo.py"
+    try:
+        return posix(Path(__file__).resolve().relative_to(Path(raiz).resolve()))
+    except (ValueError, OSError):
+        return "grafo.py"
+
+
 def gerar_regra(g: Grafo, sid: str) -> str:
     n = g.sistemas[sid]
     globs = []
@@ -2755,7 +2775,8 @@ def gerar_regra(g: Grafo, sid: str) -> str:
     adrs = g.adrs(sid)
     if adrs:
         corpo.append("- ADRs: " + "; ".join(f"{a.get('id')} {a.get('title', '')}".strip() for a in adrs[:6]) + ".")
-    corpo.append(f"- Mais contexto: `python grafo.py slice {sid}`; impacto: `python grafo.py impact <arquivos>`.")
+    cmd = comando_grafo(g.raiz)
+    corpo.append(f"- Mais contexto: `python {cmd} slice {sid}`; impacto: `python {cmd} impact <arquivos>`.")
     return "\n".join(fm + corpo) + "\n"
 
 
