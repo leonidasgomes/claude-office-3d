@@ -343,10 +343,12 @@ def branches_locais(repo):
 def resumo(prs, locais, eventos, agora, situacao=None, parado_h=PARADO_H, cartoes=None, repo=""):
     """Tudo o que o servidor publica em /saude e grava em dados/saude.json. prs None (GitHub fora do ar ou ainda sem o
     PRONTO): só os círculos, repetidos e rascunhos, que não dependem dos PRs; o detector não mexe em duplicados nem parados.
-    cartoes None (Kanban não configurado ou fora do ar): `sem_kanban`, e nenhum rascunho conta como resolvido."""
-    extra = {"rascunhos": rascunhos(cartoes, repo), "repetidos": repetidos(eventos, agora)}
-    if cartoes is None:
-        extra["sem_kanban"] = True
+    "rascunhos" só vem com os cartões do Kanban (cartoes None: não configurado ou fora do ar, e nenhum rascunho conta como
+    resolvido); "repetidos" só quando há algum."""
+    extra = {} if cartoes is None else {"rascunhos": rascunhos(cartoes, repo)}
+    rep = repetidos(eventos, agora)
+    if rep:
+        extra["repetidos"] = rep
     if prs is None:
         return {"ts": round(agora), "circulos": circulos(eventos, agora), "sem_prs": True, **extra}
     d = {"ts": round(agora), "duplicados": duplicados(prs, locais or [], agora), "circulos": circulos(eventos, agora),
@@ -636,13 +638,13 @@ def presentes(dados):
 
 def ausente(chave, dados):
     """True só se `dados` é completo para o tipo da chave e ela não está lá. Com sem_prs (GitHub fora ou PRONTO não carregado)
-    duplicados e parados faltam por falta de dado, não por resolução (círculo, repetido e rascunho não dependem dos PRs). Com
-    sem_kanban (Kanban não configurado ou fora do ar), um rascunho ausente é falta de dado."""
+    duplicados e parados faltam por falta de dado, não por resolução (círculo, repetido e rascunho não dependem dos PRs). Sem
+    "rascunhos" (Kanban não configurado ou fora do ar), um rascunho ausente é falta de dado."""
     if not isinstance(dados, dict) or dados.get("erro") or not chave:
         return False
     if dados.get("sem_prs") and not chave.startswith(("circulo:", "repetido:", "rascunho:")):
         return False
-    if dados.get("sem_kanban") and chave.startswith("rascunho:"):
+    if chave.startswith("rascunho:") and not isinstance(dados.get("rascunhos"), list):
         return False
     if dados.get("sem_locais") and chave.startswith("dup:"):   # git falhou: duplicado ausente pode ser só falta das branches locais
         return False

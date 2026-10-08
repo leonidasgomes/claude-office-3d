@@ -726,7 +726,7 @@ def saude_atual():
             eventos = []
         projetos = cfg()["projetos"]
         locais = saude.branches_locais(projetos[0]) if projetos and lista is not None else []
-        cartoes = None   # Kanban não configurado ou com erro: sem_kanban (nenhum rascunho conta como resolvido)
+        cartoes = None   # Kanban não configurado ou com erro: sem "rascunhos" (nenhum rascunho conta como resolvido)
         try:
             k = kanban()
             if k.get("configurado") and not k.get("erro") and isinstance(k.get("cartoes"), list):

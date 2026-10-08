@@ -1,4 +1,5 @@
-// Claude Office 3D — painel "🩺 Saúde": trabalho duplicado, agentes andando em círculos, PRs parados e o risco dos PRs abertos
+// Claude Office 3D — painel "🩺 Saúde": trabalho duplicado, agentes andando em círculos, PRs parados, cartões rascunho em coluna
+// de trabalho (com o comando que converte em issue), comandos repetidos (dica de script) e o risco dos PRs abertos
 // (GET /saude, calculado sem tokens pelo saude.py, e GET /prs para os links e o risco). Ações: abrir no GitHub, ignorar /
 // reativar (POST /api/saude/ignorar: some dos alertas e do vigia do líder) e avisar o líder (POST /api/saude/avisar: o vigia
 // entrega como "[vigia saude] ... pedido do desenvolvedor: ..."). Ignorar e avisar são só do PC (rede.PERMISSAO_ROTA).
@@ -50,10 +51,27 @@ const veredictos = () => (dados && dados.triagem && typeof dados.triagem.veredic
 const silenciado = (k) => { const v = veredictos()[k]; return !!v && v.problema === false && !v.desfeito && v.gravidade !== 'alta'; };
 const ROT_ACAO = { juntar: 'juntar', fechar_um: 'fechar um', parar_e_repensar: 'parar e repensar', retomar_pr: 'retomar o PR', nenhuma: 'nenhuma' };
 
-// chaves estáveis (as mesmas de saude.chave_dup / chave_circulo / chave_parado)
+// chaves estáveis (as mesmas de saude.chave_dup / chave_circulo / chave_parado / chave_rascunho / chave_repetido)
 const chaveDup = (d) => 'dup:' + [...(d.branches || [])].map(String).sort().join(',');
 const chaveCirculo = (c) => `circulo:${c.agente}:${c.arquivo}`;
 const chaveParado = (x) => `parado:${x.numero}`;
+const chaveRascunho = (r) => `rascunho:${r.item_id}`;
+const chaveRepetido = (r) => `repetido:${r.agente}:${r.assinatura}`;
+const MODELO_SCRIPTS = 'modelos/praticas/scripts-do-projeto.md';
+
+// copia texto (clipboard quando disponível; senão seleciona num campo temporário, como no celular.js)
+async function copiar(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; } catch (e) { /* sem permissão: cai no plano B */ }
+  const t = document.createElement('textarea'); t.value = texto; t.style.position = 'fixed'; t.style.opacity = '0';
+  document.body.append(t); t.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) { /* sem cópia */ }
+  t.remove(); return ok;
+}
+function botaoCopiar(texto) {
+  const b = el('button', 'botao', '📋 Copiar o comando'); b.type = 'button';
+  b.addEventListener('click', async () => { b.textContent = (await copiar(texto)) ? '✔ Copiado' : '⚠️ Não copiou: selecione o texto'; });
+  return b;
+}
 
 // ---------------------------------------------------------------- rede
 async function pegarSessao() {
@@ -274,11 +292,43 @@ function itemParado(x) {
   li.append(acoes(chaveParado(x), [['Abrir PR #' + x.numero + ' ↗', urlPr(x.numero)]]));
   return li;
 }
+// cartão rascunho (sem número de issue) numa coluna de trabalho: o líder não despacha sem número; converter primeiro
+function itemRascunho(r) {
+  const li = el('li', 'saude-item rascunho');
+  const topo = el('div', 'saude-titulo');
+  topo.append(el('b', 'saude-num', '·'), document.createTextNode(' ' + (r.titulo || '(sem título)')));
+  li.append(topo, el('div', 'saude-meta', `rascunho em "${r.status || '?'}": sem número de issue, não dá para despachar`));
+  if (r.comando) {
+    li.append(el('div', 'saude-motivo', 'Converta em issue (devolve o número e a URL) e despache pelo número:'),
+      el('code', 'saude-cmd', r.comando));
+  } else {
+    li.append(el('div', 'saude-motivo', 'Converta em issue no GitHub: abra o cartão e use "Convert to issue" '
+      + '(com github.repo no config.json o painel mostra o comando pronto).'));
+  }
+  const caixa = acoes(chaveRascunho(r), [['Abrir o cartão ↗', /^https:\/\/github\.com\//.test(r.url || '') ? r.url : '']]);
+  if (r.comando) { const linha = el('div', 'saude-acoes'); linha.append(botaoCopiar(r.comando)); li.append(linha); }
+  li.append(caixa);
+  return li;
+}
+// o mesmo começo de comando de novo e de novo (atrás de cd/export/VAR=): dica de script do projeto ou variável de ambiente
+function itemRepetido(r) {
+  const li = el('li', 'saude-item repetido');
+  li.append(el('div', 'saude-titulo', `${r.agente} rodou ${r.vezes} vezes comandos que começam igual`));
+  const meta = el('div', 'saude-meta');
+  if (r.desde) meta.append(el('span', null, `desde ${hora(r.desde)} (${ha(r.desde)})`));
+  li.append(meta, el('code', 'saude-cmd', (r.prefixo || '') + '…'));
+  li.append(el('div', 'saude-motivo', 'Transforme em script do projeto (ou variável de ambiente para o caminho): o agente chama '
+    + `um nome curto em vez de remontar o comando. Modelo: ${MODELO_SCRIPTS}.`));
+  li.append(acoes(chaveRepetido(r), []));
+  return li;
+}
 function descreverChave(chave) {
   const [tipo, ...resto] = chave.split(':');
   if (tipo === 'dup') return 'Duplicado: ' + resto.join(':').split(',').join(', ');
   if (tipo === 'circulo') return 'Círculo: ' + resto[0] + ' em ' + resto.slice(1).join(':');
   if (tipo === 'parado') return 'PR parado #' + resto[0];
+  if (tipo === 'rascunho') return 'Cartão rascunho ' + resto.join(':');
+  if (tipo === 'repetido') return 'Comando repetido: ' + resto[0];
   return chave;
 }
 function itemIgnorado(chave, info_, ativo) {
@@ -461,7 +511,11 @@ function desenhar() {
     const fracos = (dup.fracos || []).filter((d) => fora(chaveDup(d)));
     const circ = (dados.circulos || []).filter((c) => fora(chaveCirculo(c)));
     const par = (dados.parados || []).filter((x) => fora(chaveParado(x)));
-    if (!dados.sem_prs && !fortes.length && !circ.length && !par.length) partes.push(el('p', 'saude-bom', '✅ Nada pedindo atenção agora.'));
+    const rasc = (dados.rascunhos || []).filter((r) => fora(chaveRascunho(r)));
+    const rep = (dados.repetidos || []).filter((r) => fora(chaveRepetido(r)));
+    if (!dados.sem_prs && !fortes.length && !circ.length && !par.length && !rasc.length) {
+      partes.push(el('p', 'saude-bom', '✅ Nada pedindo atenção agora.'));
+    }
     if (!dados.sem_prs) {
       const s = secao('dup', 'Trabalho duplicado', 'A mesma tarefa com números de issue diferentes, ou dois PRs abertos para a mesma issue. '
         + 'Conta só o que está ativo: PR aberto ou branch local com commit nas últimas 48 h. Estes alertam e acordam o líder.',
@@ -477,9 +531,17 @@ function desenhar() {
       partes.push(secao('par', 'PRs parados', 'PR aberto (fora rascunho e pronto para o merge, que já tem lembrete) sem atualização há mais '
         + 'de alertas.parado_horas (padrão 24 h, no config.json).', par.map(itemParado), 'Nenhum PR parado. 👍'));
     }
+    partes.push(secao('rasc', 'Cartões rascunho em coluna de trabalho', 'Cartão do Kanban que é só rascunho (Draft, sem número de '
+      + 'issue) numa coluna de trabalho (Todo, Ready, In Progress, Review...). Sem número não há branch, PR nem "Closes #n": converta '
+      + 'em issue antes de despachar. Vai para o vigia do líder; não alerta nem manda push.', rasc.map(itemRascunho),
+    Array.isArray(dados.rascunhos) ? 'Nenhum cartão rascunho em coluna de trabalho. 👍' : 'Kanban não configurado ou fora do ar agora.'));
+    partes.push(secao('rep', 'Comandos repetidos', 'Dica, não alerta: o mesmo agente rodou 8 vezes ou mais, em 60 min, comandos com '
+      + 'o mesmo começo atrás de cd/export/VAR= (ou com $(...)). Um script do projeto ou uma variável de ambiente economiza tokens '
+      + 'e erros. O começo aparece sem caminho absoluto; não vai para o líder.', rep.map(itemRepetido), 'Nenhum. 👍', true));
     partes.push(blocoRisco(), blocoPraticas());
     const atuais = new Set([...(dup.fortes || []), ...(dup.fracos || [])].map(chaveDup)
-      .concat((dados.circulos || []).map(chaveCirculo), (dados.parados || []).map(chaveParado)));
+      .concat((dados.circulos || []).map(chaveCirculo), (dados.parados || []).map(chaveParado),
+        (dados.rascunhos || []).map(chaveRascunho), (dados.repetidos || []).map(chaveRepetido)));
     const chavesIgn = Object.keys(ign).sort((a, b) => (ign[b].quando || 0) - (ign[a].quando || 0));
     partes.push(secao('ign', 'Ignorados', 'Itens que você mandou ignorar: não alertam nem acordam o líder, mas continuam sendo calculados. '
       + 'Reativar volta a alertar se o problema ainda existir.', chavesIgn.map((k) => itemIgnorado(k, ign[k], atuais.has(k))),

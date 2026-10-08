@@ -25,6 +25,8 @@
 #saudeCorpo .saude-item.fraco { border-left-color: #64748b; }
 #saudeCorpo .saude-item.circulo { border-left-color: #f97316; }
 #saudeCorpo .saude-item.parado { border-left-color: #f59e0b; }
+#saudeCorpo .saude-item.rascunho { border-left-color: #a855f7; }
+#saudeCorpo .saude-item.repetido { border-left-color: #38bdf8; }
 #saudeCorpo .saude-item.risco-grande { border-left-color: #e5484d; }
 #saudeCorpo .saude-item.risco-medio { border-left-color: #f59e0b; }
 #saudeCorpo .saude-item.ignorado { border-left-color: #3f3f46; opacity: .9; }

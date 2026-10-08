@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.18.1
+- **Conserta o CI do main**: a 1.18.0 já tinha levado parte deste código (`saude.py`, `servidor.py`, `saude_painel.*`)
+  sem o teste, e `ferramentas/testar_saude.py` falhava no resumo. Agora `resumo()` só traz `rascunhos` e `repetidos`
+  quando há dado, e o resumo sem eles mantém as chaves antigas.
+- **Saúde: cartão rascunho em coluna de trabalho** (`saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`,
+  `vigia_lider.py`): cartão do Kanban que é só rascunho (Draft) em Todo/Ready/In Progress/Review não tem número de issue,
+  então não dá branch, PR nem "Closes #n". O painel 🩺 Saúde ganhou a seção "Cartões rascunho em coluna de trabalho",
+  com o comando `gh api graphql` (`convertProjectV2DraftIssueItemToIssue`) que converte o cartão em issue no
+  `github.repo` (botão Copiar; sem repo, "Convert to issue" no GitHub) e o link do cartão. O `saude.py --pendentes`
+  avisa o líder (`rascunho: ...`); sem push nem triagem. Ignorar e "Resolvidos" valem como nos outros itens; com o
+  Kanban fora do ar ou com erro, nenhum rascunho conta como resolvido. Os cartões do `GET /kanban` ganharam `item_id`
+  e o rascunho, o link para o item no projeto.
+  Converter o rascunho exige o escopo `project` no gh (`gh auth refresh -s project`).
+- **Saúde: comandos repetidos** (`saude.py`, `saude_painel.js`): o mesmo agente rodando o mesmo começo de comando
+  composto (`cd ... && ...`, `VAR=... ...`, `$env:...;`) 8 vezes ou mais em 60 min aparece como dica recolhida
+  "Comandos repetidos": transforme em script do projeto ou variável de ambiente. Só o começo, sem caminhos absolutos;
+  sem push e fora do `--pendentes`.
+- **Modelo do líder: "Cartão rascunho"** (`modelos/time/lider.md`): nunca despache um rascunho; converta em issue e
+  mande o número.
+- **Boas práticas: regra `scripts-do-projeto.md`** (`modelos/praticas/scripts-do-projeto.md`, novo; `boas_praticas.py`,
+  `instalar.py`): checagem `scripts-regra` (dica) e correção que grava `.claude/rules/scripts-do-projeto.md` (nunca
+  sobrescreve): comando repetido vira script do projeto, caminho de máquina em variável de ambiente.
+- **Testes** (`ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py`): assinatura e contagem dos comandos
+  repetidos, rascunhos por coluna, chaves novas (ignorar, resolvidos, `--pendentes`), leitores do Kanban REST/GraphQL falsos
+  e `servidor.saude_atual` com o Kanban falso; o resumo sem cartões nem repetidos mantém as chaves antigas.
+
 ## 1.18.0
 - **O escritório no próprio .venv** (`instalar.py`, `abrir_escritorio.*`, `reiniciar_escritorio.*`, `.gitignore`,
   `ferramentas/verificar.py`): o instalador ganhou o passo "Python do escritório (.venv)", que cria `<destino>/.venv` sem

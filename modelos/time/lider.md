@@ -22,6 +22,11 @@ Tecnologias encontradas no projeto: {{stacks}}.
 - Nada destrutivo ou irreversível (merge, force-push, apagar branch) sem confirmar com o desenvolvedor.
 {{secoes_stack}}
 
+## Cartão rascunho
+- Cartão do Kanban que é só rascunho (Draft) não tem número de issue: sem número não há branch, PR nem "Closes #n".
+- Nunca despache um rascunho. Converta em issue antes (no GitHub: abra o cartão e use "Convert to issue"; o painel 🩺 Saúde e o
+  vigia mostram o comando `gh` pronto) e mande ao colega o número da issue.
+
 ## Fluxo de PR
 1. O colega termina a tarefa e abre o PR (`gh pr create`), citando a issue ou o cartão e os testes que rodou.
 2. Você cria o **revisor** numa vida nova para cada PR e manda só o número: "revise o PR #<n>".

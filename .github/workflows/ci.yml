@@ -33,7 +33,7 @@ jobs:
         run: python -W error ferramentas/testar_rede.py
       - name: Arquivos estáticos (dados/, scripts e ocultos não são servidos por nenhum contorno)
         run: python -W error ferramentas/testar_estaticos.py
-      - name: Saúde do time e orçamento de atenção (duplicados, círculos, PR parado, push de resumo)
+      - name: Saúde do time e orçamento de atenção (duplicados, círculos, PR parado, rascunhos, repetidos, push de resumo)
         run: python -W error ferramentas/testar_saude.py
       - name: Hook do escritório (✔/✖ dos comandos, PostToolUseFailure)
         run: python -W error ferramentas/testar_registrar_evento.py

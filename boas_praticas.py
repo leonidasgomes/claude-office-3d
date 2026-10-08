@@ -7,7 +7,7 @@ Sem PROJETO, usa as pastas de "projetos" do config.json do escritório. `validar
 nível "erro" falhar. `corrigir` sem --aplicar só mostra o plano; com --aplicar executa as correções seguras:
 - cria o .venv do projeto (`python -m venv`; com --instalar-deps, `pip install -r requirements.txt`);
 - acrescenta ao .gitignore as linhas que faltam (o conteúdo e as quebras de linha, inclusive CRLF, ficam como estão);
-- grava .claude/rules/python-venv.md (modelo em modelos/praticas/);
+- grava .claude/rules/python-venv.md e .claude/rules/scripts-do-projeto.md (modelos em modelos/praticas/);
 - troca o `python` dos hooks do grafo no settings do PROJETO pelo Python do .venv (com backup do settings antes);
 - cria .claude/agents/<nome>.md dos agentes do config.json que não têm definição (modelos em modelos/time/);
 - sem ninguém revisando os PRs (agente revisor, revisor-ia, bots ou check de revisão), cria .claude/agents/revisor.md.
@@ -42,6 +42,7 @@ PASTAS_IGNORADAS = {".git", ".venv", "venv", "env", "node_modules", "Intermediat
                     "__pycache__", "dist", "build", "bin", "obj", "vendor", "target", "out", "coverage"}
 MODELOS = PASTA / "modelos"
 REGRA_VENV = Path(".claude") / "rules" / "python-venv.md"
+REGRA_SCRIPTS = Path(".claude") / "rules" / "scripts-do-projeto.md"   # comando repetido vira script (painel Saúde: repetidos)
 GRAFOS = ["docs/ARCHITECTURE_GRAPH.yaml", "ARCHITECTURE_GRAPH.yaml", "docs/grafo.yaml", "grafo.yaml", ".grafo.yaml",
           "docs/architecture.yaml", "architecture.yaml", "grafo.json", ".grafo.json"]   # os mesmos do grafo_painel.py
 # Python "solto" no começo do comando de um hook (python, python3, py -3, com ou sem .exe)
@@ -628,6 +629,11 @@ def _checagens(projeto, config=None, settings_usuario=None):
     itens.append(_item("ci", "Integração contínua (CI)", "dica", tem_ci, "" if tem_ci else "nada roda os testes a cada PR",
                        como_corrigir="crie .github/workflows/ci.yml que rode o comando de teste"))
 
+    tem_scripts = (projeto / REGRA_SCRIPTS).is_file()
+    itens.append(_item("scripts-regra", "Regra .claude/rules/scripts-do-projeto.md", "dica", tem_scripts,
+                       "" if tem_scripts else "nada diz aos agentes para transformar comando repetido em script do projeto",
+                       True, "gravar .claude/rules/scripts-do-projeto.md (modelo do escritório)", {"regra_scripts": True}))
+
     if "python" in stacks:
         ok = venv_ok(projeto)
         itens.append(_item("python-venv", ".venv do projeto", "aviso", ok,
@@ -739,6 +745,17 @@ def corrigir(projeto, ids=None, aplicar=False, instalar_deps=False, config=None,
             destino.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(MODELOS / "praticas" / "python-venv.md", destino)
         fazer("python-regra-venv", f"gravar {REGRA_VENV.as_posix()}", regra)
+
+    if any("regra_scripts" in i["_correcao"] for i in pendentes):
+        def regra_scripts():
+            destino = projeto / REGRA_SCRIPTS
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(destino, "x", encoding="utf-8", newline="\n") as f:   # "x": nunca sobrescreve
+                    f.write((MODELOS / "praticas" / "scripts-do-projeto.md").read_text(encoding="utf-8"))
+            except FileExistsError:
+                return ""
+        fazer("scripts-regra", f"gravar {REGRA_SCRIPTS.as_posix()}", regra_scripts)
 
     for i in pendentes:
         if "agente" in i["_correcao"]:

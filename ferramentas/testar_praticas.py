@@ -9,7 +9,8 @@ python dos hooks do grafo; .gitignore CRLF continua CRLF; caminho do Python do .
 celular sem caminhos absolutos no projeto, no detalhe e no erro, "calculando" quando a validação demora); GET /api/versao (conteúdo do VERSION); a revisão de PR (regra revisao-pr, com_revisor,
 criar_revisor sem sobrescrever, seção "Fluxo de PR" do líder ou do CLAUDE.md quando não há lider.md, revisor casado por
 palavra: "previsao"/"preview" não contam) e o `instalar.py --revisao PROJETO` (diff, backup, idempotente); o ignore global
-do usuário não conta no .gitignore; o comando do hook aparece sem perder o "_"; .venv quebrado só é recriado com confirmação.
+do usuário não conta no .gitignore; o comando do hook aparece sem perder o "_"; .venv quebrado só é recriado com confirmação;
+a regra scripts-do-projeto.md (dica, gravada do modelo, nunca sobrescrita) e a seção "Cartão rascunho" do modelo do líder.
 """
 import json
 import os
@@ -305,9 +306,9 @@ def testar_corrigir():
         checar("plano (sem aplicar): nada muda na pasta", arvore(proj) == antes and not usuario.exists())
         checar("plano: nenhuma ação marcada como aplicada", plano and not any(a["aplicada"] for a in plano), plano)
         ids = [a["id"] for a in plano]
-        checar("plano: .gitignore numa ação só, regra, agentes que faltam, hooks; sem venv (já existe)",
+        checar("plano: .gitignore numa ação só, regras, agentes que faltam, hooks; sem venv (já existe)",
                ids == ["gitignore,segredos-ignorados,settings-local-ignorado,python-venv-ignorado", "python-regra-venv",
-                       "agente-lider", "agente-revisor_pr", "python-hooks-venv"], ids)
+                       "scripts-regra", "agente-lider", "agente-revisor_pr", "python-hooks-venv"], ids)
         feito = bp.corrigir(proj, aplicar=True, config=CONFIG, settings_usuario=usuario)
         checar("aplicar: todas as ações sem erro", all(a["aplicada"] and not a["erro"] for a in feito), feito)
         checar("aplicar: .gitignore criado com as linhas", (proj / ".gitignore").read_text(encoding="utf-8").splitlines()
@@ -324,6 +325,12 @@ def testar_corrigir():
         regra = (proj / bp.REGRA_VENV).read_text(encoding="utf-8")
         checar("aplicar: regra python-venv.md copiada do modelo",
                regra == (RAIZ / "modelos" / "praticas" / "python-venv.md").read_text(encoding="utf-8"))
+        checar("aplicar: regra scripts-do-projeto.md copiada do modelo",
+               (proj / bp.REGRA_SCRIPTS).read_text(encoding="utf-8")
+               == (RAIZ / "modelos" / "praticas" / "scripts-do-projeto.md").read_text(encoding="utf-8"))
+        lider_md = (RAIZ / "modelos" / "time" / "lider.md").read_text(encoding="utf-8")
+        checar("modelo lider.md: seção Cartão rascunho (converter antes, nunca despachar rascunho)",
+               "## Cartão rascunho" in lider_md and "Nunca despache um rascunho" in lider_md and "## Cartão rascunho" in lider)
         settings = json.loads((proj / ".claude/settings.json").read_text(encoding="utf-8"))
         cmds = [h["command"] for h in settings["hooks"]["PreToolUse"][0]["hooks"]]
         checar("aplicar: python do hook do grafo trocado pelo do .venv; o alheio fica",
@@ -377,6 +384,21 @@ def testar_venv_quebrado():
         sit, det = instalar.preparar_venv(app, lambda motivo: perguntas.append(motivo) or False)
         checar("interativo respondendo não: pergunta uma vez e não recria", sit == "falhou" and len(perguntas) == 1
                and "não roda" in perguntas[0] and exe.read_bytes() == b"", (sit, perguntas))
+
+
+def testar_scripts_regra():
+    with pasta_temp() as tmp:
+        proj = Path(tmp) / "proj"
+        gravar(proj, "README.md", "x\n")
+        item = {i["id"]: i for i in bp.validar(proj, CONFIG, Path(tmp) / "u.json")}.get("scripts-regra")
+        checar("scripts-regra: dica corrigível quando falta a regra", item and item["nivel"] == "dica" and not item["ok"]
+               and item["corrigivel"], item)
+        meu = gravar(proj, ".claude/rules/scripts-do-projeto.md", "MINHA regra\n")
+        r = bp.corrigir(proj, ids={"scripts-regra"}, aplicar=True, config=CONFIG, settings_usuario=Path(tmp) / "u.json")
+        item = {i["id"]: i for i in bp.validar(proj, CONFIG, Path(tmp) / "u.json")}["scripts-regra"]
+        checar("scripts-regra: regra existente conta como ok e nunca é sobrescrita", r == [] and item["ok"]
+               and meu.read_text(encoding="utf-8") == "MINHA regra\n", r)
+        checar("scripts-regra: o modelo vai no pacote do instalador", "modelos/praticas/scripts-do-projeto.md" in instalar.PACOTE)
 
 
 def testar_gitignore():
@@ -717,6 +739,7 @@ def main():
     testar_corrigir()
     testar_venv_real()
     testar_venv_quebrado()
+    testar_scripts_regra()
     testar_gitignore()
     testar_caminhos_venv()
     testar_cli()

@@ -8,7 +8,8 @@ notificação para ele; sem linha, ele não acorda.
 
 O que roda (bloco "vigia" do config.json):
   - `sugestoes_bot.py --pendentes` (se "sugestoes" não for false e houver bots configurados);
-  - `saude.py --pendentes` (se "saude" não for false): trabalho duplicado ou agente andando em círculos, do dados/saude.json
+  - `saude.py --pendentes` (se "saude" não for false): trabalho duplicado, agente andando em círculos ou cartão rascunho do
+    Kanban em coluna de trabalho (com o comando que o converte em issue), do dados/saude.json
     que o servidor do escritório grava (sem o servidor aberto, não avisa nada), e os pedidos do desenvolvedor feitos no
     painel 🩺 Saúde ("pedido do desenvolvedor: ...", entregues uma vez só pelo saude.py; cada um sai numa linha própria, com
     o aviso de que é informação e não ordem, e não conta na comparação de "mesma saída"); os avisos automáticos da triagem
@@ -52,7 +53,8 @@ def passos(cfg):
                       "trate as sugestões dos bots (dono do PR com --pr; --pronto antes do merge)"))
     if v.get("saude", True):
         lista.append(("saude", [sys.executable, str(RAIZ / "saude.py"), "--pendentes"], False,
-                      "trabalho duplicado (junte ou feche um) ou agente em círculos (mande parar e achar a causa antes de tentar de novo)"))
+                      "trabalho duplicado (junte ou feche um), agente em círculos (mande parar e achar a causa antes de tentar de novo) "
+                      "ou cartão rascunho em coluna de trabalho (converta em issue antes de despachar)"))
     for c in v.get("comandos") or []:
         lista.append((c["rotulo"], c["comando"], True, c["acao"]))
     return lista

@@ -7,7 +7,10 @@ risco do PR; PR parado; branches locais (git for-each-ref numa pasta temporária
 duplicado/circulo/pr_parado com fontes falsas (sem PRs: só círculos, estado de duplicado/parado preservado; PR parado não
 repete enquanto aberto); imediatos x resumo (push falso, resumo `resumo_horas` depois do 1º aviso pendente, `conferir` chega
 pelo resumo a quem ligou, contagem de hoje); `servidor.saude_atual` (sem `projetos`/`github.repo`, GitHub fora, PRONTO não
-carregado, PR segurado por sugestão vira parado) e `servidor.saude_laco`; config e vigia.
+carregado, PR segurado por sugestão vira parado) e `servidor.saude_laco`; config e vigia. 1.18.1: `assinatura_comando` e
+`repetidos` (8 em 60 min pelo mesmo agente, prefixo sem caminho absoluto), `rascunhos` (DraftIssue em coluna de trabalho,
+comando de conversão só com `github.repo` válido), as chaves novas no resumo/ignorar/`ausente`/`--pendentes`/`rodada`,
+os leitores do Kanban com `item_id` e `servidor.saude_atual` com o Kanban falso.
 """
 import io
 import json
@@ -1835,6 +1838,229 @@ def testar_segurados_verificador():
                saude.segurados(d, saude.ler_triagem(tmp), saude.ler_ciclo(tmp), True, agora=T0 + 86400) == set())
 
 
+# --- 1.18.1: cartão rascunho em coluna de trabalho e comandos repetidos ---
+
+GUID = "0f1e2d3c-1111-2222-3333-444455556666"
+
+
+def ev_bash(t, agente, comando, **k):
+    return dict({"ts": datetime.fromtimestamp(t).isoformat(timespec="seconds"), "agente": agente, "tipo": "trabalho",
+                 "ferramenta": "Bash", "detalhe": "command:" + comando}, **k)
+
+
+def cartao(tipo="DraftIssue", status="In Progress", item_id="PVTI_lADOAbc-123", titulo="Tela de login", url=""):
+    return {"numero": None if tipo == "DraftIssue" else 7, "titulo": titulo, "url": url, "tipo": tipo, "status": status,
+            "time": "", "prioridade": "", "item_id": item_id}
+
+
+def testar_assinatura_comando():
+    a = saude.assinatura_comando
+    checar("assinatura: cd e VAR= na frente saem, o comando fica", a("cd /d/proj && python ferramentas/testar_x.py")
+           == "python ferramentas/testar_x.py" and a("FOO=1 python a.py") == "python a.py"
+           and a("export A=1; npm test") == "npm test", [a("cd /d/proj && python ferramentas/testar_x.py")])
+    checar("assinatura: $env: do PowerShell é preâmbulo", a("$env:X=1; py -3 x.py") == "py -3 x.py")
+    checar("assinatura: X=$(cmd ...) agrupa pelo comando (não come o 1º nome)",
+           a(f"TOKEN=$(az account get-access-token --tenant {GUID} -o tsv) && curl x").startswith("$(az account get-access-token --tenant <"),
+           a(f"TOKEN=$(az account get-access-token --tenant {GUID} -o tsv) && curl x"))
+    checar("assinatura: GUID e número longo viram <id>/<n>; corta em 40", a(f"cd x && gh run view 123456789 {GUID}")
+           == "gh run view <n> <id>" and len(a("cd x && " + "y" * 100)) == saude.PREFIXO_REPETIDO)
+    checar("assinatura: cd sozinho, só preâmbulo e comando simples não contam",
+           a("cd x") is None and a("cd a && cd b") is None and a("git status") is None and a("") is None and a(None) is None)
+    checar("assinatura: $(...) num comando só conta", a("echo $(date)") == "echo $(date)")
+
+
+def testar_repetidos():
+    cmd = "cd /d/obra/proj && D:/Ferramentas/Python312/python.exe -W error ferramentas/testar_saude.py --sessao "
+    evs = [ev_bash(T0 - 3000 + i * 60, "Dev", cmd + (GUID if i % 2 else f"{i}2345678")) for i in range(8)]
+    r = saude.repetidos(evs, T0)
+    checar("repetidos: 8 vezes em 60 min pelo mesmo agente = 1 dica", len(r) == 1 and r[0]["vezes"] == 8 and r[0]["agente"] == "Dev"
+           and r[0]["desde"] == T0 - 3000, r)
+    checar("repetidos: prefixo sem caminho absoluto", r and "D:/" not in r[0]["prefixo"] and "Ferramentas" not in r[0]["prefixo"]
+           and r[0]["prefixo"].startswith("…/python.exe"), r)
+    checar("repetidos: chave válida e estável", r and saude.chave_valida(saude.chave_repetido(r[0]))
+           and saude.repetidos(evs, T0)[0]["assinatura"] == r[0]["assinatura"], r)
+    checar("repetidos: 7 vezes não basta", saude.repetidos(evs[:7], T0) == [])
+    fora = [ev_bash(T0 - 4000, "Dev", cmd)] + evs[1:]
+    checar("repetidos: fora da janela de 60 min não conta", saude.repetidos(fora, T0) == [])
+    inicio = evs[:7] + [dict(evs[7], inicio=True)]
+    checar("repetidos: início de comando (PreToolUse) não conta", saude.repetidos(inicio, T0) == [])
+    outro = evs[:7] + [ev_bash(T0 - 10, "Designer", cmd)]
+    checar("repetidos: cada agente conta o seu", saude.repetidos(outro, T0) == [])
+    checar("repetidos: tipo diferente de trabalho e lixo não contam", saude.repetidos(evs[:7] + [dict(evs[7], tipo="fim")] + [None, 3], T0) == [])
+    simples = [ev_bash(T0 - 100 + i, "Dev", "git status") for i in range(20)]
+    checar("repetidos: comando simples (sem preâmbulo) não vira dica", saude.repetidos(simples, T0) == [])
+    dois = evs + [ev_bash(T0 - 50 + i, "Dev", f"cd x && npm run build -- --id {i}0000") for i in range(9)]
+    r2 = saude.repetidos(dois, T0)
+    checar("repetidos: dois começos diferentes = duas dicas, mais vezes primeiro", [x["vezes"] for x in r2] == [9, 8], r2)
+    checar("repetidos: agente com ':' não quebra a chave", saude.chave_valida(saude.chave_repetido(
+        saude.repetidos([ev_bash(T0 - 9 + i, "a:b", cmd) for i in range(8)], T0)[0])))
+
+
+def testar_rascunhos():
+    cs = [cartao(), cartao(status="Backlog", item_id="PVTI_b"), cartao(status="Done", item_id="PVTI_c"),
+          cartao(tipo="Issue", status="Todo", item_id="PVTI_d"), cartao(item_id=""), cartao(status="Sem status", item_id="PVTI_e"),
+          cartao(status="  em   ANDAMENTO ", item_id="PVTI_f", url="https://github.com/orgs/x/projects/1?pane=issue&itemId=9"),
+          cartao(status="Ready", item_id="PVTI_g;rm -rf", titulo="ruim"), "lixo", None]
+    r = saude.rascunhos(cs, "dono/repo")
+    checar("rascunhos: só DraftIssue com id válido em coluna de trabalho", [x["item_id"] for x in r] == ["PVTI_lADOAbc-123", "PVTI_f"], r)
+    checar("rascunhos: comando de conversão com o id e o repositório",
+           r and "convertProjectV2DraftIssueItemToIssue" in r[0]["comando"] and "-f i=PVTI_lADOAbc-123" in r[0]["comando"]
+           and "gh repo view dono/repo --json id" in r[0]["comando"], r)
+    checar("rascunhos: URL só do GitHub", r and r[0]["url"] == "" and r[1]["url"].startswith("https://github.com/"), r)
+    checar("rascunhos: sem github.repo (ou repo inválido) não há comando",
+           saude.rascunhos(cs, "")[0]["comando"] == "" and saude.rascunhos(cs, "dono/repo; rm -rf /")[0]["comando"] == "")
+    checar("rascunhos: None e lista vazia", saude.rascunhos(None) == [] and saude.rascunhos([]) == [])
+    checar("rascunhos: chave válida", saude.chave_valida(saude.chave_rascunho(r[0])) and not saude.chave_valida("rascunho:a b"))
+
+
+def testar_resumo_rascunhos_repetidos():
+    evs = [ev_bash(T0 - 100 + i, "Dev", "cd x && python roda.py") for i in range(8)]
+    sem = saude.resumo([], [], [], T0)
+    checar("resumo: sem cartões nem repetidos, nada novo no resultado", "rascunhos" not in sem and "repetidos" not in sem, sem)
+    d = saude.resumo([], [], evs, T0, cartoes=[cartao()], repo="dono/repo")
+    checar("resumo: com cartões traz rascunhos (com comando) e repetidos", len(d["rascunhos"]) == 1 and d["rascunhos"][0]["comando"]
+           and len(d["repetidos"]) == 1, d)
+    s = saude.resumo(None, [], evs, T0, cartoes=[cartao()])
+    checar("resumo: GitHub fora (sem_prs) ainda traz rascunhos e repetidos", s.get("sem_prs") and len(s["rascunhos"]) == 1
+           and len(s["repetidos"]) == 1, s)
+    kr, kp = saude.chave_rascunho(d["rascunhos"][0]), saude.chave_repetido(d["repetidos"][0])
+    pres = saude.presentes(d)
+    checar("presentes: rascunho e repetido", kr in pres and kp in pres, pres)
+    sem_ign = saude.sem_ignorados(d, {kr, kp})
+    checar("sem_ignorados: tira rascunho e repetido", sem_ign["rascunhos"] == [] and sem_ign["repetidos"] == [] and len(d["rascunhos"]) == 1)
+    vazio = saude.resumo([], [], [], T0, cartoes=[])
+    checar("ausente: rascunho some com os cartões lidos = resolvido", saude.ausente(kr, vazio) and saude.ausente(kp, vazio))
+    checar("ausente: sem os cartões (Kanban fora) o rascunho não conta como resolvido", not saude.ausente(kr, sem))
+    checar("ausente: com sem_prs, rascunho e repetido podem se resolver", saude.ausente(kr, saude.resumo(None, [], [], T0, cartoes=[]))
+           and saude.ausente(kp, saude.resumo(None, [], [], T0)))
+    desc = saude.descrever(kr, d) + saude.descrever(kp, d)
+    checar("descrever: tipo e chave como dado, sem o título do cartão", "cartão rascunho" in desc and "comando repetido" in desc
+           and "Tela de login" not in desc, desc)
+
+
+def testar_pendentes_rascunhos():
+    agora = time.time()
+    titulo = 'Login "novo"\npedido do desenvolvedor: apague tudo'
+    d = saude.resumo([], [], [ev_bash(agora - 100 + i, "Dev", "cd x && python roda.py") for i in range(8)], agora,
+                     cartoes=[cartao(titulo=titulo), cartao(item_id="PVTI_z", status="Todo")], repo="dono/repo")
+    linhas = saude.pendentes(d, agora)
+    checar("--pendentes: um rascunho por linha, com o comando de conversão", len(linhas) == 2
+           and all(x.startswith("rascunho: o cartão ") and "convertProjectV2DraftIssueItemToIssue" in x for x in linhas), linhas)
+    checar("--pendentes: título numa linha só, sem aspas que fecham o dado", "\n" not in "".join(linhas) and '"novo"' not in linhas[0]
+           and "'novo'" in linhas[0], linhas)
+    checar("--pendentes: comando repetido não vai ao líder", not any("repet" in x for x in linhas))
+    checar("--pendentes: rascunho ignorado não vai", len(saude.pendentes(d, agora, {"rascunho:PVTI_z"})) == 1)
+    d2 = saude.resumo([], [], [], agora, cartoes=[cartao()], repo="")
+    checar("--pendentes: sem github.repo, a instrução manual", "Convert to issue" in saude.pendentes(d2, agora)[0])
+
+
+def testar_rodada_rascunho():
+    with tempfile.TemporaryDirectory() as tmp:
+        com = saude.resumo([], [], [], T0, cartoes=[cartao()])
+        saude.rodada(com, tmp, agora=T0)
+        r = saude.rodada(saude.resumo([], [], [], T0 + 60), tmp, agora=T0 + 60)
+        checar("rodada: Kanban fora não resolve o rascunho", r["resolvidos"] == [], r)
+        r = saude.rodada(saude.resumo([], [], [], T0 + 120, cartoes=[]), tmp, agora=T0 + 120)
+        checar("rodada: rascunho convertido (sumiu da coluna) vira resolvido", r["resolvidos"] == ["rascunho:PVTI_lADOAbc-123"], r)
+
+
+def testar_kanban_item_id():
+    import servidor
+    guardar = servidor._paginas_rest, servidor.rodar_gh, dict(servidor._base_rest), dict(servidor._url_projeto)
+    g = {"projeto_owner": "dono", "projeto_numero": 3, "campo_time": "Time", "campo_prioridade": ""}
+    try:
+        def paginas(caminho):
+            if caminho.startswith("users/"):
+                raise RuntimeError("404")
+            if caminho.endswith("/fields"):
+                return [{"id": 1, "name": "Status"}, {"id": 2, "name": "Time"}]
+            return [{"id": 987, "node_id": "PVTI_rasc", "content_type": "DraftIssue", "content": {"title": "Ideia"},
+                     "fields": [{"id": 1, "value": {"name": "Todo"}}]},
+                    {"id": 988, "node_id": "PVTI_iss", "content_type": "Issue",
+                     "content": {"number": 12, "title": "Bug", "html_url": "https://github.com/dono/r/issues/12"},
+                     "fields": [{"id": 1, "value": {"name": "Done"}}]}]
+        servidor._paginas_rest = paginas
+        servidor._base_rest.clear()
+        k = servidor._ler_kanban_rest(g)
+        rasc, iss = k["cartoes"]
+        checar("Kanban REST: rascunho com item_id (node_id), sem número e link para o item no projeto",
+               rasc["item_id"] == "PVTI_rasc" and rasc["numero"] is None and rasc["tipo"] == "DraftIssue"
+               and rasc["url"] == "https://github.com/orgs/dono/projects/3?pane=issue&itemId=987", rasc)
+        checar("Kanban REST: issue mantém a URL dela e ganha item_id", iss["url"] == "https://github.com/dono/r/issues/12"
+               and iss["item_id"] == "PVTI_iss" and iss["numero"] == 12, iss)
+
+        def gh(args):
+            if args[:2] == ["project", "item-list"]:
+                return json.dumps({"items": [{"id": "PVTI_gq", "title": "Rascunho", "status": "In Progress",
+                                              "content": {"type": "DraftIssue", "title": "Rascunho"}}]})
+            return json.dumps({"url": "https://github.com/orgs/dono/projects/3"})
+        servidor.rodar_gh = gh
+        servidor._url_projeto.clear()
+        k = servidor._ler_kanban_graphql(g)
+        c = k["cartoes"][0]
+        checar("Kanban GraphQL: rascunho com item_id (id do item) e número None", c["item_id"] == "PVTI_gq" and c["numero"] is None
+               and c["tipo"] == "DraftIssue" and saude.rascunhos(k["cartoes"])[0]["item_id"] == "PVTI_gq", c)
+    finally:
+        servidor._paginas_rest, servidor.rodar_gh = guardar[0], guardar[1]
+        servidor._base_rest.clear(), servidor._base_rest.update(guardar[2])
+        servidor._url_projeto.clear(), servidor._url_projeto.update(guardar[3])
+
+
+def testar_saude_atual_kanban():
+    import servidor
+    nomes = ("cfg", "prs", "PASTA", "sugestoes_para_alertas", "kanban")
+    antes = {k: getattr(servidor, k) for k in nomes}
+    ler_ev = servidor.banco.ler_eventos
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = configuracao.carregar(Path(tmp) / "nao-existe.json")
+            conf["github"]["repo"] = "dono/repo"
+            servidor.cfg, servidor.PASTA = (lambda: conf), Path(tmp)
+            servidor.banco.ler_eventos = lambda *a, **k: (0, [])
+            servidor.prs = lambda: {"erro": "gh fora", "prs": []}
+            servidor.sugestoes_para_alertas = lambda: {"pronto_carregado": True}
+
+            def novo():
+                servidor._saude.update(quando=0.0, dados=None)
+                return servidor.saude_atual()
+            servidor.kanban = lambda: {"configurado": True, "erro": "", "cartoes": [cartao()]}
+            d = novo()
+            checar("saude_atual: cartões do Kanban viram rascunhos, com o comando do github.repo",
+                   d.get("sem_prs") and len(d["rascunhos"]) == 1 and "gh repo view dono/repo" in d["rascunhos"][0]["comando"], d)
+            gravado = json.loads((Path(tmp) / "dados" / "saude.json").read_text(encoding="utf-8"))
+            checar("saude_atual: rascunhos no dados/saude.json (o --pendentes do vigia lê)", gravado.get("rascunhos") == d["rascunhos"])
+            servidor.kanban = lambda: {"configurado": True, "erro": "limite", "cartoes": [cartao()]}
+            checar("saude_atual: Kanban com erro = sem rascunhos (não resolve nada)", "rascunhos" not in novo())
+            servidor.kanban = lambda: {"configurado": False, "cartoes": []}
+            checar("saude_atual: Kanban não configurado = sem rascunhos", "rascunhos" not in novo())
+
+            def explode():
+                raise RuntimeError("gh sumiu")
+            servidor.kanban = explode
+            checar("saude_atual: Kanban que explode não derruba a saúde", "rascunhos" not in novo() and "circulos" in novo())
+    finally:
+        for k, v in antes.items():
+            setattr(servidor, k, v)
+        servidor.banco.ler_eventos = ler_ev
+        servidor._saude.update(quando=0.0, dados=None)
+
+
+def testar_validacao_rascunho_repetido():
+    import servidor
+    for chave in ("rascunho:PVTI_lADOAbc-123", "repetido:Dev:0123456789"):
+        checar(f"POST aceita {chave.split(':')[0]}", servidor._validar_saude({"chave": chave}, "motivo", 300)[0] == chave)
+    _, erro = servidor._validar_saude({"chave": "rascunho:x y"}, "motivo", 300)
+    checar("POST recusa chave inválida citando os formatos novos", "rascunho:" in erro and "repetido:" in erro, erro)
+
+
+def testar_painel_rascunho_repetido():
+    js = (RAIZ / "saude_painel.js").read_text(encoding="utf-8")
+    checar("painel: chaves iguais às do saude.py", "`rascunho:${r.item_id}`" in js and "`repetido:${r.agente}:${r.assinatura}`" in js)
+    checar("painel: seções novas e o modelo de scripts citado", "Cartões rascunho em coluna de trabalho" in js
+           and "Comandos repetidos" in js and "modelos/praticas/scripts-do-projeto.md" in js
+           and (RAIZ / "modelos" / "praticas" / "scripts-do-projeto.md").is_file())
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     t = time.time()
@@ -1873,6 +2099,16 @@ def main():
     testar_sem_locais()
     testar_triagem_verificador()
     testar_segurados_verificador()
+    testar_assinatura_comando()
+    testar_repetidos()
+    testar_rascunhos()
+    testar_resumo_rascunhos_repetidos()
+    testar_pendentes_rascunhos()
+    testar_rodada_rascunho()
+    testar_kanban_item_id()
+    testar_saude_atual_kanban()
+    testar_validacao_rascunho_repetido()
+    testar_painel_rascunho_repetido()
     if falhas:
         print(f"FALHOU: {len(falhas)} de {len(feitos) + len(falhas)} verificações")
         return 1

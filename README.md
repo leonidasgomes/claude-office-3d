@@ -29,7 +29,8 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
   falhas seguidas), relógio do comando longo, agente em círculos com seta laranja, PRs parados na mesa do líder, tela de
   PRs na parede, festa no merge, gaveteiro que evolui com o nível, fio vermelho quando dois agentes editam o mesmo
   arquivo, gato, dia e noite, sons opcionais, animações reduzidas e modo leve para PC sem placa de vídeo.
-- **🩺 Saúde do time** (sem tokens): trabalho duplicado, agentes andando em círculos, PRs parados e risco dos PRs, com
+- **🩺 Saúde do time** (sem tokens): trabalho duplicado, agentes andando em círculos, PRs parados e risco dos PRs, cartões
+  rascunho do Kanban em coluna de trabalho (com o comando que os converte em issue) e comandos repetidos (dica: vire script), com
   Ignorar e **Avisar o líder** (entregue pelo `vigia_lider.py` como informação, nunca como ordem); um modelo barato
   (até 30 chamadas por dia, desligável) faz a triagem de cada item novo: avisa o líder do problema real e silencia o falso
   positivo até ele se resolver.

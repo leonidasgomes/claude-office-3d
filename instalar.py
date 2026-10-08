@@ -74,7 +74,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
           "grafo/grafo.py", "grafo/LEIAME.md", "grafo/claude/SKILL.md", "grafo/claude/hooks/grafo_hook.py",
           "grafo/claude/instalar_grafo.py", "grafo/testes/testar_grafo.py", "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
-          "modelos/praticas/python-venv.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
+          "modelos/praticas/python-venv.md", "modelos/praticas/scripts-do-projeto.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
           "modelos/time/pesquisa.md", "modelos/time/revisor.md", "modelos/time/agente.md",
           "skills-candidatos/externo/README.md", "docs/SDD.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
