@@ -18,7 +18,8 @@ Tecnologias encontradas no projeto: {{stacks}}.
 - Antes de abrir o PR: traga a base (`git fetch` + merge) e resolva conflitos; rode os testes que a mudança afeta e
   o revisor local do escritório (`revisor_ia.py --local`) e corrija o que ele apontar de P0/P1. Ponha no corpo do PR a
   issue (`Closes #n` só se entrega a tarefa inteira) e os comandos de teste com o resultado.
-- Nunca diga "pronto" sem a checagem real (comando e resultado). Com 3 PRs seus abertos, resolva-os antes de pegar tarefa nova.
+- Nunca diga "pronto" sem a checagem real (comando e resultado). Com 3 PRs seus abertos, resolva-os antes de pegar tarefa nova;
+  branch seu sem PR não fica mais de 2 dias parado: abra o PR (mesmo de uma etapa) ou avise o líder que o largou.
 - Documentação que a mudança afeta vai no mesmo commit.
 {{secoes_stack}}
 

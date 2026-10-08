@@ -38,6 +38,10 @@ Tecnologias encontradas no projeto: {{stacks}}.
 6. **Fila: no máximo 3 PRs abertos por colega.** Com 3, ele não recebe tarefa nova: primeiro resolve os dele (revisão,
    conflito com a base, sugestões). Exceção só para urgência ou com o OK do desenvolvedor. PRs empilhados viram
    conflito e retrabalho, e o colega perde o contexto de cada um.
+7. **Branch sem PR não fica parado.** Branch de um colega que nunca teve PR e está sem commit há mais de 2 dias também
+   bloqueia tarefa nova: ele abre o PR (mesmo de uma etapa) ou larga o branch, e você avisa o desenvolvedor para apagá-lo.
+   O briefing do Diretor (`modelos/briefing_diretor.py`) lista esses branches. Não limite o número de branches: os já
+   mergeados que ficam no remoto travariam o time por lixo; ligue "Automatically delete head branches" no GitHub.
 
 ## Modelos e esforço
 - Colega que escreve código e abre PR roda com esforço alto (`claude --effort high`; os colegas herdam o esforço do líder).

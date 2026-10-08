@@ -2,7 +2,7 @@
 
 Usa o config.json do escritório (github.repo, github.projeto_owner, github.projeto_numero, campo_time, campo_prioridade) e o
 GitHub CLI (`gh`). Seções: quadro por status x time x prioridade, cartões parados há mais de N dias (Em andamento ou P0) e
-PRs da última semana; se existir dados/xp/placar.json, um resumo do placar. É um ponto de partida: copie e adapte (por
+PRs da última semana, branches sem PR parados há mais de 2 dias; se existir dados/xp/placar.json, um resumo do placar. É um ponto de partida: copie e adapte (por
 exemplo, acrescentando o documento de visão do seu projeto).
 
 Uso: python modelos/briefing_diretor.py [--config config.json] [--dias-parado 14] [--saida arquivo.md]
@@ -14,11 +14,13 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
 GH = shutil.which("gh") or "gh"
 FEITO = ("Feito", "Done")
 ANDAMENTO = ("Em andamento", "In Progress")
+PARADO_DIAS = 2   # branch sem PR e sem commit há mais que isso: trabalho largado no meio (o líder cobra o PR ou o descarte)
 
 
 def gh(*args):
@@ -81,6 +83,41 @@ def secao_prs(repo):
     return linhas + [f"- #{p['number']} {curto(p['title'], 62)}" for p in reprov[:5]]
 
 
+def _paginas(caminho, limite=20):
+    itens = []
+    for pagina in range(1, limite + 1):
+        lote = gh("api", f"{caminho}{'&' if '?' in caminho else '?'}per_page=100&page={pagina}") or []
+        itens += lote
+        if len(lote) < 100:
+            break
+    return itens
+
+
+def secao_branches_parados(repo, dias=PARADO_DIAS):
+    """Branches que nunca tiveram PR, à frente do branch padrão e sem commit há mais de `dias` dias."""
+    base = (gh("api", f"repos/{repo}") or {}).get("default_branch", "main")
+    com_pr = {(p.get("head") or {}).get("ref") for p in _paginas(f"repos/{repo}/pulls?state=all")}
+    agora, parados = datetime.now(timezone.utc), []
+    for b in _paginas(f"repos/{repo}/branches"):
+        nome = b["name"]
+        if nome == base or nome in com_pr:
+            continue
+        ref = quote(nome, safe="/")
+        cmp = gh("api", f"repos/{repo}/compare/{quote(base, safe='/')}...{ref}") or {}
+        if not cmp.get("ahead_by"):
+            continue
+        ponta = gh("api", f"repos/{repo}/commits/{ref}") or {}   # o compare corta em 250 commits: a data vem da ponta
+        data = ((ponta.get("commit") or {}).get("committer") or {}).get("date")
+        if not data:
+            continue
+        idade = (agora - iso(data)).days
+        if idade > dias:
+            parados.append((idade, nome))
+    titulo = f"## Branches sem PR parados há mais de {dias} dias ({len(parados)})"
+    return [titulo] + ([f"- `{n}` — {d} d sem commit (abrir o PR ou largar o branch)" for d, n in sorted(parados, reverse=True)]
+                       or ["Nenhum."])
+
+
 def secao_placar():
     placar = RAIZ / "dados" / "xp" / "placar.json"
     if not placar.exists():
@@ -124,7 +161,7 @@ def main():
         saida += secao_quadro(cartoes)
     except (KeyError, RuntimeError, OSError) as e:
         saida += ["## Quadro", f"Indisponível: {curto(e, 160)} (confira github.projeto_owner e projeto_numero no config e o `gh auth status`)."]
-    for secao in (lambda: secao_parados(cartoes, repo, args.dias_parado), lambda: secao_prs(repo)):
+    for secao in (lambda: secao_parados(cartoes, repo, args.dias_parado), lambda: secao_prs(repo), lambda: secao_branches_parados(repo)):
         saida.append("")
         try:
             saida += secao()

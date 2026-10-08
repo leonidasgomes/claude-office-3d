@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.3
+- **Branch sem PR parado** (`modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py`): a fila de 3
+  PRs só via trabalho com PR aberto; branch largado no meio ficava invisível. Agora o colega com branch que nunca teve PR e
+  está sem commit há mais de 2 dias não recebe tarefa nova até abrir o PR ou largar o branch, e o briefing do Diretor ganhou
+  a seção "Branches sem PR parados". Sem limite de número de branches: ligue "Automatically delete head branches" no GitHub
+  para o remoto só ter trabalho vivo.
+
 ## 1.18.2
 - **Haiku 5.5 como modelo barato padrão** (`configuracao.py`, `INSTALACAO.md`): `SUGESTOES_MODELO`, `AUDITOR_MODELO` e a
   triagem do painel Saúde passam de `claude-haiku-4-5-20251001` para `claude-haiku-5-5`. Tudo roda por `claude -p --model`,
