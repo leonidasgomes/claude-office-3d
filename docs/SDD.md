@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.19.0 (arquivo `VERSION`) |
+| Versão descrita | 1.19.1 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -296,8 +296,9 @@ Princípios que aparecem em todo o código:
 - **Cartão rascunho em coluna de trabalho** (1.18.1): `rascunhos(cartoes, repo)` pega os cartões `DraftIssue` do Kanban
   (`servidor.kanban`; com erro ou não configurado não há a chave `rascunhos` e nenhum rascunho conta como resolvido) em
   `COLUNAS_TRABALHO` (Todo, Ready, In Progress, Review e os nomes em português), no máximo `MAX_RASCUNHOS` = 20. Os
-  leitores do Kanban guardam o `item_id` (REST: `node_id`; GraphQL: `id`) e, no REST, o link do rascunho
-  (`<projeto>?pane=issue&itemId=<id>`). `comando_converter` monta o `gh api graphql` da mutation
+  leitores do Kanban guardam o `item_id` (REST: `node_id`; GraphQL: `id`) e o link do rascunho: no REST, o item
+  (`<projeto>?pane=issue&itemId=<id>`); no GraphQL (sem o id numérico), o quadro do projeto (1.19.1).
+  `comando_converter` monta o `gh api graphql` da mutation
   `convertProjectV2DraftIssueItemToIssue` com o id do repositório de `github.repo` (sem repo válido, o painel e o
   `--pendentes` mandam usar "Convert to issue" no GitHub). Chave `rascunho:<item_id>`. Entra no `--pendentes`
   (`rascunho: o cartão "<título>" (<status>) é rascunho ...`), sem push nem triagem.
@@ -306,7 +307,8 @@ Princípios que aparecem em todo o código:
   `export`, `set`, `$env:`, `VAR=` — conta; o 1º trecho depois dele, GUID → `<id>`, número de 5+ dígitos → `<n>`, até
   `PREFIXO_REPETIDO` = 40 caracteres). Com `MIN_REPETIDOS` = 8 ou mais vira dica no painel ("transforme em script ou
   variável de ambiente", modelo `modelos/praticas/scripts-do-projeto.md`), no máximo `MAX_REPETIDOS` = 10; o prefixo
-  mostrado passa por `sem_caminhos` (caminho absoluto vira `…/<último nome>`) e a chave usa só um hash
+  mostrado passa por `sem_caminhos` (caminho absoluto vira `…/<último nome>`; o espaço encerra o caminho, também
+  entre aspas, menos em Program Files, Program Files (x86) e Common Files, desde a 1.19.1) e a chave usa só um hash
   (`repetido:<agente>:<sha1[:10]>`). Não vai ao `--pendentes`, não alerta nem passa pela triagem.
 - Painel 🩺 Saúde (`saude_painel.js`), ações só do PC: **ignorar/reativar** (`POST /api/saude/ignorar` →
   `definir_ignorado`, `dados/saude_ignorados.json`, trava + troca atômica, no máximo `MAX_IGNORADOS` = 500) e **avisar o
@@ -705,7 +707,7 @@ além das marcas em `meta`.
 | GET | `/config` | — | `titulo`, `tema`, `apelidos`, `agentes`, `github` (`repo`, `kanban`, `prs`, `projeto_owner`, `projeto_numero`, `check_revisao`, `times`, `colunas`), `xp` (`ativo`, `niveis`), `gh_disponivel`, `three_local` (`servidor.config_publica`) | idem |
 | GET | `/eventos` | `desde=<id>`, `ultimos=<k>` (0–200) | `{"total": <último id>, "eventos": [...]}` (até 500) | idem |
 | GET | `/eventos` (replay) | `de=<ISO>` (obrigatório), `ate=<ISO>` (exclusivo; sem ele, até agora), `apos=<id>` (página seguinte); ISO = `AAAA-MM-DD` ou `AAAA-MM-DDTHH:MM[:SS]` na hora local do hook | `{"de", "ate", "eventos" (cada um com `id`), "proximo" (id para `apos`, ou null), "maximo"}`, até `MAX_PERIODO = 5000` por página (`banco.eventos_periodo`); 400 com `erro` se a data é inválida (só dígitos ASCII, conferida com `datetime.strptime`; `de=` vazio também), `apos` não numérico ou acima de 2**63-1, ou `ate <= de`; 503 com o banco indisponível. Sem `de`/`ate` a rota responde como antes | idem |
-| GET | `/kanban` | — | `configurado`, `projeto`, `cartoes` (cada um com `tipo` e `item_id`, o id do item no projeto; rascunho com `numero` nulo e `url` do item no projeto, `?pane=issue&itemId=`), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
+| GET | `/kanban` | — | `configurado`, `projeto`, `cartoes` (cada um com `tipo` e `item_id`, o id do item no projeto; rascunho com `numero` nulo e `url` do item no projeto, `?pane=issue&itemId=`; pelo GraphQL, a do quadro do projeto), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
 | GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado, linhas, arquivos, risco), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
 | GET | `/xp` | — | `placar.json` + `custos` + `uso`; com `xp.ativo` desligado, `{"ativo": false, "agentes": {}}` | idem |
 | GET | `/saude` | — | `ts`, `duplicados` (`fortes`, `fracos`), `circulos`, `parados`, `abertos`; sem PRs, só `ts`, `circulos` e `sem_prs`; com o Kanban lido sem erro, `rascunhos` (`item_id`, `titulo`, `status`, `url`, `comando`); com algum, `repetidos` (`agente`, `assinatura`, `prefixo`, `vezes`, `desde`); sempre `ignorados` (`{chave: {motivo, quando, origem, ua}}`), `pedidos` (últimos 20, com `entregue` e `cancelado`), `resolvidos` (24 h) e `triagem` (`modelo`, `veredictos`, `hoje`, `teto`) (`servidor.saude_get`) | PC; celular com sessão |
@@ -1270,6 +1272,7 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.17.1 | menu ⚙️ Opções no cabeçalho do painel (Visão geral, Apelidos, Animações, Som, Demo, Celular); no cabeçalho só os painéis | `opcoes.js`, `index.html`, `estilo.css`, `escritorio.js`, `instalar.py` |
 | 1.18.2 | Haiku 5.5 (`claude-haiku-5-5`) como modelo barato padrão (sugestões, auditor, triagem da Saúde); modelo do líder com fila de no máximo 3 PRs por colega e a seção "Modelos e esforço"; modelo do dev com o portão antes do PR | `configuracao.py`, `INSTALACAO.md`, `modelos/time/lider.md`, `modelos/time/dev.md`, `ferramentas/testar_saude.py` |
 | 1.19.0 | merge automático opcional: status `revisor-ia` (`revisor_ia.py`) e `sugestoes` (thread `pronto`) com `github.publicar_status`; workflow de exemplo; `binarios_em_pr.py`; custo por PR no briefing do Diretor; modelos com merge pelo GitHub, desenvolvedor como CEO e tester, limite de tempo e API conferida | `revisor_ia.py`, `servidor.py`, `configuracao.py`, `sugestoes_bot.py`, `binarios_em_pr.py`, `instalar.py`, `modelos/` |
+| 1.19.1 | `sem_caminhos` atravessa Program Files, Program Files (x86) e Common Files (em outra pasta o espaço continua encerrando o caminho); rascunho do Kanban com o link do quadro também pelo GraphQL | `saude.py`, `servidor.py` |
 | 1.18.3 | Branch sem PR parado há mais de 2 dias: regra 7 no modelo do líder, linha no modelo do dev e seção nova no briefing do Diretor (`secao_branches_parados`: branch que nunca teve PR, à frente do branch padrão, sem commit há > `PARADO_DIAS`) | `modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py` |
 | 1.18.1 | saúde: cartão rascunho do Kanban em coluna de trabalho (painel, `--pendentes` do líder, comando `gh` de conversão; `item_id` nos cartões do `/kanban`) e comandos repetidos pelo mesmo agente (dica no painel); seção "Cartão rascunho" no modelo do líder; regra `scripts-do-projeto.md` e checagem `scripts-regra` | `saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `boas_praticas.py`, `instalar.py`, `modelos/time/lider.md`, `modelos/praticas/scripts-do-projeto.md`, `ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py` |
 | 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |

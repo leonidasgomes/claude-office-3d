@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.19.1
+- **Caminho em Program Files some inteiro no celular** (`saude.py`, `RE_CAMINHO_ABS`):
+  `C:\Program Files (x86)\App\a.exe` e `C:/Program Files/Common Files/x/y.txt` viram `…/a.exe` e `…/y.txt` em
+  `sem_caminhos` (boas práticas no celular, prefixo dos comandos repetidos). Antes o corte parava no espaço e
+  saía `…/Program Files (x86)\App\a.exe`. Em qualquer outra pasta o espaço continua encerrando o caminho, também entre aspas,
+  para não apagar o que vem depois (`git -C D:/repo add src/a.py` e `bash -c "D:/x/run.sh src/a.py"` mantêm o
+  `src/a.py`): outra pasta com espaço ainda mostra o pedaço depois do espaço.
+- **Rascunho do Kanban com link também pelo GraphQL** (`servidor.py`, `_ler_kanban_graphql`): quando o REST do Projects
+  não está disponível, o cartão rascunho ganha o link do quadro do projeto (o `gh project item-list` não traz o id
+  numérico do item). Antes ficava sem link no painel 🩺 Saúde.
+
 ## 1.19.0
 - **Merge automático opcional** (`revisor_ia.py`, `servidor.py`, `configuracao.py`, `sugestoes_bot.py`,
   `modelos/auto-merge.exemplo.yml`, `INSTALACAO.md` §19): com `github.publicar_status: true` (padrão false), o

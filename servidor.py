@@ -353,6 +353,9 @@ def _ler_kanban_graphql(g):
             _url_projeto[(owner, g["projeto_numero"])] = url
         except Exception:
             pass
+    for c in cartoes:   # rascunho não tem URL e o item-list não traz o id numérico do item: o link abre o quadro do projeto
+        if c["tipo"] == "DraftIssue" and not c["url"]:
+            c["url"] = url
     return {"configurado": True, "projeto": url, "cartoes": cartoes, "atualizado": time.strftime("%H:%M:%S"), "erro": "", "limite": ""}
 
 

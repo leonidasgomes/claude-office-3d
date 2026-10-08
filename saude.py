@@ -200,8 +200,14 @@ def circulos(eventos, agora, janela_min=JANELA_CIRCULO_MIN, min_edicoes=MIN_EDIC
     return saida
 
 
-# caminho absoluto (C:\ ou C:/, \\servidor\, /a/b): o servidor também usa (boas práticas para o celular)
-RE_CAMINHO_ABS = re.compile(r"""(?:(?<!\w)[A-Za-z]:[\\/]|\\\\[^\s\\/]+[\\/]|(?<![\w.~$}/\\])/(?=[^\s/]+/))[^\s"'<>|;,]*""")
+# caminho absoluto (C:\ ou C:/, \\servidor\, /a/b): o servidor também usa (boas práticas para o celular). O espaço encerra
+# o caminho ("git -C D:/repo add src/a.py" mantém o src/a.py; entre aspas também, pois "bash -c "D:/x/run.sh src/a.py""
+# tem a mesma forma de "D:/Minha Pasta/a.txt"), menos nas pastas do Windows Program Files, Program Files (x86) e Common
+# Files. Outra pasta com espaço vaza a partir do espaço, como na 1.19.0.
+_CAM = r"""[^\s"'<>|;,]"""
+_PASTA_WIN = r"""(?<=[\\/])(?i:Program Files(?: \(x86\))?|Common Files)(?=[\\/])"""
+RE_CAMINHO_ABS = re.compile(r"""(?:(?<!\w)[A-Za-z]:[\\/]|\\\\[^\s\\/]+[\\/]|(?<![\w.~$}/\\])/(?=[^\s/]+/))"""
+                            + "(?:" + _PASTA_WIN + "|" + _CAM + ")*")
 
 
 def sem_caminhos(texto):

@@ -697,6 +697,28 @@ def testar_rota():
                    and servidor.sem_caminhos(r"\\srv\share\a.py; /srv/obra/b.py") == "…/a.py; …/b.py"
                    and servidor.sem_caminhos("https://x.com/a/b e/ou .venv/ $CLAUDE_PROJECT_DIR/.venv/bin/python")
                    == "https://x.com/a/b e/ou .venv/ $CLAUDE_PROJECT_DIR/.venv/bin/python")
+            checar("sem_caminhos: Program Files e Common Files somem inteiros; 'e/ou' depois do caminho fica",
+                   servidor.sem_caminhos(r"abri C:\Program Files (x86)\App\a.exe agora") == "abri …/a.exe agora"
+                   and servidor.sem_caminhos("cd /srv/b.txt; C:/Program Files/Common Files/x/y.txt") == "cd …/b.txt; …/y.txt"
+                   and servidor.sem_caminhos(r"C:\Program Files\App\a.exe src/b.py") == "…/a.exe src/b.py"
+                   and servidor.sem_caminhos("D:/o/a.py e/ou outro") == "…/a.py e/ou outro"
+                   and servidor.sem_caminhos("C:/a/b.txt: Program Files/x") == "…/b.txt: Program Files/x")
+            checar("sem_caminhos: o espaço encerra o caminho, também entre aspas; arquivo, opção ou relativo depois fica",
+                   servidor.sem_caminhos('bash -c "D:/tools/run.sh --in src/a.py"') == 'bash -c "…/run.sh --in src/a.py"'
+                   and servidor.sem_caminhos('{"cmd": "/usr/bin/git -C repo add src/a.py"}') == '{"cmd": "…/git -C repo add src/a.py"}'
+                   and servidor.sem_caminhos('git commit -m "D:/repo ajustado, ver src/a.py"') == 'git commit -m "…/repo ajustado, ver src/a.py"'
+                   and servidor.sem_caminhos("sh -c '/opt/app/bin/run --cfg conf/app.yml'") == "sh -c '…/run --cfg conf/app.yml'"
+                   and
+                   servidor.sem_caminhos("git -C D:/repo add src/a.py") == "git -C …/repo add src/a.py"
+                   and servidor.sem_caminhos("cd D:/x/build src/a.py") == "cd …/build src/a.py"
+                   and servidor.sem_caminhos("C:/logs ontem 10/10/2026") == "…/logs ontem 10/10/2026"
+                   and servidor.sem_caminhos("D:/o/pasta e/ou outro") == "…/pasta e/ou outro"
+                   and servidor.sem_caminhos("python D:/x/tool.py src/a.py") == "python …/tool.py src/a.py"
+                   and servidor.sem_caminhos("python D:/x/tool.py --in data/in.csv") == "python …/tool.py --in data/in.csv"
+                   and servidor.sem_caminhos("pytest D:/proj/tests -k foo/bar.py") == "pytest …/tests -k foo/bar.py"
+                   and servidor.sem_caminhos("git diff C:/a/b.py origin/main..HEAD") == "git diff …/b.py origin/main..HEAD"
+                   and servidor.sem_caminhos("C:/a/b.py data 10/10/2026") == "…/b.py data 10/10/2026"
+                   and servidor.sem_caminhos("cd D:/a/pasta e /srv/b/c.txt") == "cd …/pasta e …/c.txt")
             item_erro = {"projeto": "D:/x/p", "nome": "p", "erro": "pasta D:/x/p não encontrada", "itens": []}
             checar("celular: caminho no erro também some", servidor._praticas_celular(item_erro)["erro"] == "pasta …/p não encontrada")
             # validação lenta: não segura a resposta mais que ~3 s e devolve "calculando"

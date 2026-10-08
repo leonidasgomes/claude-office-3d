@@ -2000,6 +2000,9 @@ def testar_kanban_item_id():
         c = k["cartoes"][0]
         checar("Kanban GraphQL: rascunho com item_id (id do item) e número None", c["item_id"] == "PVTI_gq" and c["numero"] is None
                and c["tipo"] == "DraftIssue" and saude.rascunhos(k["cartoes"])[0]["item_id"] == "PVTI_gq", c)
+        checar("Kanban GraphQL: rascunho sem URL ganha o link do quadro do projeto",
+               c["url"] == "https://github.com/orgs/dono/projects/3"
+               and saude.rascunhos(k["cartoes"])[0]["url"] == "https://github.com/orgs/dono/projects/3", c)
     finally:
         servidor._paginas_rest, servidor.rodar_gh = guardar[0], guardar[1]
         servidor._base_rest.clear(), servidor._base_rest.update(guardar[2])
