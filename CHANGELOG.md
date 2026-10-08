@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.18.2
+- **Haiku 5.5 como modelo barato padrão** (`configuracao.py`, `INSTALACAO.md`): `SUGESTOES_MODELO`, `AUDITOR_MODELO` e a
+  triagem do painel Saúde passam de `claude-haiku-4-5-20251001` para `claude-haiku-5-5`. Tudo roda por `claude -p --model`,
+  então as mudanças da API do Haiku 5.5 (sem `budget_tokens`, sem prefill) não afetam o escritório. Quem fixou o modelo
+  antigo no `config.json` continua com ele.
+- **Modelo do líder: fila de PRs e esforço** (`modelos/time/lider.md`): no máximo 3 PRs abertos por colega (com 3, ele
+  resolve os dele antes de tarefa nova); colega que abre PR roda com esforço alto; Haiku só em subagente de busca,
+  leitura, contagem e triagem.
+- **Modelo do dev: portão antes do PR** (`modelos/time/dev.md`): merge da base, testes afetados, revisor local, issue e
+  resultados dos testes no corpo do PR; nunca "pronto" sem checagem real.
+
 ## 1.18.1
 - **Conserta o CI do main**: a 1.18.0 já tinha levado parte deste código (`saude.py`, `servidor.py`, `saude_painel.*`)
   sem o teste, e `ferramentas/testar_saude.py` falhava no resumo. Agora `resumo()` só traz `rascunhos` e `repetidos`

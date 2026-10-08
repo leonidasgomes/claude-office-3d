@@ -255,10 +255,10 @@ recarregar a página (a porta só muda reiniciando o servidor).
   },
   "alertas": {"ativo": true, "limite_push_hora": 20, "lembrete_horas": 24},   // push/notificação quando algo espera por você (seção 10)
   "grafo": {"ativo": true, "ref": "origin/main", "arquivo": "", "intervalo_min": 60},   // painel 🗺️ Arquitetura (seção 16)
-  "sugestoes": {"triagem_modelo": "claude-haiku-4-5-20251001", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
+  "sugestoes": {"triagem_modelo": "claude-haiku-5-5", "intervalo_min": 15, "janela_dias": 3},   // sugestões do bot (seção 11)
                                       // + "saude_triagem": modelo da triagem do painel Saúde (seção 7; sem a chave = triagem_modelo; "" desliga)
   "revisor": {"ativo": false, "modelo": "claude-sonnet-5-5", "max_diff": 90000, "contexto": []},   // revisor-ia (seção 11)
-  "auditor": {"ativo": false, "modelo": "claude-haiku-4-5-20251001", "modelo_2": "claude-sonnet-5-5",
+  "auditor": {"ativo": false, "modelo": "claude-haiku-5-5", "modelo_2": "claude-sonnet-5-5",
               "max_diff": 40000, "rotulos": []},   // auditor do "para conferir" (seção 8)
   "tema": "neutro",                   // "neutro" ou "sao-paulo"
   "apelidos": "desligado",            // modo inicial: "brasileiros" | "cinema" | "desligado"
@@ -474,7 +474,7 @@ trabalho. Legítimo: o PR é marcado como conferido (o mesmo do botão). Suspeit
 vermelho. Cada PR é auditado uma vez (tabela `auditoria_ia` do `dados/escritorio.db`, com veredito, modelo e custo).
 
 ```jsonc
-"auditor": {"ativo": true, "modelo": "claude-haiku-4-5-20251001", "modelo_2": "claude-sonnet-5-5",
+"auditor": {"ativo": true, "modelo": "claude-haiku-5-5", "modelo_2": "claude-sonnet-5-5",
             "max_diff": 40000, "rotulos": ["P2"]},     // rótulos extras de toda issue de suspeita
 "agentes": [{"nome": "Dev", "rotulo_issue": "team:dev", "time_kanban": "Time Dev"}, ...]
 ```
@@ -808,10 +808,10 @@ Preencha, no `config.json`, o repositório e os logins dos bots (a lista vazia, 
   "times": {"team:back": "backend"}              // rótulo do PR -> agente dono (aparece como [backend] no resumo do líder)
 },
 "sugestoes": {
-  "triagem_modelo": "claude-haiku-4-5-20251001", // "" desliga a triagem; o líder passa a triar sozinho
+  "triagem_modelo": "claude-haiku-5-5", // "" desliga a triagem; o líder passa a triar sozinho
   "intervalo_min": 15,                           // de quanto em quanto tempo o servidor coleta
   "janela_dias": 3,                              // na primeira coleta, quantos dias para trás olhar
-  "saude_triagem": "claude-haiku-4-5-20251001"   // opcional: triagem do painel Saúde (seção 7); sem a chave = triagem_modelo; "" desliga
+  "saude_triagem": "claude-haiku-5-5"   // opcional: triagem do painel Saúde (seção 7); sem a chave = triagem_modelo; "" desliga
 }
 ```
 

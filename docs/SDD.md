@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.18.1 (arquivo `VERSION`) |
+| Versão descrita | 1.18.2 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -144,7 +144,7 @@ Princípios que aparecem em todo o código:
   Windows/macOS/Linux), `pasta_dentro(cwd, pastas)` (comparação sem diferenciar maiúsculas, `\` = `/`).
 - **Constantes**: `VERSAO_THREE = "0.160.0"`, `TEMAS`, `MODOS_APELIDO`, `TIPOS_MESA`, `PALETA`, `AGENTES_PADRAO`
   (Líder, Dev, Designer, Pesquisa), pesos e níveis de XP, modelos padrão (`SUGESTOES_MODELO`/`AUDITOR_MODELO`
-  `claude-haiku-4-5-20251001`, `REVISOR_MODELO` `claude-sonnet-5-5`).
+  `claude-haiku-5-5`, `REVISOR_MODELO` `claude-sonnet-5-5`).
 - **CLI**: `python configuracao.py --porta` (usado pelos atalhos `reiniciar_escritorio`); sem argumento (ou com qualquer
   outro) imprime a configuração normalizada.
 - O servidor relê o arquivo quando o `mtime` muda (`servidor.cfg`); a porta só muda reiniciando.
@@ -1253,5 +1253,6 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.16.2 | segurança: `caminho_bloqueado` com caminho decodificado/normalizado e nome real (contorno de `dados/` e de scripts) | `servidor.py`, `ferramentas/testar_estaticos.py` |
 | 1.17.0 | grafo de arquitetura para agentes (`grafo/`: CLI init/validate/owner/suggest/slice/impact/find/drift/index/sync-rules, hooks do Claude Code e instalador por projeto); painel 🗺️ Arquitetura (`GET /grafo`, thread `grafo`, bloco `grafo` do config) com quem mexe onde ao vivo e "sistema atual" na ficha; `notebook_path` no detalhe do evento | `grafo/`, `grafo_painel.py`, `arquitetura.js`, `arquitetura.css`, `servidor.py`, `configuracao.py`, `escritorio.js`, `index.html`, `registrar_evento.py`, `instalar.py`, `ferramentas/` |
 | 1.17.1 | menu ⚙️ Opções no cabeçalho do painel (Visão geral, Apelidos, Animações, Som, Demo, Celular); no cabeçalho só os painéis | `opcoes.js`, `index.html`, `estilo.css`, `escritorio.js`, `instalar.py` |
+| 1.18.2 | Haiku 5.5 (`claude-haiku-5-5`) como modelo barato padrão (sugestões, auditor, triagem da Saúde); modelo do líder com fila de no máximo 3 PRs por colega e a seção "Modelos e esforço"; modelo do dev com o portão antes do PR | `configuracao.py`, `INSTALACAO.md`, `modelos/time/lider.md`, `modelos/time/dev.md`, `ferramentas/testar_saude.py` |
 | 1.18.1 | saúde: cartão rascunho do Kanban em coluna de trabalho (painel, `--pendentes` do líder, comando `gh` de conversão; `item_id` nos cartões do `/kanban`) e comandos repetidos pelo mesmo agente (dica no painel); seção "Cartão rascunho" no modelo do líder; regra `scripts-do-projeto.md` e checagem `scripts-regra` | `saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `boas_praticas.py`, `instalar.py`, `modelos/time/lider.md`, `modelos/praticas/scripts-do-projeto.md`, `ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py` |
 | 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |

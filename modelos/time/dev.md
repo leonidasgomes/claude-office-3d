@@ -15,7 +15,10 @@ Tecnologias encontradas no projeto: {{stacks}}.
 - Antes de editar, entenda o impacto: se o projeto tem grafo de arquitetura, consulte-o para ver quem depende do arquivo.
 - Mudança pequena e focada na tarefa; nada de refatoração "de passagem".
 - Teste antes de entregar: `{{testes}}`. Teste novo para cada bug corrigido ou comportamento novo.
-- Antes de abrir o PR, rode o revisor local do escritório (`revisor_ia.py --local`) e corrija o que ele apontar de P0/P1.
+- Antes de abrir o PR: traga a base (`git fetch` + merge) e resolva conflitos; rode os testes que a mudança afeta e
+  o revisor local do escritório (`revisor_ia.py --local`) e corrija o que ele apontar de P0/P1. Ponha no corpo do PR a
+  issue (`Closes #n` só se entrega a tarefa inteira) e os comandos de teste com o resultado.
+- Nunca diga "pronto" sem a checagem real (comando e resultado). Com 3 PRs seus abertos, resolva-os antes de pegar tarefa nova.
 - Documentação que a mudança afeta vai no mesmo commit.
 {{secoes_stack}}
 

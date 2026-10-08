@@ -1381,7 +1381,7 @@ def testar_triagem_config_e_servidor():
                 checar(f"config: {cfg} → {esperado!r}", saude_triagem.modelo_configurado() == esperado)
         finally:
             saude_triagem.CONFIG = guardar
-    checar("modelo padrão = o das sugestões", saude_triagem.MODELO_PADRAO == "claude-haiku-4-5-20251001")
+    checar("modelo padrão = o das sugestões", saude_triagem.MODELO_PADRAO == "claude-haiku-5-5")
 
     import rede
     import servidor

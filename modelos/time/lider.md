@@ -35,3 +35,11 @@ Tecnologias encontradas no projeto: {{stacks}}.
 4. Você decide: P0 ou P1 → o PR volta ao autor (vida nova, com os achados); sem P0/P1 → aprovado: avise o desenvolvedor
    que o PR #<n> está pronto e que o merge é dele. Você nunca faz merge.
 5. Commit novo de correção no PR → revisão nova, com um revisor novo.
+6. **Fila: no máximo 3 PRs abertos por colega.** Com 3, ele não recebe tarefa nova: primeiro resolve os dele (revisão,
+   conflito com a base, sugestões). Exceção só para urgência ou com o OK do desenvolvedor. PRs empilhados viram
+   conflito e retrabalho, e o colega perde o contexto de cada um.
+
+## Modelos e esforço
+- Colega que escreve código e abre PR roda com esforço alto (`claude --effort high`; os colegas herdam o esforço do líder).
+- Haiku (alias `haiku`) serve a subagentes de busca, leitura, contagem e triagem; não o use como colega que abre PR:
+  em esforço baixo ele às vezes para cedo ou dá a mudança por feita sem verificar.

@@ -71,14 +71,14 @@ ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "con
 ALERTAS_IMEDIATOS = ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"]
 
 # Sugestões do bot de revisão (sugestoes_bot.py): só funciona com github.repo e github.bots_revisao preenchidos
-SUGESTOES_MODELO = "claude-haiku-4-5-20251001"   # triagem barata (uma chamada de `claude -p` por coleta com itens novos)
+SUGESTOES_MODELO = "claude-haiku-5-5"   # triagem barata (uma chamada de `claude -p` por coleta com itens novos)
 
 # Revisor de código próprio (revisor_ia.py): uma chamada de `claude -p` por commit novo de PR; comenta com a marca [revisor-ia]
 REVISOR_MODELO = "claude-sonnet-5-5"
 REVISOR_MAX_DIFF = 90_000   # caracteres de diff por revisão (o resto é listado como não revisado)
 
 # Auditor do "para conferir" (auditor_xp.py): o modelo barato julga cada amarelo do Placar; só o suspeito vai ao segundo
-AUDITOR_MODELO = "claude-haiku-4-5-20251001"
+AUDITOR_MODELO = "claude-haiku-5-5"
 AUDITOR_MODELO_2 = "claude-sonnet-5-5"
 AUDITOR_MAX_DIFF = 40_000
 
