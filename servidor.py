@@ -560,6 +560,26 @@ PRONTO_A_CADA_S = 180
 # Liga quando o PRONTO foi calculado pela 1ª vez (ou não há o que calcular). Antes disso o detector de alertas não lê os
 # PRs: com o PRONTO vazio todo PR aprovado viraria "espera" e, ao encher, dispararia pr_pronto de novo a cada reinício.
 PRONTO_CARREGADO = threading.Event()
+# Último estado (ok) publicado como status `sugestoes` por (pr, sha), com github.publicar_status: check obrigatório do
+# merge automático. Por (pr, sha) e não por (pr, sha, ok): sugestão nova no mesmo commit depois do OK tem de voltar o
+# status a pending.
+STATUS_SUGESTOES = {}
+
+
+def publicar_status_sugestoes(c, n, sha, ok, motivos):
+    """Status `sugestoes` no commit do PR (só quando muda): success quando o --pronto está OK, pending sem. Falha ao
+    publicar não derruba o laço; tenta de novo na próxima rodada."""
+    if not sha or STATUS_SUGESTOES.get((n, sha)) == ok:
+        return
+    desc = "Sugestões dos bots decididas" if ok else (motivos[0] if motivos else "Sugestões pendentes")
+    try:
+        r = subprocess.run([c["gh"], "api", "-X", "POST", f"repos/{c['repo']}/statuses/{sha}", "-f",
+                            f"state={'success' if ok else 'pending'}", "-f", "context=sugestoes", "-f",
+                            f"description={desc[:140]}"], capture_output=True, timeout=60)
+        if r.returncode == 0:
+            STATUS_SUGESTOES[(n, sha)] = ok
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def atualizar_pronto(c):
@@ -567,7 +587,7 @@ def atualizar_pronto(c):
     que acabou de chegar precisa estar na caixa, senão o PR pareceria pronto cedo demais."""
     with _sug_trava:
         sugestoes_bot.coletar(c, triagem=False, log=lambda m: None)
-        _, abertos, _ = sugestoes_bot.gh_api(c, f"repos/{c['repo']}/pulls?state=open&per_page=50")
+        _, abertos, _ = sugestoes_bot.gh_api(c, f"repos/{c['repo']}/pulls?state=open&per_page=100")
         novo = {}
         for pr in abertos if isinstance(abertos, list) else []:
             info = {}
@@ -575,6 +595,11 @@ def atualizar_pronto(c):
             novo[str(pr["number"])] = {"ok": ok, "sha": info.get("sha", ""), "quando": time.time(),
                                        "motivos": [m for m in motivos if not m.startswith("(aviso)")][:3],
                                        "avisos": [m[9:] for m in motivos if m.startswith("(aviso)")][:3]}
+            if c.get("publicar_status"):
+                publicar_status_sugestoes(c, pr["number"], info.get("sha", ""), ok,
+                                          [m for m in motivos if not m.startswith("(aviso)")])
+        for k in [k for k in STATUS_SUGESTOES if str(k[0]) not in novo or novo[str(k[0])]["sha"] != k[1]]:
+            STATUS_SUGESTOES.pop(k, None)   # PR fechado ou commit antigo: não cresce sem limite
         PRONTO.update(novo)   # troca sem esvaziar: entre clear() e update() o detector leria tudo como "espera"
         for k in [k for k in PRONTO if k not in novo]:
             PRONTO.pop(k, None)
@@ -584,8 +609,8 @@ def atualizar_pronto(c):
 def pronto_laco(parar):
     """Thread: recalcula o pronto de cada PR aberto a cada 3 min (só REST; sem tokens). Custo por rodada: a coleta sem
     triagem (comentários e lista de PRs com ETag + 1 chamada de reviews por PR aberto), 1 lista de PRs abertos sem ETag
-    (até 50) e, por PR aberto, até 3 chamadas REST sem ETag no `sugestoes_bot.pronto` (o PR, as reviews e, às vezes, o
-    commit da cabeça)."""
+    (até 100) e, por PR aberto, até 3 chamadas REST sem ETag no `sugestoes_bot.pronto` (o PR, as reviews e, às vezes, o
+    commit da cabeça); com github.publicar_status, 1 POST de status por PR só quando o resultado muda."""
     if parar.wait(40):
         return
     while not parar.is_set():

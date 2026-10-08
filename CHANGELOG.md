@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.19.0
+- **Merge automático opcional** (`revisor_ia.py`, `servidor.py`, `configuracao.py`, `sugestoes_bot.py`,
+  `modelos/auto-merge.exemplo.yml`, `INSTALACAO.md` §19): com `github.publicar_status: true` (padrão false), o
+  escritório publica dois status no commit do PR, os checks obrigatórios do ruleset: `revisor-ia` (`failure` com P0/P1,
+  `success` sem, a cada revisão) e `sugestoes` (`success` com o `--pronto` OK, `pending` sem; thread `pronto`, só quando
+  muda). O `--pendentes` republica o status que não saiu sem revisar de novo e, ao ligar a chave, conta os P0/P1 da
+  revisão que já está no PR. O workflow de exemplo liga o auto-merge do GitHub, menos no PR com o rótulo `merge-manual`
+  ou que muda arquivos de regra. Com a chave desligada nada muda.
+- **Re-revisão lê a conversa do PR** (`revisor_ia.py`): respostas na conversa geral (achado do corpo da revisão) entram no
+  contexto, e `--pr <n> --forcar` no mesmo commit também as lê: falso positivo respondido não volta igual. `revisados`
+  não repete o commit.
+- **PRs abertos até 100** em `atualizar_pronto` e `revisor_ia.pendentes` (eram 50).
+- **`binarios_em_pr.py`**: binário que o seu worktree muda e que outro PR aberto também muda (extensões do LFS no
+  `.gitattributes`, `--ext` para outras). Binário não se funde e o `git lfs lock` não separa colegas na mesma conta.
+- **Custo por PR no briefing do Diretor** (`modelos/briefing_diretor.py`): US$ por PR mergeado da última foto do
+  `custo_time.py` contra a média das fotos de 8 a 35 dias antes; acima de 120%, alerta. O `modelos/diretor.md` ganhou o
+  item **Custo** na revisão.
+- **Modelos do time** (`modelos/time/lider.md`, `dev.md`, `modelos/diretor.md`, `modelos/sugestoes_lider.md`): merge pelo
+  GitHub quando o projeto usa merge automático (rótulo `merge-manual` para o que muda as regras); desenvolvedor como CEO e
+  tester; limite de tempo de build e lote longo; API de biblioteca ou motor conferida no fonte; binário com
+  `binarios_em_pr.py` e nunca `--ours`/`--theirs`.
+- **`config.exemplo.json`**: `check_revisao` passa de `revisao-ia` para `revisor-ia`, o nome do status que o
+  `revisor_ia.py` publica (com o nome antigo, o painel e o XP não viam a revisão).
+
 ## 1.18.3
 - **Branch sem PR parado** (`modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py`): a fila de 3
   PRs só via trabalho com PR aberto; branch largado no meio ficava invisível. Agora o colega com branch que nunca teve PR e

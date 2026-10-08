@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.18.3 (arquivo `VERSION`) |
+| Versão descrita | 1.19.0 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -196,7 +196,7 @@ Princípios que aparecem em todo o código:
 | Thread | Função | Primeiro disparo | Intervalo | O que faz |
 |---|---|---|---|---|
 | `sugestoes` | `sugestoes_laco` | 25 s | `sugestoes.intervalo_min` (15 min) | revisor (se `revisor.ativo`), coleta + triagem, auditor (se `auditor.ativo` e `xp.ativo`) |
-| `pronto` | `pronto_laco` | 40 s | `PRONTO_A_CADA_S = 180` s | coleta sem triagem e calcula `pronto()` de cada PR aberto (só com bots ou revisor e `github.repo`). Custo REST por rodada: a coleta (comentários e lista com ETag + 1 de reviews por PR aberto), 1 lista de PRs abertos sem ETag e até 3 chamadas sem ETag por PR aberto (o PR, as reviews e, às vezes, o commit da cabeça) |
+| `pronto` | `pronto_laco` | 40 s | `PRONTO_A_CADA_S = 180` s | coleta sem triagem e calcula `pronto()` de cada PR aberto (só com bots ou revisor e `github.repo`). Custo REST por rodada: a coleta (comentários e lista com ETag + 1 de reviews por PR aberto), 1 lista de PRs abertos sem ETag (até 100) e até 3 chamadas sem ETag por PR aberto (o PR, as reviews e, às vezes, o commit da cabeça). Com `github.publicar_status`, publica o resultado como o status `sugestoes` do commit (`publicar_status_sugestoes`: `success` com o `pronto` OK, `pending` sem; 1 POST só quando muda, lembrado em `STATUS_SUGESTOES` por (PR, sha), que esquece PR fechado e commit antigo) |
 | `alertas` | `alertas.Alertas.laco` | 8 s | `INTERVALO = 60` s | detector de alertas e entrega; a thread só sobe com `alertas.ativo` (`Alertas.iniciar`) |
 | cota | `cota.Vigia.laco` | 3 s | `INTERVALO = 300` s | lê a cota do GitHub |
 | `saude` | `saude_laco` | 30 s | `SAUDE_VALIDADE = 300` s | `saude_atual()` → `saude.rodada` e `dados/saude.json` (mesmo com os alertas desligados); depois de um cálculo que deu certo, `triagem_saude` → `saude_triagem.rodada` (no máximo 3 chamadas do modelo barato por rodada e 30 por dia; títulos dos PRs só do cache, sem GitHub) |
@@ -205,9 +205,9 @@ Princípios que aparecem em todo o código:
 
 - **Validades de cache**: Kanban 600 s, PRs 180 s, `mergeable` 1800 s (`MERGEAVEL_TTL`), máximo de 500 eventos por
   resposta (`MAX_POR_RESPOSTA`) e 5000 por página no replay (`MAX_PERIODO`).
-- **Teto de PRs abertos** (uma página, sem paginação): `per_page=50` em `servidor._ler_prs`, `servidor.atualizar_pronto`
-  e `revisor_ia.pendentes`; `per_page=100` em `sugestoes_bot._baixar_prs_abertos`. Acima disso, os PRs excedentes não
-  aparecem no painel, no `pronto` nem no revisor.
+- **Teto de PRs abertos** (uma página, sem paginação): `per_page=50` em `servidor._ler_prs`; `per_page=100` em
+  `servidor.atualizar_pronto`, `revisor_ia.pendentes` e `sugestoes_bot._baixar_prs_abertos`. Acima disso, os PRs
+  excedentes não aparecem no painel, no `pronto` nem no revisor.
 - **CLI**: `--porta N`, `--sem-navegador`, `--rede-local`, `--sem-https` (`main`, `abrir_servidores`).
 - **three.js offline**: com `vendor/three/` baixado, `index_html()` troca o CDN do importmap por `/vendor/three/`.
 
@@ -414,7 +414,17 @@ Princípios que aparecem em todo o código:
   `linhas_adicionadas`); a partir da 4ª revisão do mesmo PR só P0/P1 (`TETO_REVISOES = 3`); até `MAX_ACHADOS = 12`.
 - **Modo local** (`revisar_local`): revisa o diff de uma worktree contra a base (padrão: `origin/HEAD`), sem comentar
   nem gravar estado.
+- **Status `revisor-ia`** (só com `github.publicar_status`, padrão desligado): cada revisão publica no commit
+  `failure` com P0/P1 e `success` sem (`publicar_status`, `POST repos/{repo}/statuses/{sha}`), o check obrigatório do
+  merge automático (`INSTALACAO.md` §19). O resultado fica em `estado["status"][pr]` (`sha`, `graves`, `publicado`);
+  `pendentes()` republica o que não saiu sem revisar de novo e, no commit já revisado sem status (chave ligada depois),
+  conta os P0/P1 da revisão que já está no PR (`graves_da_revisao`; sem revisão no PR, revisa de novo com `forcar`).
+  `--pr N --forcar` no mesmo commit relê as conversas, incluindo as respostas na conversa geral do PR, para o falso
+  positivo respondido não voltar; `revisados` não repete o commit.
 - Estado e custo em `dados/revisor/estado.json`.
+- **`binarios_em_pr.py`**: binário (extensões do LFS no `.gitattributes` do worktree, senão `BINARIOS`) que o worktree
+  muda e que outro PR aberto, não rascunho, também muda (`choques`; arquivos do PR paginados até `MAX_PAGINAS`). Só
+  REST, sem tokens; código 0/1/2. Binário não se funde: o colega combina a ordem em vez de escolher um lado.
 
 ### 3.10 `xp.py` — motor de XP
 
@@ -546,7 +556,10 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
 ### 3.19 Material de apoio
 
 - `modelos/`: `diretor.md` (prompt genérico do Diretor), `briefing_diretor.py` (briefing a partir do config e do
-  `gh`; CLI na seção 5.3), `sugestoes_lider.md` (modelo de skill do líder), `GUIA-TIME-ENXUTO.md` (`README.md`,
+  `gh`; CLI na seção 5.3; `secao_custo`: US$ por PR mergeado da última foto de `custo_diario` contra a média das fotos de
+  8 a 35 dias antes, mínimo de 3, alerta acima de `CUSTO_ALERTA` = 120%), `auto-merge.exemplo.yml` (workflow
+  `pull_request_target` que liga o auto-merge do GitHub, menos com o rótulo `merge-manual` ou arquivo de regra;
+  `INSTALACAO.md` §19), `sugestoes_lider.md` (modelo de skill do líder), `GUIA-TIME-ENXUTO.md` (`README.md`,
   `CHANGELOG.md` 1.6.0), `praticas/python-venv.md` (regra do .venv gravada em `.claude/rules/` do projeto) e `time/`
   (`lider.md`, `dev.md`, `designer.md`, `pesquisa.md`, `revisor.md`, `agente.md`: definições dos agentes com
   `{{nome}}`, `{{projeto}}`, `{{stacks}}`, `{{testes}}`... — ambos usados pelo `boas_praticas.corrigir`). Copiados pelo
@@ -765,6 +778,7 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 | `auditor_xp.py` | sem argumentos; `--seco` |
 | `sugestoes_bot.py` | `[--coletar] [--sem-triagem] [--recoletar]`; `--pendentes [--pr N]`; `--listar [--todas] [--pr N]`; `--tratar ID --acao A [--nota T]`; `--pronto N` |
 | `revisor_ia.py` | `--pr N [--forcar] [--seco]`; `--pendentes`; `--local WORKTREE [--base REF]` |
+| `binarios_em_pr.py` | `[--wt WORKTREE] [--base REF] [--repo dono/nome] [--ext .png,.blend] [arquivo ...]` (código 0 sem choque, 1 com choque, 2 erro) |
 | `custo_time.py` | `[--dias 7]` |
 | `banco.py` | sem argumentos |
 | `statusline_uso.py` | `[--so-gravar]` (stdin = JSON da statusline) |
@@ -797,7 +811,7 @@ Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.js
 |---|---|---|
 | raiz | `porta`, `titulo`, `projetos`, `tema` (`neutro`\|`sao-paulo`), `apelidos` (`brasileiros`\|`cinema`\|`desligado`), `palavras_reuniao` | 8765, "Claude Office 3D", [], neutro, desligado |
 | `agentes[]` | `nome`, `titulo`, `funcao`, `cor`, `apelido_br`, `apelido_cinema`, `cargo`, `mesa`, `lider`, `auxiliar`, `sala`, `outros_nomes`, `rotulo_issue`, `time_kanban` | time genérico de 4 |
-| `github` | `repo`, `projeto_owner`, `projeto_numero`, `check_revisao`, `bots_revisao`, `campo_time`, `campo_prioridade`, `times`, `colunas` | vazio (tudo desligado) |
+| `github` | `repo`, `projeto_owner`, `projeto_numero`, `check_revisao`, `publicar_status`, `bots_revisao`, `campo_time`, `campo_prioridade`, `times`, `colunas` | vazio (tudo desligado; `publicar_status` false) |
 | `xp` | `ativo`, `desde`, `pesos`, `niveis`, `padroes_teste`, `padroes_avaliacao`, `amostra_1_em`, `atribuicao` | desligado |
 | `sugestoes` | `triagem_modelo`, `intervalo_min`, `janela_dias`, `saude_triagem` (modelo da triagem do painel Saúde, `saude_triagem.py`; sem a chave vale `triagem_modelo`; `""` ou nome de modelo inválido desliga — `configuracao.normalizar_sugestoes`, `RE_MODELO`) | Haiku, 15, 3, = `triagem_modelo`; limites no código: `MAX_POR_RODADA` 3, `TETO_DIA` 30, `TIMEOUT` 90 s |
 | `revisor` | `ativo`, `modelo`, `max_diff`, `contexto` | desligado, Sonnet, 90000 |
@@ -1046,7 +1060,7 @@ desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escal
 | Hook | assíncrono, timeout de 5 s no banco; import do `banco` só depois do filtro de projeto (`registrar_evento.main`) |
 | Polling da página | eventos 2 s (15 s oculta); painéis 60 s (param com a aba oculta); alertas 10 s; celular 5 s com o painel aberto |
 | PRs | REST com ETag; status e `mergeable` em cache por `sha`; validade 180 s; conflito revalidado a cada 30 min |
-| PRs abertos por leitura | uma página só: 50 (`servidor._ler_prs`, `atualizar_pronto`, `revisor_ia.pendentes`) e 100 (`sugestoes_bot._baixar_prs_abertos`) |
+| PRs abertos por leitura | uma página só: 50 (`servidor._ler_prs`) e 100 (`atualizar_pronto`, `revisor_ia.pendentes`, `sugestoes_bot._baixar_prs_abertos`) |
 | Thread `pronto` | a cada 3 min, só com bots/revisor: coleta sem triagem + 1 lista de PRs abertos sem ETag + até 3 chamadas REST sem ETag por PR aberto (`sugestoes_bot.pronto`); com 10 PRs abertos, até ~43 chamadas por rodada (as com ETag e resposta 304 não contam), ou seja, até ~860 por hora da cota REST de 5000 |
 | Kanban | REST do Projects v2 (100 por página) com validade de 10 min; GraphQL só como reserva; antes ~200 pontos GraphQL por leitura (`CHANGELOG.md` 1.1.0) |
 | Sugestões | por coleta: comentários (1 chamada por página, até `MAX_PAGINAS`) + 1 de PRs abertos (ambas com ETag) + 1 de reviews por PR aberto; rate limit só registra e tenta na próxima rodada |
@@ -1153,6 +1167,7 @@ restante de `rede.py` (além do filtro de origem e das rotas do painel Saúde) n
 | Faixa `100.64.0.0/10` só com `rede_tailscale` | fora do Tailscale essa faixa é o CGNAT da operadora, compartilhado com outros clientes | aceitar sempre (comportamento até a 1.11.0) | `CHANGELOG.md` 1.12.0, `rede.ip_permitido` |
 | Alerta `pr_pronto` com a mesma regra do painel PRs | o alerta saía antes de o painel ficar verde | olhar só a revisão | `CHANGELOG.md` 1.12.0, `alertas.situacao_pr` |
 | SDD conferido contra o código no CI | documento que não acompanha o código engana quem mantém | revisão manual | `CHANGELOG.md` 1.12.0, `ferramentas/verificar_docs.py` |
+| Merge automático opcional por status de commit (`revisor-ia`, `sugestoes`) com `github.publicar_status` desligado por padrão | o GitHub só faz o merge com os checks verdes no commit atual; a pessoa fica com o que muda as regras (`merge-manual`) | merge sempre manual; o escritório fazer o merge | `CHANGELOG.md` 1.19.0, `INSTALACAO.md` §19 |
 | Statusline nunca substitui uma existente | não quebrar a configuração do usuário; encadear com `--so-gravar` | sobrescrever | `CHANGELOG.md` 1.11.0, `instalar.instalar_statusline` |
 
 ---
@@ -1254,6 +1269,7 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.17.0 | grafo de arquitetura para agentes (`grafo/`: CLI init/validate/owner/suggest/slice/impact/find/drift/index/sync-rules, hooks do Claude Code e instalador por projeto); painel 🗺️ Arquitetura (`GET /grafo`, thread `grafo`, bloco `grafo` do config) com quem mexe onde ao vivo e "sistema atual" na ficha; `notebook_path` no detalhe do evento | `grafo/`, `grafo_painel.py`, `arquitetura.js`, `arquitetura.css`, `servidor.py`, `configuracao.py`, `escritorio.js`, `index.html`, `registrar_evento.py`, `instalar.py`, `ferramentas/` |
 | 1.17.1 | menu ⚙️ Opções no cabeçalho do painel (Visão geral, Apelidos, Animações, Som, Demo, Celular); no cabeçalho só os painéis | `opcoes.js`, `index.html`, `estilo.css`, `escritorio.js`, `instalar.py` |
 | 1.18.2 | Haiku 5.5 (`claude-haiku-5-5`) como modelo barato padrão (sugestões, auditor, triagem da Saúde); modelo do líder com fila de no máximo 3 PRs por colega e a seção "Modelos e esforço"; modelo do dev com o portão antes do PR | `configuracao.py`, `INSTALACAO.md`, `modelos/time/lider.md`, `modelos/time/dev.md`, `ferramentas/testar_saude.py` |
+| 1.19.0 | merge automático opcional: status `revisor-ia` (`revisor_ia.py`) e `sugestoes` (thread `pronto`) com `github.publicar_status`; workflow de exemplo; `binarios_em_pr.py`; custo por PR no briefing do Diretor; modelos com merge pelo GitHub, desenvolvedor como CEO e tester, limite de tempo e API conferida | `revisor_ia.py`, `servidor.py`, `configuracao.py`, `sugestoes_bot.py`, `binarios_em_pr.py`, `instalar.py`, `modelos/` |
 | 1.18.3 | Branch sem PR parado há mais de 2 dias: regra 7 no modelo do líder, linha no modelo do dev e seção nova no briefing do Diretor (`secao_branches_parados`: branch que nunca teve PR, à frente do branch padrão, sem commit há > `PARADO_DIAS`) | `modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py` |
 | 1.18.1 | saúde: cartão rascunho do Kanban em coluna de trabalho (painel, `--pendentes` do líder, comando `gh` de conversão; `item_id` nos cartões do `/kanban`) e comandos repetidos pelo mesmo agente (dica no painel); seção "Cartão rascunho" no modelo do líder; regra `scripts-do-projeto.md` e checagem `scripts-regra` | `saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `boas_praticas.py`, `instalar.py`, `modelos/time/lider.md`, `modelos/praticas/scripts-do-projeto.md`, `ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py` |
 | 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |

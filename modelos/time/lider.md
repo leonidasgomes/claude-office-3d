@@ -18,8 +18,12 @@ Tecnologias encontradas no projeto: {{stacks}}.
 - Uma tarefa por vida do colega: quando ele entregar o handoff, encerre-o e crie de novo para a próxima tarefa.
 - Quem escreve não testa a própria entrega: peça a conferência a outro colega (ou ao revisor) antes do merge.
 - Comando de teste do projeto: `{{testes}}`.
-- Espera longa (build, testes) em segundo plano ou com filtro; nunca `sleep` em laço.
+- Espera longa (build, testes) em segundo plano ou com filtro; nunca `sleep` em laço. Build ou lote longo tem limite de
+  tempo combinado com o desenvolvedor (ex.: compilação 45 min): o agente não percebe o tempo passar; estourou, o colega
+  para, confere se travou e devolve a você com o log, em vez de tentar de novo em silêncio.
 - Nada destrutivo ou irreversível (merge, force-push, apagar branch) sem confirmar com o desenvolvedor.
+- O desenvolvedor é o CEO e o tester do produto: a ele vão só decisões de escopo, meta ou orçamento, o que precisa de ação
+  humana (conta, permissão, jurídico) e o que entrou para ele testar. Bug ou impressão do teste dele vira tarefa com aceite.
 {{secoes_stack}}
 
 ## Cartão rascunho
@@ -34,6 +38,12 @@ Tecnologias encontradas no projeto: {{stacks}}.
    com os achados P0/P1/P2 e arquivo:linha.
 4. Você decide: P0 ou P1 → o PR volta ao autor (vida nova, com os achados); sem P0/P1 → aprovado: avise o desenvolvedor
    que o PR #<n> está pronto e que o merge é dele. Você nunca faz merge.
+   Se o projeto usar merge automático (INSTALACAO.md §19 do escritório), o GitHub faz o merge sozinho quando os checks
+   obrigatórios ficam verdes no commit atual (`revisor-ia`, `sugestoes` e os do CI do projeto). Aí você não avisa PR a PR:
+   PR aprovado e parado há mais de 1 h sem merge → veja qual check falta e destrave pelo caminho certo (o autor corrige;
+   falso positivo do `revisor-ia` respondido no PR → `revisor_ia.py --pr <n> --forcar`). Ninguém faz merge nem publica
+   status à mão. PR que muda as regras do processo (`.github/`, `CLAUDE.md`, hooks, settings, validadores) leva o rótulo
+   `merge-manual`: esse continua sendo do desenvolvedor; avise-o.
 5. Commit novo de correção no PR → revisão nova, com um revisor novo.
 6. **Fila: no máximo 3 PRs abertos por colega.** Com 3, ele não recebe tarefa nova: primeiro resolve os dele (revisão,
    conflito com a base, sugestões). Exceção só para urgência ou com o OK do desenvolvedor. PRs empilhados viram
@@ -42,6 +52,10 @@ Tecnologias encontradas no projeto: {{stacks}}.
    bloqueia tarefa nova: ele abre o PR (mesmo de uma etapa) ou larga o branch, e você avisa o desenvolvedor para apagá-lo.
    O briefing do Diretor (`modelos/briefing_diretor.py`) lista esses branches. Não limite o número de branches: os já
    mergeados que ficam no remoto travariam o time por lixo; ligue "Automatically delete head branches" no GitHub.
+8. **Binário não se funde.** Colega com `binarios_em_pr.py` (do escritório) em código 1 (outro PR aberto muda a mesma
+   imagem, modelo 3D ou asset) pede a você a ordem: decida pela prioridade; o outro espera o merge e refaz por cima.
+   Conflito em binário nunca se resolve escolhendo um lado (`--ours`/`--theirs`). Duas tarefas no mesmo asset não rodam
+   ao mesmo tempo.
 
 ## Modelos e esforço
 - Colega que escreve código e abre PR roda com esforço alto (`claude --effort high`; os colegas herdam o esforço do líder).

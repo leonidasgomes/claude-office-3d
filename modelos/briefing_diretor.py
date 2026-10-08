@@ -2,8 +2,9 @@
 
 Usa o config.json do escritório (github.repo, github.projeto_owner, github.projeto_numero, campo_time, campo_prioridade) e o
 GitHub CLI (`gh`). Seções: quadro por status x time x prioridade, cartões parados há mais de N dias (Em andamento ou P0) e
-PRs da última semana, branches sem PR parados há mais de 2 dias; se existir dados/xp/placar.json, um resumo do placar. É um ponto de partida: copie e adapte (por
-exemplo, acrescentando o documento de visão do seu projeto).
+PRs da última semana, branches sem PR parados há mais de 2 dias; se existir dados/xp/placar.json, um resumo do placar; e o
+custo por PR mergeado (foto diária do `custo_time.py` na tabela `custo_diario` de dados/escritorio.db) contra a linha de
+base. É um ponto de partida: copie e adapte (por exemplo, acrescentando o documento de visão do seu projeto).
 
 Uso: python modelos/briefing_diretor.py [--config config.json] [--dias-parado 14] [--saida arquivo.md]
 """
@@ -21,6 +22,7 @@ GH = shutil.which("gh") or "gh"
 FEITO = ("Feito", "Done")
 ANDAMENTO = ("Em andamento", "In Progress")
 PARADO_DIAS = 2   # branch sem PR e sem commit há mais que isso: trabalho largado no meio (o líder cobra o PR ou o descarte)
+CUSTO_ALERTA = 1.2   # US$ por PR acima de 120% da linha de base: o Diretor propõe um corte concreto
 
 
 def gh(*args):
@@ -131,6 +133,48 @@ def secao_placar():
             f"auditorias abertas {t.get('auditorias_abertas', 0)}."]
 
 
+def secao_custo(fotos=None):
+    """US$ por PR mergeado na janela de 7 dias (última foto do custo_time.py) contra a linha de base: a média das fotos de
+    8 a 35 dias antes dela. Um time de agentes gasta várias vezes mais tokens que uma sessão só; sem número na mesa
+    ninguém corta."""
+    titulo = "## Custo por PR mergeado (janela de 7 dias, custo_time.py)"
+    if fotos is None:
+        sys.path.insert(0, str(RAIZ))
+        import banco
+        if not banco._arquivo().exists():   # sem banco ainda: não cria um só para ler
+            fotos = []
+        else:
+            db = banco.conectar()
+            try:
+                fotos = db.execute("SELECT dia, janela_usd, prs FROM custo_diario ORDER BY dia").fetchall()
+            finally:
+                db.close()
+    fotos = [(dia, usd, prs) for dia, usd, prs in fotos if usd is not None]
+    if not fotos:
+        return [titulo, "Sem foto ainda: o `custo_time.py` grava uma por dia (rode-o uma vez por dia, com a janela padrão)."]
+    dia, usd, prs = fotos[-1]
+    if not prs:   # gastou sem mergear nada: o pior caso, não pode sumir do briefing
+        if not usd:
+            return [titulo, f"- {dia}: sem gasto e sem PR mergeado na janela."]
+        return [titulo, f"- {dia}: US$ {usd:.2f} **sem PR mergeado** em 7 dias: veja os cartões mais caros "
+                        "(`custo_time.py`) e o que trava o merge."]
+    atual = usd / prs
+    ultimo = datetime.strptime(dia, "%Y-%m-%d")
+    base = [u / p for d, u, p in fotos
+            if p and u > 0 and 8 <= (ultimo - datetime.strptime(d, "%Y-%m-%d")).days <= 35]
+    linhas = [titulo, f"- {dia}: US$ {atual:.2f} por PR."]
+    if len(base) < 3:
+        linhas.append(f"- Linha de base em formação ({len(base)} foto(s) de 8 a 35 dias atrás; precisa de 3).")
+    else:
+        media = sum(base) / len(base)
+        linhas.append(f"- Linha de base (média de {len(base)} fotos de 8 a 35 dias atrás): US$ {media:.2f} por PR "
+                      f"({100 * atual / media - 100:+.0f}%).")
+        if atual > CUSTO_ALERTA * media:
+            linhas.append(f"- **ACIMA de {round(100 * CUSTO_ALERTA)}% da linha de base**: veja os cartões mais caros "
+                          "(`custo_time.py`) e proponha o corte (modelo, contexto, sessão longa).")
+    return linhas
+
+
 def main():
     for fluxo in (sys.stdout, sys.stderr):
         try:
@@ -168,6 +212,11 @@ def main():
         except (RuntimeError, OSError) as e:
             saida.append(f"Seção indisponível: {curto(e, 160)}")
     saida += secao_placar()
+    saida.append("")
+    try:
+        saida += secao_custo()
+    except Exception as e:   # banco ilegível ou foto com dado estranho não derruba o briefing
+        saida += ["## Custo por PR mergeado", f"Indisponível: {curto(e, 160)}"]
     destino = Path(args.saida)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text("\n".join(saida) + "\n", encoding="utf-8")

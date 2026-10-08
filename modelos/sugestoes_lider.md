@@ -30,6 +30,8 @@ inteiro do líder a cada disparo, mesmo para responder "ok"). Sem Monitor, use o
 ## Antes de dizer "pronto para o merge"
 `python <pasta do escritório>/sugestoes_bot.py --pronto <n>`: só com `OK` (nenhuma sugestão sem decisão ou encaminhada sem
 correção, e os bots já revisaram o commit atual; cota esgotada vira aviso). O painel PRs do escritório segue a mesma regra.
+Com merge automático (`github.publicar_status` no config do escritório), o escritório publica este mesmo resultado como o
+status `sugestoes` do commit (a cada 3 min, só quando muda), e o GitHub só faz o merge com ele verde.
 
 ## Comandos
 `--pendentes [--pr <n>]` · `--listar [--pr <n>] [--todas]` · `--tratar <id> --acao encaminhada|ignorada|discutir|resolvida|reabrir [--nota "..."]` · `--pronto <n>`.

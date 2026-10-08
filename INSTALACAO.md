@@ -235,6 +235,8 @@ recarregar a página (a porta só muda reiniciando o servidor).
     "projeto_numero": 2,              // número do project (na URL .../projects/2)
     "check_revisao": "",              // status check que significa "aprovado pela revisão";
                                       // vazio = usa a aprovação de review (APPROVED) do GitHub
+    "publicar_status": false,         // true: publica os status revisor-ia e sugestoes no commit do PR,
+                                      // os checks do merge automático (seção 19)
     "bots_revisao": ["chatgpt-codex-connector[bot]"],   // logins dos bots de revisão (seção 11); vazio = sugestões desligadas
     "campo_time": "time",             // campo do Projects que diz o time/agente do cartão
     "campo_prioridade": "prioridade", // campo de prioridade (P0/P1/P2 ou high/medium/low ganham cor)
@@ -1249,7 +1251,8 @@ Teste: `python -W error ferramentas/testar_praticas.py`.
 
 ## 18. Revisão de PR (líder + revisor)
 
-O fluxo de PR do time enxuto: ninguém revisa o próprio código e o merge é sempre do desenvolvedor (você).
+O fluxo de PR do time enxuto: ninguém revisa o próprio código e o merge é sempre do desenvolvedor (você),
+ou do GitHub com os checks verdes se o projeto usar o merge automático (seção 19).
 
 1. O colega termina a tarefa e abre o PR (`gh pr create`), citando a issue ou o cartão e os testes que rodou.
 2. O líder cria o **revisor** numa vida nova para cada PR e manda só o número ("revise o PR #42").
@@ -1286,3 +1289,42 @@ escritório para ver a mesa do Revisor.
 
 **Validação:** a checagem `revisao-pr` de `python boas_praticas.py validar` avisa quando ninguém revisa os PRs (nem agente
 revisor, nem revisor-ia, nem bot de revisão, nem status check); `corrigir --aplicar --so revisao-pr` cria o `revisor.md`.
+
+## 19. Merge automático (opcional)
+
+Por padrão o merge é sempre de uma pessoa. Com o merge automático, o **GitHub** faz o merge do PR sozinho quando os checks
+obrigatórios ficam verdes no commit atual; ninguém (nem agente, nem pessoa) faz merge ou publica status à mão.
+
+O escritório publica dois status no commit do PR, só com `"publicar_status": true` no bloco `github`:
+
+| Status | Quem publica | Verde quando |
+|---|---|---|
+| `revisor-ia` | `revisor_ia.py` (seção 11), a cada revisão | a revisão do commit atual não tem P0/P1 (`failure` com P0/P1) |
+| `sugestoes` | a thread `pronto` do `servidor.py` (a cada 3 min, só quando muda) | o `--pronto` do PR está OK: sugestões dos bots decididas e bots revisaram o commit atual (`pending` sem isso) |
+
+Passo a passo:
+
+1. `config.json`: `"publicar_status": true` no bloco `github` (o revisor-ia ligado, seção 11, para o `revisor-ia`; os
+   `bots_revisao` para o `sugestoes`). Se quiser o painel PRs lendo o mesmo veredito, `"check_revisao": "revisor-ia"`.
+   Reinicie o escritório. Ao ligar, o `revisor_ia.py --pendentes` publica também o status dos PRs já revisados, contando
+   os P0/P1 da revisão que já está no PR (sem pagar outra).
+2. GitHub do projeto, **Settings → General**: ligue "Allow auto-merge" e "Automatically delete head branches".
+3. **Settings → Rules → Rulesets**, no branch padrão: "Require a pull request before merging" e "Require status checks to
+   pass" com `revisor-ia`, `sugestoes` e os checks do seu CI. Sem o ruleset, o auto-merge faz o merge sem esperar nada.
+4. Copie `modelos/auto-merge.exemplo.yml` para `.github/workflows/auto-merge.yml` do projeto e ajuste `REGRAS` (os
+   caminhos que mudam as regras do processo). Ele liga o auto-merge em todo PR que não é rascunho.
+5. PR que muda as regras do processo leva o rótulo **`merge-manual`** e fica para você; o workflow pula esse PR e o que
+   mexe em `REGRAS`, mesmo sem o rótulo (renomear ou apagar um desses arquivos também conta). O padrão cobre `.github/`,
+   `.claude/` (hooks e settings), `.githooks/`, `hooks/`, `CLAUDE.md`, `CLAUDE.local.md` e `AGENTS.md` em qualquer
+   pasta; acrescente os seus validadores. PR só com binários ou arquivos gerados não tem o que revisar e o `revisor-ia`
+   sai `success`: se isso pesa no seu projeto, ponha esses caminhos em `REGRAS`.
+
+Falso positivo do revisor-ia: o autor responde no PR com o motivo e alguém roda
+`python revisor_ia.py --pr <n> --forcar`; a re-revisão lê a resposta e, sem P0/P1, o status fica verde.
+
+Os modelos do time (`modelos/time/lider.md`, `dev.md`, `modelos/diretor.md`) já descrevem este caminho como opcional.
+
+**Binário não se funde.** Com o time fazendo merge sozinho, dois PRs que mudam a mesma imagem, modelo 3D ou asset viram
+trabalho perdido no conflito. `python binarios_em_pr.py --wt <worktree> [arquivos]` (só REST, sem tokens) avisa (código 1)
+quando outro PR aberto muda um binário que o seu worktree muda; as extensões vêm do LFS no `.gitattributes` (`--ext` para
+outras). O `git lfs lock` não separa colegas que usam a mesma conta do GitHub.

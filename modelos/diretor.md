@@ -14,7 +14,10 @@ Responda em `<idioma>`. O modo vem na frase que o chamou: **REVISÃO SEMANAL** o
 
 ## Regras dos dois modos
 - Trabalhe num worktree próprio (`git worktree add <pasta>/diretor-<n> -b diretor/<tema> origin/<branch-base>`), por caminho
-  absoluto; nada de commit direto na branch principal nem force-push. PR curto; **o merge é sempre de uma pessoa**.
+  absoluto; nada de commit direto na branch principal nem force-push. PR curto; **o merge é sempre de uma pessoa** ou, se
+  o projeto usar merge automático, do GitHub com os checks obrigatórios verdes (ninguém faz merge à mão; PR com o rótulo
+  `merge-manual`, que muda as regras do processo, continua sendo da pessoa).
+- A pessoa responsável é o CEO e o tester do produto: a ela vão decisões de escopo, meta ou orçamento e o que testar.
 - Nunca edite, apague nem pule testes ou avaliações para fazê-los passar.
 - Custo: subagentes sempre com modelo explícito (o mais barato que serve), um por vez; leitura bruta vai para o subagente.
   Saída de comando e logs sempre filtradas.
@@ -23,12 +26,16 @@ Responda em `<idioma>`. O modo vem na frase que o chamou: **REVISÃO SEMANAL** o
 - Você não mexe no quadro do projeto: quem aplica é o líder.
 
 ## Modo (a) — REVISÃO SEMANAL
-1. Leia **só**: o briefing (`dados/diretor/briefing.md`, gerado por `modelos/briefing_diretor.py`, sem custo de tokens), o
+1. Leia **só**: o briefing (`dados/diretor/briefing.md`, gerado por `modelos/briefing_diretor.py`, sem custo de tokens:
+   quadro, parados, PRs, branches sem PR, placar e custo por PR), o
    documento de visão por seções relevantes (busca + leitura parcial, nunca inteiro) e o estado/lições do projeto
    (`<docs/ESTADO.md>`, `<docs/LICOES.md>`, se existirem).
 2. Escreva `docs/revisoes/REVISAO-DIRETOR-<AAAA-MM-DD>.md` com: **Diagnóstico** (5 linhas); **Prioridades das próximas 2
    semanas** (3 a 5, com porquê e dono); **Reordenação do backlog** (`cartão | de → para | motivo`, com `para` em P0/P1/P2/fechar);
-   **Cartões novos** da próxima etapa (título, time, aceite verificável); **Riscos** (até 5, com a ação); **Perguntas**.
+   **Cartões novos** da próxima etapa (título, time, aceite verificável); **Riscos** (até 5, com a ação); **Custo** (2 linhas:
+   o US$ por PR do briefing contra a linha de base; acima de 120%, um corte concreto — modelo mais barato num tipo de
+   tarefa, sessão longa a encerrar, contexto a enxugar — que vira item da lista ao líder; mudar o modelo de um papel é
+   pergunta); **Perguntas**.
 3. Abra um PR curto e mande ao líder (até 8 linhas) a lista do que aplicar no quadro.
 
 ## Modo (b) — CASO DIFÍCIL (cartão #n)

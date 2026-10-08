@@ -20,6 +20,9 @@ Uso: python revisor_ia.py --pr 12             revisa o commit atual do PR (se ai
      python revisor_ia.py --pr 12 --forcar    revisa de novo o mesmo commit
      python revisor_ia.py --pr 12 --seco      só mostra os achados, sem comentar no PR
      python revisor_ia.py --local <worktree> [--base origin/main]   revisa o diff da worktree ANTES do PR (não comenta)
+Com github.publicar_status (padrão: desligado), cada revisão publica também o status `revisor-ia` no commit (falha com
+P0/P1, sucesso sem): é o check obrigatório do merge automático (INSTALACAO.md §19). Falso positivo de P0/P1: responda no
+PR e rode `--pr <n> --forcar` (a re-revisão lê a resposta e não repete o achado).
 Estado (commits revisados, custo e tokens de cada revisão) em dados/revisor/estado.json (fora do git); o custo_time.py
 soma esse custo ao do time.
 
@@ -255,6 +258,12 @@ def conversas_anteriores(cfg, repo, n, limite=9000):
         titulo = corpo.split("\n", 1)[0].strip("* ")
         resp = " / ".join(r.replace("\n", " ")[:300] for r in respostas.get(c["id"], [])) or "(sem resposta)"
         linhas.append(f"- {c.get('path')}:{c.get('line') or c.get('original_line')} — {titulo[:120]} → resposta: {resp}")
+    # Respostas na conversa geral do PR: achado que foi no corpo da revisão é respondido aqui, não num fio em linha
+    conversa = [c for c in (gh(cfg, f"repos/{repo}/issues/{n}/comments?per_page=100") or [])
+                if MARCA not in (c.get("body") or "")][-10:]
+    if conversa:
+        linhas.append("Respostas na conversa do PR (achados do corpo da revisão):")
+        linhas += ["- " + (c.get("body") or "").replace("\n", " ")[:400] for c in conversa]
     texto = "\n".join(linhas)
     return texto[-limite:]
 
@@ -290,6 +299,37 @@ def revisar_com_claude(modelo, contexto, cabecalho, diff, anteriores="", mudou=N
 def corpo_comentario(a, modelo):
     return (f"**{a['prioridade']} — {a['titulo'][:90]}**\n\n{a['texto'][:800]}\n\n"
             f"<sub>{MARCA} revisão automática ({modelo}); trate pelo `sugestoes_bot.py`.</sub>")
+
+
+def publicar_status(cfg, repo, sha, graves):
+    """Status `revisor-ia` no commit: falha com P0/P1, sucesso sem. Com o merge automático, é um dos checks obrigatórios
+    do ruleset do branch base. Falha ao publicar não derruba a revisão: o `pendentes()` tenta de novo na rodada seguinte,
+    sem revisar (e pagar) outra vez."""
+    desc = (f"{graves} achado(s) P0/P1: corrija ou responda e peça re-revisão" if graves else "Sem P0/P1")
+    try:
+        r = subprocess.run([cfg["gh"], "api", "-X", "POST", f"repos/{repo}/statuses/{sha}", "-f",
+                            f"state={'failure' if graves else 'success'}", "-f", "context=revisor-ia", "-f",
+                            f"description={desc[:140]}"], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
+
+
+def graves_da_revisao(cfg, repo, n, sha):
+    """P0/P1 da última revisão [revisor-ia] do commit `sha` já publicada no PR (em linha e no corpo); None sem revisão."""
+    revs, pagina = [], 1
+    while True:   # paginado: PR com muitas rodadas passa de 100 reviews
+        lote = gh(cfg, f"repos/{repo}/pulls/{n}/reviews?per_page=100&page={pagina}") or []
+        revs += [r for r in lote if r.get("commit_id") == sha and MARCA in (r.get("body") or "")]
+        if len(lote) < 100 or pagina >= 30:
+            break
+        pagina += 1
+    if not revs:
+        return None   # a revisão não está no PR: quem chama não publica success às cegas
+    ultima = revs[-1]
+    graves = sum(1 for l in (ultima.get("body") or "").splitlines() if l.startswith(("- **P0", "- **P1")))
+    coms = gh(cfg, f"repos/{repo}/pulls/{n}/reviews/{ultima['id']}/comments?per_page=100") or []
+    return graves + sum(1 for c in coms if (c.get("body") or "").startswith(("**P0", "**P1")))
 
 
 def revisar(n, forcar=False, seco=False, log=print):
@@ -335,7 +375,8 @@ def revisar(n, forcar=False, seco=False, log=print):
             aceite = aceite_dos_cartoes(cfg, repo, pr.get("body") or "")
             if aceite:
                 cab += "\n\n" + aceite
-            anteriores = conversas_anteriores(cfg, repo, n) if antes else ""
+            # --forcar no mesmo commit (falso positivo respondido) também lê as conversas: senão o achado volta igual
+            anteriores = conversas_anteriores(cfg, repo, n) if antes or cabeca in est["revisados"].get(str(n), []) else ""
             try:
                 achados, env = revisar_com_claude(modelo, contexto_projeto(op), cab, diff, anteriores, mudou)
             except ValueError as e:   # JSON mal formado do modelo: uma nova tentativa antes de desistir
@@ -379,7 +420,15 @@ def revisar(n, forcar=False, seco=False, log=print):
                            input=json.dumps(corpo).encode("utf-8"), capture_output=True)
         if r.returncode != 0:
             raise RuntimeError("falha ao comentar no PR: " + r.stderr.decode("utf-8", errors="replace")[:300])
-        est["revisados"].setdefault(str(n), []).append(cabeca)
+        if cfg.get("publicar_status"):
+            graves = sum(1 for a in em_linha if a["body"].startswith(("**P0", "**P1"))) + sum(
+                1 for a in no_corpo if a["prioridade"] in ("P0", "P1"))
+            publicado = publicar_status(cfg, repo, cabeca, graves)
+            if not publicado:
+                log(f"#{n}: não consegui publicar o status revisor-ia em {cabeca[:8]} (tento de novo na próxima rodada)")
+            est.setdefault("status", {})[str(n)] = {"sha": cabeca, "graves": graves, "publicado": publicado}
+        # sem duplicata: o --forcar no mesmo commit não repete a cabeça (a lista guarda os 20 últimos commits distintos)
+        est["revisados"][str(n)] = [s for s in est["revisados"].get(str(n), []) if s != cabeca] + [cabeca]
         est["revisados"][str(n)] = est["revisados"][str(n)][-20:]
         uso = env.get("usage") or {}
         est["historico"] = (est.get("historico", []) + [{
@@ -394,17 +443,39 @@ def revisar(n, forcar=False, seco=False, log=print):
 
 
 def pendentes(log=print):
-    """Revisa todo PR aberto (não rascunho) cujo commit atual ainda não foi revisado. Devolve uma linha por PR tratado."""
+    """Revisa todo PR aberto (não rascunho) cujo commit atual ainda não foi revisado. Com github.publicar_status, também
+    republica o status `revisor-ia` que não saiu e, no commit já revisado sem status (revisado com a chave desligada ou
+    antes da 1.19.0), conta os P0/P1 da revisão que já está no PR. Devolve uma linha por PR tratado."""
     cfg = sugestoes_bot.configuracao()
     if not cfg["repo"]:
         return ["revisor: github.repo não configurado"]
     est = ler_estado()
     saida = []
-    for p in gh(cfg, f"repos/{cfg['repo']}/pulls?state=open&per_page=50") or []:
-        if p.get("draft") or p["head"]["sha"] in est["revisados"].get(str(p["number"]), []):
-            continue
+    for p in gh(cfg, f"repos/{cfg['repo']}/pulls?state=open&per_page=100") or []:
         try:
-            saida.append(revisar(p["number"], log=log))
+            cabeca = p["head"]["sha"]
+            ja = cabeca in est["revisados"].get(str(p["number"]), [])
+            refazer = False
+            if cfg.get("publicar_status"):
+                st = est.get("status", {}).get(str(p["number"])) or {}
+                if st.get("sha") != cabeca and ja:
+                    # migração: conta os P0/P1 da revisão que já está no PR, sem pagar outra; se ela não aparece no PR,
+                    # revisa de novo em vez de publicar success às cegas
+                    graves = graves_da_revisao(cfg, cfg["repo"], p["number"], cabeca)
+                    if graves is None:
+                        ja, refazer = False, True
+                    else:
+                        st = est.setdefault("status", {})[str(p["number"])] = {
+                            "sha": cabeca, "graves": graves, "publicado": False}
+                if st.get("sha") == cabeca and not st.get("publicado"):   # revisado, mas o status não saiu
+                    if publicar_status(cfg, cfg["repo"], st["sha"], st.get("graves", 0)):
+                        st["publicado"] = True
+                        gravar_estado(est)
+                        saida.append(f"#{p['number']}: status revisor-ia publicado em {st['sha'][:8]}")
+                    continue
+            if p.get("draft") or ja:
+                continue
+            saida.append(revisar(p["number"], forcar=refazer, log=log))
         except Exception as e:   # um PR com problema não impede os outros
             saida.append(f"#{p['number']}: ERRO {type(e).__name__}: {str(e)[:200]}")
     return saida

@@ -1,0 +1,39 @@
+# Exemplo de workflow do merge automático (INSTALACAO.md §19). Copie para .github/workflows/auto-merge.yml do PROJETO
+# (não do escritório). Ele só liga o "auto-merge" do GitHub no PR; quem decide o merge é o ruleset do branch base com os
+# checks obrigatórios (`revisor-ia` e `sugestoes`, publicados pelo escritório com github.publicar_status, mais os do CI).
+#
+# pull_request_target: roda com a versão do workflow que está na BASE, então um PR não consegue desligar a regra mudando
+# este arquivo. Ele não faz checkout nem roda código do PR (nunca acrescente isso aqui: o token tem permissão de escrita).
+#
+# PR com o rótulo `merge-manual`, ou que muda arquivos de regra do processo (REGRAS abaixo), fica para uma pessoa.
+name: auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Liga o auto-merge (ou o desliga, se o PR é de merge manual)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          MANUAL: ${{ contains(github.event.pull_request.labels.*.name, 'merge-manual') }}
+          # Ajuste ao seu projeto: caminhos que mudam as regras do processo
+          REGRAS: '(^|/)(CLAUDE(\.local)?\.md|AGENTS\.md)$|^(\.github/|\.claude/|\.githooks/|hooks/)'
+        run: |
+          arquivos=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)')
+          if [ "$MANUAL" = "true" ] || echo "$arquivos" | grep -Eq "$REGRAS"; then
+            echo "PR #$PR é de merge manual (rótulo merge-manual ou arquivo de regra)."
+            gh pr merge "$PR" --repo "$REPO" --disable-auto || true
+            exit 0
+          fi
+          gh pr merge "$PR" --repo "$REPO" --auto --squash

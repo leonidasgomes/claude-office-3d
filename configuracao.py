@@ -92,6 +92,8 @@ PADRAO = {
         "projeto_owner": "",        # dono do GitHub Projects (usuário ou organização) — Kanban
         "projeto_numero": 0,        # número do project (aparece na URL .../projects/<n>)
         "check_revisao": "",        # status check que significa "aprovado pela revisão"; vazio = aprovação de review
+        "publicar_status": False,   # True: publica os status `revisor-ia` e `sugestoes` no commit do PR (checks do merge
+                                    # automático; INSTALACAO.md §19); False: só comentários e painel
         "bots_revisao": [],         # logins dos bots de revisão (ex.: "chatgpt-codex-connector[bot]"); vazio = sugestões desligadas
         "campo_time": "time",       # campo do Projects que diz qual time/agente cuida do cartão
         "campo_prioridade": "prioridade",
@@ -442,6 +444,7 @@ def normalizar(cfg):
     bots = base["github"]["bots_revisao"]
     base["github"]["bots_revisao"] = [str(b).strip() for b in bots if str(b).strip()] if isinstance(bots, list) else []
     base["github"]["repo"] = str(base["github"]["repo"] or "").strip()
+    base["github"]["publicar_status"] = base["github"]["publicar_status"] is True
     if not isinstance(base["github"]["colunas"], list):
         base["github"]["colunas"] = []
     base["xp"] = normalizar_xp(cfg.get("xp"), base["agentes"])

@@ -46,11 +46,12 @@ GLOSSARIO = RAIZ / "glossario_triagem.md"   # contexto do projeto para a triagem
 
 def config_base():
     """Dict da configuração: repo, bots (logins do bot de revisão; lista vazia = desligado), modelo da triagem ("" desliga),
-    intervalo_min, janela_dias, times (rótulo do PR -> agente), agentes, gh e pasta. Tudo do config.json do pacote."""
+    intervalo_min, janela_dias, times (rótulo do PR -> agente), agentes, publicar_status, gh e pasta. Tudo do config.json do pacote."""
     c = _pacote.carregar()
     g, s = c["github"], c["sugestoes"]
     return {"repo": g["repo"], "bots": list(g["bots_revisao"]), "modelo": s["triagem_modelo"],
             "revisor": bool((c.get("revisor") or {}).get("ativo")),
+            "publicar_status": g["publicar_status"],   # status `revisor-ia`/`sugestoes` no commit (merge automático)
             "intervalo_min": s["intervalo_min"], "janela_dias": s["janela_dias"], "times": dict(g["times"]),
             "agentes": [a["nome"] for a in c["agentes"]], "gh": _pacote.localizar_gh() or "gh", "pasta": PASTA}
 # ---- fim da configuração -------------------------------------------------------------------------------------------------
