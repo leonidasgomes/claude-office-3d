@@ -1328,3 +1328,43 @@ Os modelos do time (`modelos/time/lider.md`, `dev.md`, `modelos/diretor.md`) já
 trabalho perdido no conflito. `python binarios_em_pr.py --wt <worktree> [arquivos]` (só REST, sem tokens) avisa (código 1)
 quando outro PR aberto muda um binário que o seu worktree muda; as extensões vêm do LFS no `.gitattributes` (`--ext` para
 outras). O `git lfs lock` não separa colegas que usam a mesma conta do GitHub.
+
+## 20. Ferramentas e modelos: Claude, local, OpenAI, Gemini e OpenCode
+
+Abra o escritório no PC e escolha **⚙️ → ▶ Ferramentas e modelos**. Escolha a ferramenta, a mesa e o modelo;
+escreva uma tarefa e clique em **▶ Executar tarefa**. O resultado aparece no painel, e os eventos animam a mesa.
+O modelo pode ficar vazio para usar o padrão da CLI. No Ollama, informe o modelo instalado; no OpenCode,
+use `provedor/modelo` para selecionar um dos provedores configurados nele.
+
+Antes de usar, instale a CLI conforme a documentação oficial e autentique na mesma conta do sistema que roda
+o servidor. Reinicie o servidor após alterar o PATH. O escritório não instala CLIs, baixa modelos nem recebe chaves.
+
+| Opção | Preparação |
+|---|---|
+| Claude Code | `claude`; conclua o login |
+| Ollama local | instale Ollama e Claude Code, baixe o modelo e mantenha Ollama servido em `http://127.0.0.1:11434` |
+| OpenAI/Codex | `codex login`; modelo disponível na conta ou padrão |
+| Gemini CLI | `gemini`; conclua o login |
+| OpenCode | `opencode auth login`; configure seus provedores e modelos |
+
+Referências: [Ollama/Claude](https://docs.ollama.com/integrations/claude-code),
+[Codex](https://developers.openai.com/codex/cli/reference), [Gemini CLI](https://geminicli.com/docs/cli/cli-reference/),
+[OpenCode](https://opencode.ai/docs/cli/).
+
+A tarefa roda na **primeira pasta de `projetos` no `config.json`**, usando os nomes de `agentes` como mesas.
+Cada chamada é independente e recebe a instrução de ler as regras do projeto. As permissões da CLI continuam
+valendo; em execução sem terminal, uma ação que exige interação pode falhar ou esperar até o limite.
+Prepare permissões restritas adequadas à tarefa na própria ferramenta. Não há aprovação automática no lançador.
+
+Há uma tarefa por mesa, uma Ollama por vez e no máximo três chamadas simultâneas neste painel.
+**Parar tarefa** encerra a execução; não desfaz arquivos já alterados. Após 30 minutos ela é encerrada automaticamente.
+Reiniciar o servidor perde a lista em memória, mas mantém os eventos no banco. Encerre tarefas antes de reiniciar.
+O time automático do Claude Code e os bots de revisão continuam independentes; esse painel não converte
+`SendMessage`/tarefas compartilhadas em colaboração entre CLIs diferentes.
+
+Para usar `qwen3.5:4b`, execute `ollama pull qwen3.5:4b` antes e informe esse nome no painel.
+O escritório registra o modelo local em um arquivo temporário de configuração do Claude Code por tarefa
+e o apaga ao terminar. Modelos pequenos podem responder devagar ou errar tarefas de código complexas.
+
+Temporários ficam em `dados/tmp/provedores`. Configure o armazenamento próprio das CLIs em um disco adequado
+ao seu projeto. Em máquinas com pouca VRAM, comece com um modelo pequeno e uma tarefa local, sem builds pesados.

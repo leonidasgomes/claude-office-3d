@@ -59,7 +59,8 @@ PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {
                   "/api/push/inscrever": {"pc", "ver", "conferir"}, "/api/push/sair": {"pc", "ver", "conferir"},
                   "/api/push/prefs": {"pc", "ver", "conferir"}, "/api/push/teste": {"pc", "ver", "conferir"}}
 # ações que só fazem sentido pelo navegador (painel Saúde): exigem os cabeçalhos Sec-Fetch-* e gravam o User-Agent
-ROTAS_NAVEGADOR = ("/api/saude/",)
+PERMISSAO_ROTA.update({"/api/provedores/iniciar": {"pc"}, "/api/provedores/cancelar": {"pc"}})
+ROTAS_NAVEGADOR = ("/api/saude/", "/api/provedores/")
 TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
 _RX_CONTROLE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 

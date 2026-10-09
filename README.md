@@ -23,6 +23,10 @@ instalar o hook do Claude Code. Depois é só abrir com `abrir_escritorio.bat` (
 
 ## Recursos
 
+- **▶ Ferramentas e modelos** no menu ⚙️: execute tarefas com Claude Code, Ollama local pelo Claude Code,
+  OpenAI/Codex, Gemini CLI ou OpenCode, escolhendo modelo e mesa. Respostas e uso de ferramentas viram eventos
+  no escritório. Precisa da CLI instalada e autenticada. Veja a seção 20 do [INSTALACAO.md](INSTALACAO.md).
+
 - Painel lateral com os agentes, o estado de cada um e os últimos eventos; clique num agente para ver a **ficha**
   (o que está fazendo e o que está falando).
 - **Escritório 3D que se lê de relance**: ícone e anel de estado visíveis de longe, ✔/✖ no fim de cada comando (⚠️ com 3
