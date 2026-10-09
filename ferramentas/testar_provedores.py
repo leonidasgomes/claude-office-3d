@@ -41,7 +41,7 @@ class TestProvedores(unittest.TestCase):
             d = self.dados(); d['modelo'] = valor
             with self.assertRaises(ValueError):
                 provedores.preparar(d)
-        for key, value in [('provedor', 'shell'), ('mesa', 'intruso'), ('prompt', ''), ('prompt', []), ('prompt', 'x' * 12001)]:
+        for key, value in [('provedor', 'shell'), ('provedor', {}), ('mesa', 'intruso'), ('mesa', []), ('prompt', ''), ('prompt', []), ('prompt', 'x' * 12001)]:
             d = self.dados(); d[key] = value
             with self.assertRaises(ValueError):
                 provedores.preparar(d)

@@ -53,7 +53,7 @@ def preparar(dados):
     mesa = dados.get('mesa')
     modelo = dados.get('modelo', '')
     prompt = dados.get('prompt')
-    if provedor not in CATALOGO or mesa not in mesas:
+    if not isinstance(provedor, str) or provedor not in CATALOGO or not isinstance(mesa, str) or mesa not in mesas:
         raise ValueError('Escolha uma ferramenta e uma mesa válidas.')
     if not isinstance(modelo, str) or (modelo and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./:@+-]{0,159}', modelo)):
         raise ValueError('Nome de modelo inválido.')
