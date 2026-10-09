@@ -3,7 +3,7 @@
 | Item | Valor |
 |---|---|
 | Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.20.0 (arquivo `VERSION`) |
+| Versão descrita | 1.19.1 (arquivo `VERSION`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -701,10 +701,6 @@ além das marcas em `meta`.
 
 ### 5.1 Rotas HTTP (`servidor.py` + `rede.py`)
 
-Provedores (somente PC): GET `/api/provedores`, GET `/api/provedores/tarefas`,
-POST `/api/provedores/iniciar` e POST `/api/provedores/cancelar`; implementação em `provedores.py`.
-As ações usam a guarda de navegador local, JSON e CSRF existente.
-
 | Método | Rota | Parâmetros / corpo | Resposta | Acesso |
 |---|---|---|---|---|
 | GET | `/`, `/index.html` | — | HTML com o `<title>` do config e o importmap (CDN ou `/vendor/three/`) | PC; celular com sessão |
@@ -833,9 +829,6 @@ Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.js
 na CA; desligado, essa faixa é recusada (`rede.ip_permitido`).
 
 ### 5.5 Variáveis de ambiente
-
-`OFFICE_TASK_PROJECT`: pasta da primeira entrada em `projetos`, resolvida pelo servidor e passada só ao processo
-da tarefa; não aceita caminho enviado pelo navegador (`provedores.preparar`/`executar`).
 
 | Variável | Quem lê | Para quê |
 |---|---|---|
@@ -1283,47 +1276,3 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.18.3 | Branch sem PR parado há mais de 2 dias: regra 7 no modelo do líder, linha no modelo do dev e seção nova no briefing do Diretor (`secao_branches_parados`: branch que nunca teve PR, à frente do branch padrão, sem commit há > `PARADO_DIAS`) | `modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py` |
 | 1.18.1 | saúde: cartão rascunho do Kanban em coluna de trabalho (painel, `--pendentes` do líder, comando `gh` de conversão; `item_id` nos cartões do `/kanban`) e comandos repetidos pelo mesmo agente (dica no painel); seção "Cartão rascunho" no modelo do líder; regra `scripts-do-projeto.md` e checagem `scripts-regra` | `saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `boas_praticas.py`, `instalar.py`, `modelos/time/lider.md`, `modelos/praticas/scripts-do-projeto.md`, `ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py` |
 | 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |
-
-
-## Provedores de tarefas no escritório
-
-`provedores.py` e `provedores.js` estendem o escritorio; o registro de arquitetura está em
-`docs/PROVEDORES.yaml`. Dono: escritorio; dependências: servidor, guarda de acesso e banco existentes.
-A execução usa a primeira pasta de `projetos` do `config.json` e os nomes de `agentes` como mesas;
-sem pasta válida, a tarefa é recusada (`configuracao.carregar`, `provedores.preparar`).
-
-O menu ⚙️ → ▶ Ferramentas e modelos oferece Claude Code, Ollama local via Claude Code, OpenAI/Codex,
-Gemini CLI e OpenCode. Ferramentas ausentes no PATH ficam desabilitadas. Modelo vazio usa o padrão da CLI;
-Ollama exige o nome instalado e OpenCode aceita `provedor/modelo`. Autenticação e permissões continuam na CLI;
-o escritório não recebe chaves nem passa opções de aprovação automática. O login deve estar pronto antes de executar.
-O Ollama precisa estar instalado e servido em `http://127.0.0.1:11434`; modelos precisam ser baixados antes.
-Para cada tarefa Ollama, `provedores.executar` registra o nome informado em um arquivo temporário
-`modelPicker` do Claude Code, passa-o por `--settings` e o remove ao terminar. Isso permite nomes
-locais como `qwen3.5:4b` nas versões do Claude Code que exigem um modelo reconhecido.
-
-| Método | Rota | Uso |
-|---|---|---|
-| GET | `/api/provedores` | catálogo e mesas; somente PC |
-| GET | `/api/provedores/tarefas` | estados e últimos 12000 caracteres por tarefa; somente PC |
-| POST | `/api/provedores/iniciar` | provedor, mesa, modelo e prompt; somente navegador do PC, com as guardas existentes |
-| POST | `/api/provedores/cancelar` | id da tarefa; encerra o processo e, no Windows, seus filhos |
-
-Cada execução é uma tarefa independente, sem retomar conversa. O prompt solicita leitura das regras do projeto,
-trabalho no branch próprio e nenhuma delegação ou merge. O lançamento usa `subprocess` sem shell; wrappers npm
-são resolvidos para `node` e a entrada instalada. O JSON das CLIs é convertido para `trabalho`, `fala` e `ocioso`
-em `banco.gravar_evento`, atribuído à mesa escolhida. Saídas não JSON são descartadas; falhas mostram uma mensagem
-genérica (diagnóstico detalhado deve ser feito na CLI). Os hooks do Claude continuam ativos e podem gerar eventos adicionais.
-
-Limites: uma tarefa por mesa, uma tarefa Ollama por vez, três tarefas simultâneas no painel e cancelamento após
-30 minutos; histórico de até 50 tarefas em memória (reiniciar perde esse histórico, mas preserva eventos no SQLite).
-`Parar tarefa` não desfaz arquivos já modificados. Tarefas não substituem a colaboração `SendMessage`/`TaskCreate`
-dos times nativos de Claude Code nem alteram os modelos dos bots de revisão/triagem/auditoria.
-Os limites deste painel não controlam processos Ollama iniciados por fora dele.
-Arquivos temporários das chamadas ficam em `dados/tmp/provedores` dentro da instala??o.
-O armazenamento e login próprios das CLIs devem ser configurados em disco permitido pelo projeto.
-
-Validação: `python -W error ferramentas/testar_provedores.py` cobre validação de entrada,
-isolamento de ambiente, comandos, envelopes dos quatro formatos, permissões das rotas, concorrência,
-cancelamento, execução fixture e preservação literal de prompts com aspas/metacaracteres.
-Os testes não fazem chamadas pagas. A compatibilidade real depende da versão instalada, autenticação,
-modelo, suporte a ferramentas e permissões de cada CLI.

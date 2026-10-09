@@ -49,5 +49,3 @@ jobs:
         run: python -W error ferramentas/testar_praticas.py
       - name: Build do pacote
         run: python ferramentas/build.py
-      - name: Provedores (comandos, ambiente, eventos e guardas; sem APIs pagas)
-        run: python -W error ferramentas/testar_provedores.py

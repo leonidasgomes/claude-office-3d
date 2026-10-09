@@ -57,7 +57,6 @@ import saude  # noqa: E402  (duplicados, círculos, risco do PR, PR parado: saud
 import saude_triagem  # noqa: E402  (triagem barata dos itens novos da saúde: saude_triagem.py)
 import sugestoes_bot  # noqa: E402
 import boas_praticas  # noqa: E402  (boas práticas dos projetos: painel 🩺 Saúde)
-import provedores
 import grafo_painel  # noqa: E402  (painel 🗺️ Arquitetura: base só leitura + grafo/grafo.py)
 
 HOST = "127.0.0.1"
@@ -1080,10 +1079,6 @@ SUF_BLOQUEADOS = (".py", ".bat", ".sh", ".json", ".md", ".txt")   # nunca servid
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
         dados.pop("_detalhe", None)   # só o servidor preenche (vai para o histórico de ações)
-        if rota == "/api/provedores/iniciar":
-            return provedores.iniciar(dados)
-        if rota == "/api/provedores/cancelar":
-            return provedores.cancelar(dados)
         if rota in ACOES_SAUDE:
             return ACOES_SAUDE[rota](dados, ident)
         if rota.startswith("/api/push/"):
@@ -1093,13 +1088,6 @@ class Handler(rede.HandlerSeguro):
         return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
 
     def api_get(self, rota, qs, ident):
-        if rota.startswith('/api/provedores'):
-            if ident.get('permissao') != 'pc':
-                return 403, {'ok': False, 'erro': 'Dispon?vel somente no PC.'}
-            if rota == '/api/provedores':
-                return 200, provedores.catalogo()
-            if rota == '/api/provedores/tarefas':
-                return 200, provedores.estado()
         if rota == "/api/sugestoes":
             return sugestoes_get()
         if rota == "/api/praticas":
