@@ -1,0 +1,17 @@
+schema_version: 1
+feature: feat.office_providers
+owner_system: sys.office
+status: implemented
+paths: [provedores.py, provedores.js]
+depends_on: [servidor.py, rede.py, banco.py, configuracao.py]
+events: [trabalho, fala, ocioso]
+providers: [claude, ollama, codex, gemini, opencode]
+configuration: [projetos, agentes]
+tests: [ferramentas/testar_provedores.py]
+decisions:
+  - Executar CLIs sem interpolar shell nem ignorar permissões automaticamente.
+  - Somente o navegador do PC pode iniciar ou cancelar tarefas.
+  - Usar o primeiro projeto configurado e os nomes de mesas do config.
+  - Manter times nativos Claude e bots de revisão independentes.
+  - Limitar inferência local e cada mesa a uma tarefa por vez.
+  - Encerrar tarefas após 1800 segundos e manter até 50 registros em memória.

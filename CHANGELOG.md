@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.20.0
+- **Ferramentas e modelos** no escritório: tarefas por mesa com Claude Code, Ollama pelo Claude Code,
+  OpenAI/Codex, Gemini CLI e OpenCode; seleção de modelo, eventos normalizados, resultado e botão Parar tarefa.
+- Guarda de acesso do PC, execução sem shell ou aprovação automática, uma tarefa local por vez e limite de
+  30 minutos. O time automático e os bots existentes continuam independentes.
+- Instalador inclui a ponte de provedores; testes sem chamadas pagas cobrem comandos, ambiente, eventos e guardas.
+
 ## 1.19.1
 - **Caminho em Program Files some inteiro no celular** (`saude.py`, `RE_CAMINHO_ABS`):
   `C:\Program Files (x86)\App\a.exe` e `C:/Program Files/Common Files/x/y.txt` viram `…/a.exe` e `…/y.txt` em
