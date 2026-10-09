@@ -43,7 +43,7 @@ if (LOCAL && botao) {
   let timer = null;
   const dicas = {
     claude: 'Claude Code: deixe o modelo vazio para usar seu padrão. Login: claude.',
-    ollama: 'Ollama local: informe um modelo instalado, por exemplo qwen3.5:9b. Uma tarefa local por vez. O servidor Ollama precisa estar ligado.',
+    ollama: 'Ollama local: informe um modelo instalado, por exemplo qwen3.5:4b. Uma tarefa local por vez. O servidor Ollama precisa estar ligado.',
     codex: 'OpenAI: use um modelo disponível na sua conta ou deixe vazio. Login: codex login.',
     gemini: 'Gemini: use um modelo disponível na sua conta ou deixe vazio. Login: gemini.',
     opencode: 'OpenCode: modelo no formato provedor/modelo. Login: opencode auth login. Também permite outros provedores configurados na CLI.'

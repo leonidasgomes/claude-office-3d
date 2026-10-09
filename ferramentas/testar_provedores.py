@@ -126,6 +126,28 @@ class TestProvedores(unittest.TestCase):
             self.assertNotIn(id_, provedores.PROCESSOS)
         self.assertIn('fixture OK', provedores.TAREFAS['ok']['resultado'])
 
+    def test_ollama_registra_modelo_local_e_limpa_settings(self):
+        script = self.dir / 'fixture.py'
+        script.write_text('import json; print(json.dumps({"type":"result","result":"OK local"}))', encoding='utf-8')
+        env = dict(os.environ, TEMP=str(self.dir), OFFICE_TASK_PROJECT=str(self.dir))
+        provedores.TAREFAS['local'] = dict(id='local', mesa='Team_Dev', provedor='ollama',
+                                          modelo='qwen3.5:4b', estado='executando', resultado='', erro='')
+        settings = []
+
+        def capturar(argv, pasta):
+            self.assertEqual(argv[1], '--settings')
+            caminho = Path(argv[2])
+            settings.append(caminho)
+            self.assertEqual(json.loads(caminho.read_text(encoding='utf-8'))['modelPicker']['options'][0]['model'],
+                             'qwen3.5:4b')
+            return [sys.executable, str(script)], None
+
+        with patch.object(provedores, 'comando_arquivo', side_effect=capturar):
+            provedores.executar('local', ['claude', '-p', 'tarefa'], env)
+        self.assertEqual(provedores.TAREFAS['local']['estado'], 'concluida')
+        self.assertIn('OK local', provedores.TAREFAS['local']['resultado'])
+        self.assertFalse(settings[0].exists())
+
     @unittest.skipUnless(os.name == 'nt', 'Launcher npm específico do Windows')
     def test_wrapper_npm_resolvido_sem_shell(self):
         target = self.dir / 'node_modules' / 'cli' / 'main.js'

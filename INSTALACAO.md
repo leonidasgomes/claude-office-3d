@@ -1362,5 +1362,9 @@ Reiniciar o servidor perde a lista em memória, mas mantém os eventos no banco.
 O time automático do Claude Code e os bots de revisão continuam independentes; esse painel não converte
 `SendMessage`/tarefas compartilhadas em colaboração entre CLIs diferentes.
 
+Para usar `qwen3.5:4b`, execute `ollama pull qwen3.5:4b` antes e informe esse nome no painel.
+O escritório registra o modelo local em um arquivo temporário de configuração do Claude Code por tarefa
+e o apaga ao terminar. Modelos pequenos podem responder devagar ou errar tarefas de código complexas.
+
 Temporários ficam em `dados/tmp/provedores`. Configure o armazenamento próprio das CLIs em um disco adequado
 ao seu projeto. Em máquinas com pouca VRAM, comece com um modelo pequeno e uma tarefa local, sem builds pesados.

@@ -14,4 +14,5 @@ decisions:
   - Usar o primeiro projeto configurado e os nomes de mesas do config.
   - Manter times nativos Claude e bots de revisão independentes.
   - Limitar inferência local e cada mesa a uma tarefa por vez.
+  - Registrar cada modelo Ollama no seletor do Claude Code em configuração temporária por tarefa.
   - Encerrar tarefas após 1800 segundos e manter até 50 registros em memória.

@@ -80,6 +80,7 @@ def preparar(dados):
             env.pop(key, None)
     if provedor == 'ollama':
         env.update(ANTHROPIC_BASE_URL='http://127.0.0.1:11434', ANTHROPIC_AUTH_TOKEN='ollama', ANTHROPIC_API_KEY='')
+        env['ANTHROPIC_MODEL'] = modelo
         env.update({k: modelo for k in ('ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL',
                                        'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL')})
     env['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'] = '0'
@@ -163,10 +164,17 @@ def executar(id_, argv, env):
     with TRAVA:
         t = TAREFAS[id_]
     arquivo = None
+    settings_local = None
     limite = None
     p = None
     try:
         evento(t['mesa'], 'trabalho', 'Iniciando ' + t['provedor'], ferramenta='Provedor')
+        if t['provedor'] == 'ollama':
+            settings_local = Path(env['TEMP']) / (id_ + '-claude.json')
+            settings_local.write_text(json.dumps({'modelPicker': {'options': [{
+                'model': t['modelo'], 'label': t['modelo'] + ' local',
+                'behavesAs': 'claude-sonnet-5-5'}]}}, ensure_ascii=False), encoding='utf-8')
+            argv = [argv[0], '--settings', str(settings_local), *argv[1:]]
         comando, arquivo = comando_arquivo(argv, env['TEMP'])
         p = subprocess.Popen(comando, cwd=env['OFFICE_TASK_PROJECT'], env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
@@ -210,6 +218,8 @@ def executar(id_, argv, env):
             limite.cancel()
         if arquivo:
             arquivo.unlink(missing_ok=True)
+        if settings_local:
+            settings_local.unlink(missing_ok=True)
         with TRAVA:
             PROCESSOS.pop(id_, None)
         evento(t['mesa'], 'ocioso', 'Tarefa ' + t['estado'])

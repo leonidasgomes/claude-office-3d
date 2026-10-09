@@ -1297,6 +1297,9 @@ Gemini CLI e OpenCode. Ferramentas ausentes no PATH ficam desabilitadas. Modelo 
 Ollama exige o nome instalado e OpenCode aceita `provedor/modelo`. Autenticação e permissões continuam na CLI;
 o escritório não recebe chaves nem passa opções de aprovação automática. O login deve estar pronto antes de executar.
 O Ollama precisa estar instalado e servido em `http://127.0.0.1:11434`; modelos precisam ser baixados antes.
+Para cada tarefa Ollama, `provedores.executar` registra o nome informado em um arquivo temporário
+`modelPicker` do Claude Code, passa-o por `--settings` e o remove ao terminar. Isso permite nomes
+locais como `qwen3.5:4b` nas versões do Claude Code que exigem um modelo reconhecido.
 
 | Método | Rota | Uso |
 |---|---|---|
