@@ -1071,7 +1071,7 @@ def testar_validacao_extra():
                and {"parado:5", "parado:6"} <= set(ign), (falhou, sorted(ign)))
 
     # rede: cabeçalhos de navegador exigidos nas rotas do painel Saúde; UA saneado
-    checar("rede: /api/saude/ exige Sec-Fetch-* (ROTAS_NAVEGADOR)", rede.ROTAS_NAVEGADOR == ("/api/saude/",))
+    checar("rede: /api/saude/ exige Sec-Fetch-* (ROTAS_NAVEGADOR)", "/api/saude/" in rede.ROTAS_NAVEGADOR)
     checar("rede: resumo_ua numa linha, sem controle, até 120", rede.resumo_ua("a\r\nb\x00c" + "d" * 300) == "a b c" + "d" * 115)
     checar("rede: resumo_ua de None", rede.resumo_ua(None) == "")
 

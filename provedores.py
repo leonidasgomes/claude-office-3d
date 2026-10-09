@@ -35,7 +35,14 @@ PROCESSOS = {}
 
 
 def achar(cli):
-    return shutil.which(cli) or shutil.which(cli + '.cmd') or shutil.which(cli + '.ps1')
+    encontrado = shutil.which(cli) or shutil.which(cli + '.cmd') or shutil.which(cli + '.ps1')
+    if encontrado:
+        return encontrado
+    if cli == 'ollama' and os.name == 'nt' and os.environ.get('LOCALAPPDATA'):
+        exe = Path(os.environ['LOCALAPPDATA']) / 'Programs' / 'Ollama' / 'ollama.exe'
+        if exe.is_file():
+            return str(exe)
+    return None
 
 
 def catalogo():
