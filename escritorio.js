@@ -263,6 +263,7 @@ camera.position.copy(VISAO_GERAL.pos);
 const controles = new OrbitControls(camera, renderer.domElement);
 controles.target.copy(VISAO_GERAL.alvo);
 controles.enableDamping = true;
+controles.zoomToCursor = true;   // a roda aproxima a região sob o ponteiro
 controles.maxPolarAngle = Math.PI * 0.47;
 controles.minDistance = 5;
 controles.maxDistance = Math.max(150,VISAO_GERAL.pos.length()*2.2);
@@ -2407,7 +2408,7 @@ function seguir(a) {
   return true;
 }
 function pararSeguir() { if (seguindo) { seguindo = null; atualizarBotaoSeguir(); } }
-controles.addEventListener('start', pararSeguir);   // arrastar, girar ou dar zoom devolve a câmera ao usuário
+controles.addEventListener('start', () => { foco = null; pararSeguir(); });   // arrastar, girar ou dar zoom devolve a câmera ao usuário
 if (btnSeguir) btnSeguir.addEventListener('click', () => { if (seguindo && seguindo === fichaAberta) pararSeguir(); else if (fichaAberta) seguir(fichaAberta); });
 const vSeg = new THREE.Vector3();
 function tickSeguir(dt) {

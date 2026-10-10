@@ -9,11 +9,7 @@ import { formularioRevisao } from './revisao_form.mjs';
 import { linhasConsumo, linhasVisaoGeral } from './indicadores_providers.mjs';
 import { renderizarCoordenacoes } from './coordenacoes_painel.mjs';
 import { formularioCoordenacao, renderizarPedidos, botaoExecutarCoordenacao, botaoConciliarPedido } from './coordenacao_form.mjs';
-const botao = document.createElement('button');
-botao.type = 'button'; botao.textContent = 'Gestão';
-botao.className = 'gestaoAbrir';
-botao.setAttribute('aria-haspopup', 'dialog');
-document.body.append(botao);
+const botao = document.getElementById('btnGestao');
 const painel = document.createElement('dialog');
 painel.className = 'gestaoPainel';
 painel.setAttribute('aria-labelledby', 'gestaoTitulo');
@@ -211,6 +207,7 @@ async function carregar() {
   finally { carregando = false; }
 }
 function abrirGestao() {
+  window.__opcoes?.fechar(false);
   if (!painel.open) painel.showModal();
   carregar(); clearInterval(timer); timer=setInterval(carregar,60000);
 }
@@ -222,5 +219,5 @@ window.addEventListener('office-projeto-alerta', (e) => {
 });
 fechar.addEventListener('click', () => painel.close());
 atualizar.addEventListener('click', carregar);
-painel.addEventListener('close', () => { clearInterval(timer); timer = null; botao.focus(); });
+painel.addEventListener('close', () => { clearInterval(timer); timer = null; document.getElementById(document.documentElement.classList.contains('compacto') ? 'btnMenu' : 'btnOpcoes')?.focus(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });

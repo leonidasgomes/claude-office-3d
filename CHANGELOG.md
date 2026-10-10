@@ -1,5 +1,9 @@
 # Changelog
 
+## Próxima versão
+- Zoom da cena acompanha o ponteiro do mouse; interação manual cancela o foco automático.
+- Gestão das equipes fica no menu da engrenagem, com navegação pelo teclado e retorno do foco ao fechar o painel.
+
 ## 2.0.0-dev.2
 - Conclusão explícita após merge comprovado: prévia sem escrita, checks do head
   paginados e validados, evidência persistida e recuperação idempotente entre
