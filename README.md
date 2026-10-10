@@ -4,7 +4,10 @@ Nova linha independente em desenvolvimento. Instalações da edição Claude 1.x
 continuam em suas pastas; instale a edição 2.x em um destino separado.
 Esta distribuição não inclui dados, contas ou configuração pessoal.
 No escritório, abra **⚙️ → Gestão das equipes** para configurar e acompanhar
-os projetos. A roda do mouse aproxima a região sob o ponteiro.
+os projetos. As áreas CEO e diretor, Equipes, Funcionários e Trabalho e indicadores
+separam os controles. Equipes e funcionários podem ser cadastrados, editados e
+excluídos com proteção de vínculos pendentes e preservação do histórico.
+A roda do mouse aproxima a região sob o ponteiro.
 Consulte [a separação e o Claude padronizado](docs/VERSOES.md) antes de migrar.
 
 ## Começar em uma instalação nova

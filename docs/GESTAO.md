@@ -1,3 +1,20 @@
+# Usar os controles de Gestão
+
+Abra **⚙️ → Gestão das equipes** e escolha uma das áreas do seu projeto:
+
+- **CEO e diretor:** console/modelo da liderança, revisão opcional e merge.
+- **Equipes:** cadastrar equipe, editar especialidade e executor ou excluir.
+- **Funcionários:** cadastrar, editar ou excluir funcionários e seus skills.
+- **Trabalho e indicadores:** tarefas, retomadas, consultas e consumo.
+
+Salvar não inicia agentes. Equipes novas precisam do mesmo nome no campo Time
+do Kanban quando forem receber cartões. O nome de uma equipe existente é
+preservado; especialidade e executor podem mudar. Exclusão pede confirmação,
+preserva o histórico e é bloqueada quando há vínculos pendentes. Funcionários
+excluídos são arquivados. Após mudar o cadastro, use **Atualizar cena 3D** para
+recarregar os assentos. Se a configuração mudou em outra janela, atualize a
+Gestão antes de salvar novamente.
+
 # Gestão do escritório por projeto
 
 Consoles podem implementar e testar dentro do sandbox sem conseguir publicar Git

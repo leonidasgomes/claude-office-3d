@@ -1187,6 +1187,9 @@ class Handler(rede.HandlerSeguro):
         if rota == '/api/gestao/executores':
             import politica_painel
             return politica_painel.api_atualizar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == "/api/gestao/cadastros":
+            import cadastro_gestao
+            return cadastro_gestao.api(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
         if rota == "/api/gestao/funcionarios":
             import funcionarios
             return funcionarios.api_cadastrar(cfg()["projetos"], dados, ident)

@@ -1,7 +1,7 @@
 // Um formulário por projeto, com revisão otimista da política; salvar não executa agentes.
-export function formularioExecutores(projeto, atualizar) {
+export function formularioExecutores(projeto, atualizar, somenteLideranca=false) {
   const details=document.createElement('details');
-  const summary=document.createElement('summary'); summary.textContent='Escolher consoles do CEO, diretor e equipes';details.append(summary);
+  const summary=document.createElement('summary'); summary.textContent=somenteLideranca?'Configurar CEO e diretor':'Escolher consoles do CEO, diretor e equipes';details.append(summary);
   const form=document.createElement('form');details.append(form);
   function campo(pai,titulo,el) {
     const label=document.createElement('label');el.setAttribute('aria-label',titulo);
@@ -53,9 +53,9 @@ export function formularioExecutores(projeto, atualizar) {
     };
   }
   const ceo=editor('CEO',projeto.ceo,true),diretor=editor('Diretor',projeto.diretor,true);
-  const equipes=projeto.equipes.map(e=>({nome:e.nome,ler:editor(e.nome,e.executor)}));
+  const equipes=projeto.equipes.map(e=>({nome:e.nome,ler:somenteLideranca?()=>e.executor:editor(e.nome,e.executor)}));
   const aviso=document.createElement('p');aviso.textContent='Salva na política única do projeto. Preserva regras, Kanban, revisores, rotas por escopo, especialistas e merge. Rotas por escopo podem prevalecer sobre o executor da equipe; especialistas mantêm o executor cadastrado. Não inicia agentes. Execuções em curso precisam ser conciliadas se a política mudar.';form.append(aviso);
-  const salvar=document.createElement('button');salvar.type='submit';salvar.textContent='Salvar executores';form.append(salvar);
+  const salvar=document.createElement('button');salvar.type='submit';salvar.textContent=somenteLideranca?'Salvar CEO e diretor':'Salvar executores';form.append(salvar);
   const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
   let versao=projeto.politica_versao;
   form.addEventListener('submit',async ev=>{
