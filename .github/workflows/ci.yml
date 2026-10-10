@@ -164,7 +164,9 @@ jobs:
         run: python -W error ferramentas/testar_conciliacao_retomada.py
       - name: Build do pacote
         # Resultados por tentativa são distintos de aceite ou merge.
-        run: python ferramentas/build.py
+        run: |
+          python ferramentas/testar_notas_versao.py
+          python ferramentas/build.py
       - name: Atribuição e resultados históricos das tentativas
         run: python -W error ferramentas/testar_resultados_tentativas.py
 

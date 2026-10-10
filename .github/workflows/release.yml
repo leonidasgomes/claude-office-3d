@@ -28,8 +28,10 @@ jobs:
         shell: bash
         run: |
           flags=(--verify-tag)
+          titulo="Office Multi-provider ${GITHUB_REF_NAME}"
           if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
             flags+=(--prerelease --latest=false)
+            titulo+=" — prévia pública (Codex e OpenCode)"
           fi
           gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256 \
-            --title "Office Multi-provider ${GITHUB_REF_NAME}" --notes-file NOTAS.md "${flags[@]}"
+            --title "$titulo" --notes-file NOTAS.md "${flags[@]}"

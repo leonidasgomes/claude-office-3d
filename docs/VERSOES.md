@@ -1,5 +1,19 @@
 # Legado e nova versão
 
+## Qual versão baixar?
+
+- **Codex e OpenCode, gestão de equipes e funcionários:** use a
+  [prévia atual 2.0.0-dev.3](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.3).
+  O pacote inclui as melhorias da Gestão, zoom e atalho do instalador Windows.
+- **Continuar no Claude legado:** use
+  [1.19.1 estável](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v1.19.1).
+- As prévias anteriores permanecem no histórico; seus ZIPs não recebem as
+  correções das versões seguintes. Baixe o ZIP `office-multi-provider-...zip`
+  em Assets da versão escolhida; Source code é o código-fonte.
+
+O selo **Latest** do GitHub indica a versão estável do legado. A prévia 2.x
+fica marcada **Pre-release** e deve ser instalada em uma pasta separada.
+
 | Linha | Instalação | Situação |
 |---|---|---|
 | Claude 1.x | Pasta existente do usuário | Legado preservado, sem atualização automática para outra edição |
@@ -78,8 +92,8 @@ Contrato oficial: [Claude headless](https://code.claude.com/docs/en/headless),
 [hooks](https://code.claude.com/docs/en/hooks) e
 [CLI](https://code.claude.com/docs/en/cli-reference).
 Para os outros consoles, veja [PROVIDERS.md](PROVIDERS.md); as regras de projeto
-continuam em [GESTAO.md](GESTAO.md). A versão permanece uma prévia, sem release
-público e sem migração automática dos projetos existentes.
+continuam em [GESTAO.md](GESTAO.md). A versão permanece uma prévia pública,
+sem migração automática dos projetos existentes.
 
 ### Confirmação de conclusão na nova linha
 

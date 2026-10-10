@@ -1,6 +1,8 @@
 # Changelog
 
 ## Próxima versão
+
+## 2.0.0-dev.3
 - Instalador Windows cria atalho na área de trabalho com ícone próprio, respeitando Desktop redirecionado e preservando atalhos alheios.
 - Gestão organizada em liderança, equipes, funcionários e trabalho, com criação/edição de equipes e edição/arquivamento de funcionários, proteção de vínculos pendentes e histórico preservado.
 - Zoom da cena acompanha o ponteiro do mouse; interação manual cancela o foco automático.
