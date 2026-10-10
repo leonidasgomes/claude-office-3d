@@ -103,7 +103,8 @@ def funcionario(projeto, dados):
         db.execute('CREATE TABLE IF NOT EXISTS funcionario_historico (id INTEGER PRIMARY KEY, funcionario TEXT NOT NULL, anterior TEXT NOT NULL, acao TEXT NOT NULL)')
         db.execute('INSERT INTO funcionario_historico (funcionario,anterior,acao) VALUES (?,?,?)', (ident,row[0],dados['acao']))
         try:
-            db.execute('UPDATE funcionario SET nome=?,dados=? WHERE id=?', (novo['nome'].casefold(),json.dumps(novo,ensure_ascii=False),ident))
+            chave_nome = 'arquivado:'+ident if dados['acao']=='excluir' else novo['nome'].casefold()
+            db.execute('UPDATE funcionario SET nome=?,dados=? WHERE id=?', (chave_nome,json.dumps(novo,ensure_ascii=False),ident))
         except sqlite3.IntegrityError as exc:
             raise ValueError('Já existe funcionário com este nome. Escolha outro nome.') from exc
     return {'alterado':True, 'funcionario':novo}

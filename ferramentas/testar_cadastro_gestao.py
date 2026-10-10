@@ -53,6 +53,9 @@ class Cadastros(unittest.TestCase):
         arquivado=f.listar(self.root,True)[0];self.assertTrue(arquivado['arquivado']);self.assertEqual(arquivado['id'],item['id'])
         with self.assertRaises(ValueError):f.obter(self.root,item['id'])
         with closing(sqlite3.connect(f.arquivo(self.root))) as db:self.assertEqual(db.execute('SELECT count(*) FROM funcionario_historico').fetchone()[0],2)
+        recriado=f.cadastrar(self.root,{**self.staff,'nome':atual['nome']})
+        self.assertNotEqual(recriado['id'],item['id'])
+        self.assertEqual(f.listar(self.root),[recriado])
     def test_vinculos_pendentes_bloqueiam_sem_alterar(self):
         item=f.cadastrar(self.root,self.staff);self.pendente(item);original=self.arq.read_bytes()
         self.assertEqual(self.call(tipo='funcionario',acao='excluir',id=item['id'],anterior=item)[0],400)
