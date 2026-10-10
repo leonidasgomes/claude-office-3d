@@ -80,12 +80,12 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "providers_console.py", "console_provider.py", "codex_observador.py", "skills_compartilhados.py",
           "console.exemplo.json", "docs/PROVIDERS.md", "docs/VERSOES.md", "docs/CLAUDE-COMPATIBILIDADE.md",
           "gestao_projeto.py", "gestao_cli.py", "controle_tarefas.py", "claude_sessao.py", "kanban_gestao.py", "kanban_painel.py", "prs_gestao.py", "kanban_projetos.mjs", "dependencias_tarefas.py",
-          "gestao_painel.py", "gestao_painel.js", "gestao_painel.css", "atividade_execucao.py", "modelos_opencode.py", "funcionarios.py", "funcionarios_form.js", "politica_painel.py", "fontes_documentais.py", "executores_form.mjs", "merge_form.mjs", "prs_evidencias.py", "prs_pendencias.py", "prs_evidencias.mjs",
+          "gestao_painel.py", "gestao_painel.js", "gestao_painel.css", "atividade_execucao.py", "modelos_opencode.py", "funcionarios.py", "funcionarios_form.js", "politica_painel.py", "fontes_documentais.py", "executores_form.mjs", "merge_form.mjs", "revisao_form.mjs", "prs_evidencias.py", "prs_pendencias.py", "prs_evidencias.mjs",
           "recursos_local.py", "memoria_local.py", "executor_local.py", "revisao_cruzada.py", "revisao_execucao.py", "revisores_console.py",
           "rpc_console.py", "uso_providers.py", "consumo_providers.py", "precos_tokens.py", "precos_tokens.exemplo.json", "indicadores_providers.mjs", "EDICAO.json", "iniciar_projeto.py", "compatibilidade_skills.py", "skills_execucao.py", "retorno_console.py", "coordenacao.py", "coordenacao_registro.py", "coordenacoes_painel.mjs",
           "coordenacao_execucao.py", "consumo_coordenacao.py", "triagem_providers.py", "alertas_projetos.py", "auditor_projeto.py", "coordenacao_painel.py", "coordenacao_form.mjs", "retomada_painel.py", "retomada_form.mjs", "configurar_gestao.py", "diagnostico_instalacao.py", "projeto.exemplo.json", "docs/GESTAO.md",
           "funcionarios_cena.mjs", "agentes_nativos.py", "agentes_nativos_form.mjs",
-          "skills-candidatos/externo/README.md", "docs/SDD.md", "VERSION", "CHANGELOG.md", "LICENSE"]
+          "skills-candidatos/externo/README.md", "docs/SDD.md", "docs/REVISAO-OPCIONAL.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
 MESAS_SUGERIDAS = ["lider", "dev", "design", "pesquisa"]

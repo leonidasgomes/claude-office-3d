@@ -57,6 +57,12 @@ class MergePainel(unittest.TestCase):
         self.assertEqual(p.api_merge([self.raiz],dados,{'permissao':'pc'})[0],200)
         self.assertEqual(p.api_merge([self.raiz],dados,{'permissao':'pc'})[0],409)
     def test_http_guarda_origin_e_header(self):
+        self.http_guarda('/api/gestao/merge','api_merge','merge',self.merge)
+
+    def test_http_revisao_guarda_origin_e_header(self):
+        self.http_guarda('/api/gestao/revisao','api_revisao','revisao',{'ativo':False,'clouds_distintas':2,'separar_autor':True})
+
+    def http_guarda(self,rota,metodo,chave,valor):
         import http.client
         import threading
         from functools import partial
@@ -67,16 +73,16 @@ class MergePainel(unittest.TestCase):
         srv=ThreadingHTTPServer(('127.0.0.1',0),partial(servidor.Handler,directory=str(Path(servidor.__file__).parent)))
         th=threading.Thread(target=srv.serve_forever,daemon=True);th.start()
         con=http.client.HTTPConnection('127.0.0.1',srv.server_address[1],timeout=10)
-        dados={'projeto_id':id_projeto(self.raiz),'versao':self.hash,'merge':self.merge}
+        dados={'projeto_id':id_projeto(self.raiz),'versao':self.hash,chave:valor}
         try:
-            with patch.object(servidor,'cfg',return_value={'projetos':[self.raiz]}),patch.object(p,'api_merge',return_value=(200,{'alterado':False})) as api:
+            with patch.object(servidor,'cfg',return_value={'projetos':[self.raiz]}),patch.object(p,metodo,return_value=(200,{'alterado':False})) as api:
                 host=f'127.0.0.1:{srv.server_address[1]}'
                 h={'Host':host,'Content-Type':'application/json','X-Office-Acao':'1','Origin':'https://externa.invalid','Connection':'close'}
-                con.request('POST','/api/gestao/merge',json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,403);api.assert_not_called()
+                con.request('POST',rota,json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,403);api.assert_not_called()
                 h['Origin']='http://'+host;del h['X-Office-Acao']
-                con.request('POST','/api/gestao/merge',json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,403);api.assert_not_called()
+                con.request('POST',rota,json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,403);api.assert_not_called()
                 h['X-Office-Acao']='1'
-                con.request('POST','/api/gestao/merge',json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,200);api.assert_called_once()
+                con.request('POST',rota,json.dumps(dados),h);r=con.getresponse();r.read();self.assertEqual(r.status,200);api.assert_called_once()
                 self.assertEqual(api.call_args.args[1],dados);self.assertEqual(api.call_args.args[2]['permissao'],'pc')
         finally:con.close();srv.shutdown();srv.server_close();th.join(5);servidor.Handler.rede=anterior
 

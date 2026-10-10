@@ -96,6 +96,27 @@ def api_atualizar(projetos,dados,ident):
     except (ValueError,OSError,TypeError,KeyError): return 400,{'erro':'Não foi possível validar/salvar a política; confira no PC'}
 
 
+def atualizar_revisao(projeto,versao,revisao):
+    raiz=Path(projeto).resolve();cfg,atual,bruto=snapshot(raiz)
+    if not isinstance(versao,str) or not re.fullmatch('[0-9a-f]{64}',versao) or versao!=atual:
+        raise Conflito('Política mudou; recarregue o painel antes de salvar')
+    if not cfg['ativo']:raise ValueError('Adote a gestão antes de editar a revisão')
+    if not isinstance(revisao,dict) or set(revisao)!={'ativo','clouds_distintas','separar_autor'}:
+        raise ValueError('Informe somente as opções de revisão')
+    novo=copy.deepcopy(cfg);novo['revisao'].update(revisao);novo=validar(novo)
+    return gravar(raiz,cfg,atual,bruto,novo)
+
+
+def api_revisao(projetos,dados,ident):
+    if ident.get('permissao')!='pc':return 403,{'erro':'Política editável somente no PC'}
+    if not isinstance(dados,dict) or set(dados)!={'projeto_id','versao','revisao'}:return 400,{'erro':'Pedido inválido'}
+    projeto=next((p for p in projetos if id_projeto(p)==dados['projeto_id']),None)
+    if projeto is None:return 400,{'erro':'Projeto não configurado no escritório'}
+    try:return 200,atualizar_revisao(projeto,dados['versao'],dados['revisao'])
+    except Conflito as exc:return 409,{'erro':str(exc)}
+    except (ValueError,OSError,TypeError,KeyError):return 400,{'erro':'Revisão inválida: confira fornecedores disponíveis e auditor ativo; nenhuma alteração salva'}
+
+
 def atualizar_merge(projeto,versao,merge):
     raiz=Path(projeto).resolve();cfg,atual,bruto=snapshot(raiz)
     if not isinstance(versao,str) or not re.fullmatch('[0-9a-f]{64}',versao) or versao!=atual:

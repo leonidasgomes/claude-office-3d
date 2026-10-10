@@ -1,5 +1,10 @@
 # Gestão do escritório por projeto
 
+A revisão por IA é opcional por projeto. Configure no painel Gestão, em
+**Configurar revisão deste projeto**: ativação, quantidade de fornecedores e
+separação do autor. Desativar preserva revisores e checks/merge. Consulte
+[Revisão opcional](REVISAO-OPCIONAL.md) para detalhes e limites do auditor.
+
 Cada item de `revisao.revisores` aceita `ativo: false` para suspender um revisor
 indisponível, conservando nome e executor. O campo omitido conserva o comportamento
 anterior. Suspender um revisor não desativa a revisão nem reduz `clouds_distintas`:

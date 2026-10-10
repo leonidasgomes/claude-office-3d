@@ -1160,6 +1160,9 @@ SUF_BLOQUEADOS = (".py", ".bat", ".sh", ".json", ".md", ".txt")   # nunca servid
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
         dados.pop("_detalhe", None)   # só o servidor preenche (vai para o histórico de ações)
+        if rota == '/api/gestao/revisao':
+            import politica_painel
+            return politica_painel.api_revisao(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
         if rota == '/api/gestao/merge':
             import politica_painel
             return politica_painel.api_merge(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)

@@ -5,6 +5,7 @@ import { formularioAgenteNativo } from './agentes_nativos_form.mjs';
 import { formularioRetomada, renderizarRetomadas, botaoConciliarRetomada } from './retomada_form.mjs';
 import { formularioExecutores } from './executores_form.mjs';
 import { formularioMerge } from './merge_form.mjs';
+import { formularioRevisao } from './revisao_form.mjs';
 import { linhasConsumo, linhasVisaoGeral } from './indicadores_providers.mjs';
 import { renderizarCoordenacoes } from './coordenacoes_painel.mjs';
 import { formularioCoordenacao, renderizarPedidos, botaoExecutarCoordenacao, botaoConciliarPedido } from './coordenacao_form.mjs';
@@ -81,6 +82,7 @@ async function carregar() {
       for (const equipe of p.equipes) linha('li', `${equipe.nome}: ${equipe.especialidade} — ${executor(equipe.executor)}`, lista);
       if(p.politica_versao)secao.append(formularioExecutores(p, async()=>{await carregar();}));
       if(p.politica_versao && p.merge_config)secao.append(formularioMerge(p, async()=>{await carregar();}));
+      if(p.politica_versao && p.revisao)secao.append(formularioRevisao(p, async()=>{await carregar();}));
       linha('h4','Consumo deste projeto · últimos 7 dias',secao);
       linha('p','Contadores observados neste projeto. Cotas de assinatura pertencem à conta do fornecedor e aparecem separadamente no Placar.',secao);
       if(p.consumo?.escopo!=='projeto')linha('p','Consumo por projeto indisponível.',secao);

@@ -94,6 +94,7 @@ jobs:
           python -W error ferramentas/testar_modelos_opencode.py
           python -W error ferramentas/testar_politica_painel.py
           python -W error ferramentas/testar_merge_painel.py
+          python -W error ferramentas/testar_revisao_painel.py
           python -W error ferramentas/testar_uso_providers.py
           python -W error ferramentas/testar_consumo_providers.py
           python -W error ferramentas/testar_precos_tokens.py
@@ -103,6 +104,7 @@ jobs:
         run: |
           node ferramentas/testar_executores_form.mjs
           node ferramentas/testar_merge_form.mjs
+          node ferramentas/testar_revisao_form.mjs
       - name: Codex interativo (transcritos e isolamento de sessões)
         run: python -W error ferramentas/testar_codex_observador.py
       - name: Providers no feed HTTP do escritório

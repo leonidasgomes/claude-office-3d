@@ -53,6 +53,19 @@ class DespachoRevisao(unittest.TestCase):
         return revisar(self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','Deve passar','regras',
                        lambda *_:{'veredito':'aprovado' if aprovado else 'reprovado','achados':[]})
 
+    def test_revisao_opcional_encaminha_entrega_sem_chamar_revisor(self):
+        self.cfg['revisao']['ativo']=False
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        chamadas=[]
+        r=self.executar(lambda *a,**kw:chamadas.append(1))
+        self.assertEqual((r['codigo'],r['estado']),(0,'revisao'))
+        self.assertEqual(chamadas,[])
+        self.assertEqual(self.moves,['Em andamento','Em revisão'])
+        c=Controle(self.db);self.assertIsNone(c.revisao(r['token']))
+        from contextlib import closing
+        with closing(c._abrir()) as db:
+            self.assertEqual(db.execute('SELECT resultado FROM execucao_resultado').fetchone()[0],'revisao_desativada')
+
     def test_despacho_transmite_sandbox_configurado_ao_executor(self):
         self.cfg['equipes'][0]['executor']={'console':'codex','modelo':'modelo','sandbox':'workspace-write'}
         self.cfg['revisao']['revisores']=[{'nome':'QA1','executor':{'console':'claude'}},

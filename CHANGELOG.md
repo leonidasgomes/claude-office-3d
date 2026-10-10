@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-dev.1
+- Revisão por IA opcional e configurável por projeto no painel Gestão: ativação,
+  quantidade de fornecedores e separação do autor. Preserva revisores e checks,
+  com backup e proteção contra edição concorrente.
+
 ## 2.0.0-dev
 - Prévia instalável: tags de desenvolvimento são publicadas como prerelease,
   sem substituir a versão estável.
