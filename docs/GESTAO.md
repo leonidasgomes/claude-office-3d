@@ -1,5 +1,13 @@
 # Gestão do escritório por projeto
 
+Consoles podem implementar e testar dentro do sandbox sem conseguir publicar Git
+ou acessar a API do GitHub. Nesse caso o escritório registra bloqueio por falta
+de entrega, conservando sessão e alterações. Publique a entrega no host autorizado
+após revisar/testar, depois use a retomada explícita com a mesma sessão. Confira
+processos/ferramentas antes de declarar agentes conciliados. A retomada não amplia
+permissões nem muda contas; o controlador confere o PR real antes de encaminhar
+à revisão. A publicação no host continua sendo uma etapa explícita.
+
 A revisão por IA é opcional por projeto. Configure no painel Gestão, em
 **Configurar revisão deste projeto**: ativação, quantidade de fornecedores e
 separação do autor. Desativar preserva revisores e checks/merge. Consulte

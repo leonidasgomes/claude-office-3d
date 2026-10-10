@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-dev.2
+- Conclusão explícita após merge comprovado: prévia sem escrita, checks do head
+  paginados e validados, evidência persistida e recuperação idempotente entre
+  movimento do Kanban e gravação local. Compatível com bancos anteriores.
+
 ## 2.0.0-dev.1
 - Revisão por IA opcional e configurável por projeto no painel Gestão: ativação,
   quantidade de fornecedores e separação do autor. Preserva revisores e checks,
