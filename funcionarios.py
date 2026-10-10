@@ -37,14 +37,15 @@ def skills(projeto, cfg):
             if not s['problemas']]
 
 
-def listar(projeto):
+def listar(projeto, incluir_arquivados=False):
     arq=arquivo(projeto)
     if not arq.is_file(): return []
     with closing(sqlite3.connect(arq.as_uri()+'?mode=ro',uri=True,timeout=5)) as db:
-        return [json.loads(x[0]) for x in db.execute('SELECT dados FROM funcionario ORDER BY nome')]
+        itens = [json.loads(x[0]) for x in db.execute('SELECT dados FROM funcionario ORDER BY nome')]
+        return itens if incluir_arquivados else [i for i in itens if not i.get('arquivado')]
 
 
-def cadastrar(projeto, dados):
+def validar_cadastro(projeto, dados):
     cfg=carregar(projeto)
     if not cfg['ativo']: raise ValueError('Habilite a política do projeto antes de cadastrar especialistas')
     if not isinstance(dados,dict) or set(dados) != {'nome','funcao','equipe','executor','skills'}:
@@ -65,7 +66,11 @@ def cadastrar(projeto, dados):
         raise ValueError('Skill desconhecida na fonte compartilhada')
     from skills_compartilhados import resolver
     resolver(projeto,dados['skills'],cfg,normal['console'],normal['execucao']=='local')
-    item={**dados,'id':uuid.uuid4().hex,'nome':dados['nome'].strip(),'executor':normal,'skills':sorted(set(dados['skills']))}
+    return {**dados,'nome':dados['nome'].strip(),'executor':normal,'skills':sorted(set(dados['skills']))}
+
+
+def cadastrar(projeto, dados):
+    item={**validar_cadastro(projeto,dados),'id':uuid.uuid4().hex}
     arq=arquivo(projeto); arq.parent.mkdir(parents=True,exist_ok=True)
     with closing(sqlite3.connect(arq,timeout=5)) as db,db:
         db.execute('CREATE TABLE IF NOT EXISTS funcionario (id TEXT PRIMARY KEY,nome TEXT UNIQUE,dados TEXT NOT NULL)')
@@ -130,7 +135,7 @@ def rotular_consumo(projetos, consumo):
     nomes={}
     for projeto in projetos:
         try:
-            for f in listar(projeto): nomes[nome_eventos(f)]=f['nome']+' · '+Path(projeto).name
+            for f in listar(projeto,incluir_arquivados=True): nomes[nome_eventos(f)]=f['nome']+' · '+Path(projeto).name
         except (ValueError,OSError,sqlite3.Error,TypeError,KeyError): continue
     for grupo in consumo.get('grupos',[]):
         if grupo.get('agente') in nomes: grupo['agente_nome']=nomes[grupo['agente']]

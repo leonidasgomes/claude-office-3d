@@ -1,6 +1,7 @@
 # Changelog
 
 ## Próxima versão
+- Gestão organizada em liderança, equipes, funcionários e trabalho, com criação/edição de equipes e edição/arquivamento de funcionários, proteção de vínculos pendentes e histórico preservado.
 - Zoom da cena acompanha o ponteiro do mouse; interação manual cancela o foco automático.
 - Gestão das equipes fica no menu da engrenagem, com navegação pelo teclado e retorno do foco ao fechar o painel.
 

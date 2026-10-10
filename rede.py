@@ -53,6 +53,7 @@ ROTAS_PUBLICAS = ("/manifest.webmanifest", "/icone-192.png", "/icone-512.png")
 PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"},
                   # sugestões do bot de revisão: tratar (encaminhar/ignorar/resolver) é só do PC; o celular só lê (GET)
                   "/api/sugestoes/tratar": {"pc"},
+                  "/api/gestao/cadastros": {"pc"},
                   "/api/gestao/funcionarios": {"pc"},
                   "/api/gestao/funcionarios/perfil": {"pc"},
                   "/api/gestao/executores": {"pc"},

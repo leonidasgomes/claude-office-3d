@@ -985,6 +985,7 @@ Não inicia modelo, login ou reset. Sem token/identidade da conta na resposta.
 
 `POST /api/gestao/merge`: edição explícita por projeto, somente PC com a guarda Origin/JSON/X-Office-Acao. Recebe exatamente projeto_id, versao e merge (modo manual/automatico, checks, rotulos_manuais). Automático exige checks; nomes limitados a 100 por lista e 200 caracteres, sem duplicados. Preserva os demais campos, usa o mesmo lock/hash/backup/substituição atômica de executores e rejeita política serializada maior que 128 KiB. Retorna 200, 400/403 ou 409. merge_form.mjs impede envio duplicado e apresenta os nomes como texto. Não executa merge nem habilita auto-merge no GitHub; apenas configura a política do controlador. GET /api/gestao preserva merge como string e acrescenta merge_config para o editor. Mudança de política exige nova conferência dos gates vinculados à versão anterior.
 
+| `/api/gestao/cadastros` | POST | PC | Criação/edição/exclusão de equipes e edição/arquivamento de funcionários; política e cadastro anterior conferidos. |
 `POST /api/gestao/executores`: edição explícita de CEO, diretor e executores das equipes existentes, somente PC pela guarda Origin/JSON/X-Office-Acao. Recebe projeto_id registrado, versao (hash da política) e executores; retorna 200, 400/403 ou 409 para edição concorrente/desatualizada. politica_painel.py preserva demais campos e copia bytes anteriores para .office/historico-politica antes de substituição atômica da política. Snapshot e hash vêm da mesma leitura. Lock exclusivo protege edições do painel; editores externos podem ignorá-lo, exigindo conciliação. Não inicia consoles, modifica hooks, rotas, cadastro de especialistas ou auto-merge. O formulário executores_form.mjs limpa o modelo ao trocar console e preserva texto em erros. Metadados de edição devem ser excluídos do Git; política e regras continuam versionáveis.
 
 `GET /api/gestao/pr?projeto=ID&numero=N&sha=SHA`: evidências GitHub sob demanda, somente leitura; parâmetros únicos/exatos, 400 para formato de consulta inválido, 200 com ok false quando cobertura/acesso/identidade falham. prs_evidencias.py seleciona o projeto registrado, lê PR antes/depois, checks do SHA exato, statuses e reviews paginados. Mudança de head/política limpa a projeção. Checks de outro SHA, duplicata, coleção incompleta ou formato desconhecido falham sem atribuir sucesso. Names iguais entre Apps/checks/statuses são ambíguos para a política. Mostra eventos de review com commit atual versus antigo, sem reduzir comentários a uma decisão efetiva. Não identifica cloud por login, não publica body/output/URLs auxiliares e não autoriza merge. prs_evidencias.mjs faz consulta ao abrir detalhes, sanitiza por textContent e descarta resposta após troca de projeto/commit ou atualização da lista. Nenhuma chamada em massa ao abrir lista.
@@ -1966,3 +1967,28 @@ Configuração privada da ponte: ativo booleano e fontes (até quatro objetos co
 A cena usa `OrbitControls.zoomToCursor` para aproximar a região sob o ponteiro.
 Ao iniciar uma interação manual (zoom, rotação ou arraste), cancela o foco
 animado e o acompanhamento de agente, preservando o controle do usuário.
+
+### Gestão: navegação e manutenção dos cadastros
+
+O painel divide cada projeto em CEO e diretor, Equipes, Funcionários e Trabalho e
+indicadores. Botões com aria-pressed/aria-controls alternam as áreas, conservando
+a escolha nas atualizações. Fontes e ponte ficam em diagnósticos recolhidos.
+
+POST `/api/gestao/cadastros` é exclusivo do PC, com as guardas de Origin, JSON e
+X-Office-Acao. Recebe projeto_id, versao da política, tipo (equipe/funcionario)
+e acao (criar/editar/excluir). Equipes são escritas na política canônica por
+cadastro_gestao.py, usando snapshot, backup exato e gravação atômica de
+politica_painel. Nome de equipe existente é imutável por identificar o Kanban.
+Exclusão consulta o quadro ao vivo, sem escrita, e recusa funcionários ativos
+ou cartões não concluídos. Criação não cria opções no campo Time do GitHub.
+
+Funcionários são editados por ID estável, com comparação do cadastro anterior
+e transação SQLite. Excluir arquiva a linha (arquivado=true); listar omite
+arquivados por padrão, mas rotular_consumo conserva seus nomes históricos.
+A tabela funcionario_historico preserva id, funcionario, anterior e acao.
+Tarefas locais pendentes bloqueiam alteração/exclusão do cadastro relacionado;
+cadastros não cancelam processos, modificam histórico de tarefas ou iniciam
+modelos. Validação rejeita política/cadastro desatualizado (409). Guardas não
+são uma transação global com GitHub ou despachos concorrentes: gates existentes
+continuam relendo fontes e política. Perfil nativo anterior pode ficar divergente
+após editar o funcionário; regeneração continua explícita.

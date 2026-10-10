@@ -6,3 +6,15 @@
 .gestaoPainel input:not([type=checkbox]), .gestaoPainel textarea, .gestaoPainel select { box-sizing: border-box; display: block; width: 100%; padding: 8px; }
 .gestaoPainel fieldset label { display: block; margin: 8px 0; }
 .gestaoPainel code { display: block; overflow-wrap: anywhere; }
+
+.gestaoNavegacao { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.gestaoPainel .gestaoNavegacao button { min-height: 44px; margin: 0; border: 1px solid #526276; }
+.gestaoNavegacao button[aria-pressed=true] { background: #214968; border-color: #8fcef8; }
+.gestaoArea[hidden] { display: none; }
+.gestaoCadastro { border: 1px solid #526276; border-radius: 8px; padding: 16px; margin: 16px 0; }
+.gestaoPainel details { margin: 12px 0; }
+.gestaoPainel summary { cursor: pointer; padding: 12px; border: 1px solid #526276; border-radius: 6px; min-height: 24px; }
+.gestaoPainel details[open] > summary { background: #214968; }
+.gestaoPainel button:focus-visible, .gestaoPainel summary:focus-visible { outline: 3px solid #8fcef8; outline-offset: 3px; }
+.gestaoPainel .gestaoExcluir { border: 1px solid #eb9d9d; color: #ffd0d0; }
+@media (max-width: 600px) { .gestaoPainel { width: calc(100vw - 32px); padding: 12px; } .gestaoNavegacao button { flex: 1 1 40%; } }

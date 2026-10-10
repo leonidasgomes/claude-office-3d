@@ -44,7 +44,7 @@ const eventos={};
 const contexto=vm.createContext({document:{body,hidden:false,getElementById:id=>botoes[id]||null,documentElement:{classList:{contains:()=>compacto}},createElement:t=>new Elemento(t),addEventListener(){}},
   window:{__opcoes:{fechar:foco=>menusFechados.push(foco)},addEventListener:(nome,fn)=>{eventos[nome]=fn;},dispatchEvent:e=>eventos[e.type]?.(e)},
   CustomEvent:class {constructor(type,opts={}){this.type=type;this.detail=opts.detail;}},
-  fetch:async()=>({ok:true,json:async()=>dados}),formularioFuncionarios:vazio,formularioExecutores:vazio,
+  fetch:async()=>({ok:true,json:async()=>dados}),formularioFuncionarios:vazio,formularioExecutores:vazio,formularioEquipe:vazio,botaoExcluir:vazio,
   formularioCoordenacao:vazio,renderizarCoordenacoes(){},renderizarPedidos(){},
   botaoExecutarCoordenacao:vazio,botaoConciliarPedido:vazio,clearInterval(){},setInterval(){},location:{}});
 const fonte=fs.readFileSync(new URL('../gestao_painel.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
@@ -126,3 +126,13 @@ compacto=true;
 vm.runInContext('painel.handlers.close()',contexto);
 assert.equal(botoes.btnMenu.focado,true);
 console.log('Gestão no menu: abertura e retorno de foco no PC e celular — OK');
+
+const secao=vm.runInContext('corpo.children.find(x=>x.dataset.projeto=== "'+ 'a'.repeat(20)+'")',contexto);
+const nav=secao.children.find(x=>x.className==='gestaoNavegacao');
+assert.deepEqual(nav.children.map(b=>b.textContent),['CEO e diretor','Equipes','Funcionários','Trabalho e indicadores']);
+const areas=secao.children.filter(x=>x.className==='gestaoArea');
+assert.equal(areas.filter(x=>!x.hidden).length,1);
+nav.children[2].handlers.click();assert.equal(areas[2].hidden,false);assert.equal(areas[0].hidden,true);
+await vm.runInContext('carregar()',contexto);
+assert.equal(vm.runInContext('areasEscolhidas.get("'+ 'a'.repeat(20)+'")',contexto),'funcionarios');
+console.log('Navegação de Gestão: áreas visíveis, troca e escolha preservada — OK');

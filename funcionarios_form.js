@@ -1,7 +1,7 @@
 // Cadastro explícito; carregar o painel não cria funcionários nem inicia consoles.
-export function formularioFuncionarios(projeto, atualizar) {
+export function formularioFuncionarios(projeto, atualizar, funcionario = null) {
   const detalhes = document.createElement('details');
-  const resumo = document.createElement('summary'); resumo.textContent = 'Cadastrar especialista'; detalhes.append(resumo);
+  const resumo = document.createElement('summary'); resumo.textContent = funcionario ? `Editar ${funcionario.nome}` : 'Cadastrar funcionário'; detalhes.append(resumo);
   const form = document.createElement('form'); detalhes.append(form);
   function campo(titulo, elemento) {
     elemento.setAttribute('aria-label',titulo);
@@ -44,18 +44,28 @@ export function formularioFuncionarios(projeto, atualizar) {
   }
   console.addEventListener('change', () => {modelo.value = ''; origem.value = ''; atualizarSkills();});
   execucao.addEventListener('change', atualizarSkills);
+  if (funcionario) {
+    nome.value=funcionario.nome;funcao.value=funcionario.funcao;equipe.value=funcionario.equipe;
+    console.value=funcionario.executor.console;modelo.value=funcionario.executor.modelo||'';
+    execucao.value=funcionario.executor.execucao;origem.value=funcionario.executor.cloud||'';
+    for(const input of selecionados)input.checked=funcionario.skills.includes(input.value);
+  } else if(projeto.ceo) {
+    console.value=projeto.ceo.console;modelo.value=projeto.ceo.modelo||'';
+  }
   atualizarSkills();
   const aviso = document.createElement('p'); aviso.textContent = 'Herda as permissões nativas do console e as regras do projeto. Cadastro não inicia trabalho. Local exige modelo instalado e respeita a proteção de recursos.'; form.append(aviso);
-  const enviar = document.createElement('button'); enviar.type = 'submit'; enviar.textContent = 'Salvar especialista'; form.append(enviar);
+  const enviar = document.createElement('button'); enviar.type = 'submit'; enviar.textContent = funcionario ? 'Salvar alterações' : 'Cadastrar funcionário'; form.append(enviar);
   const status = document.createElement('p'); status.setAttribute('role','status'); form.append(status);
   form.addEventListener('submit', async ev => {
     ev.preventDefault(); enviar.disabled = true;
     const executor = {console: console.value, modelo: modelo.value.trim(), execucao: execucao.value};
     if (console.value === 'opencode' && execucao.value === 'cloud' && origem.value) executor.cloud = origem.value;
     try {
-      const r = await fetch('/api/gestao/funcionarios', {method:'POST', headers:{'Content-Type':'application/json','X-Office-Acao':'1'}, body:JSON.stringify({projeto_id:projeto.id, funcionario:{nome:nome.value.trim(),funcao:funcao.value.trim(),equipe:equipe.value,executor,skills:selecionados.filter(e=>e.checked).map(e=>e.value)}})});
+      const cadastro={nome:nome.value.trim(),funcao:funcao.value.trim(),equipe:equipe.value,executor,skills:selecionados.filter(e=>e.checked).map(e=>e.value)};
+      const pedido=funcionario ? {projeto_id:projeto.id,versao:projeto.politica_versao,tipo:'funcionario',acao:'editar',id:funcionario.id,anterior:funcionario,funcionario:cadastro} : {projeto_id:projeto.id,funcionario:cadastro};
+      const r = await fetch(funcionario ? '/api/gestao/cadastros' : '/api/gestao/funcionarios', {method:'POST', headers:{'Content-Type':'application/json','X-Office-Acao':'1'}, body:JSON.stringify(pedido)});
       const dados = await r.json(); if (!r.ok) throw new Error(dados.erro || `Servidor respondeu ${r.status}`);
-      status.textContent = `Especialista ${dados.funcionario.nome} salvo.`; form.reset(); await atualizar();
+      status.textContent = `Funcionário ${dados.funcionario.nome} salvo.`; form.reset(); detalhes.open=false; await atualizar();
     } catch(e) { status.textContent = `Cadastro indisponível: ${e.message}`; }
     finally { enviar.disabled = false; }
   });
