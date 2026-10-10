@@ -65,6 +65,16 @@ class DespachoRevisao(unittest.TestCase):
         self.executar(lambda *a,**kw:self.relatorio(),rodar=rodar)
         self.assertEqual(recebidos,['workspace-write'])
 
+    def test_revisor_desativado_bloqueia_antes_de_reservar_mover_ou_inferir(self):
+        self.cfg['revisao']['revisores'][0]['ativo']=False
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        chamadas=[]
+        with self.assertRaisesRegex(ValueError,'revisores suficientes'):
+            self.executar(lambda *a,**kw:chamadas.append('revisor'),rodar=lambda *a,**kw:chamadas.append('autor'))
+        self.assertEqual(chamadas,[])
+        self.assertEqual(self.moves,[])
+        self.assertFalse(self.db.exists())
+
     def test_erro_novos_consoles_com_exit_zero_bloqueia_kanban_e_revisao(self):
         import console_provider,contextlib,io
         self.cfg['revisao']['ativo']=False

@@ -173,8 +173,10 @@ def validar(dados):
     clouds = set()
     for revisor in revisao["revisores"]:
         _objeto(revisor, "revisor")
-        if set(revisor) != {"nome", "executor"}:
+        if not {"nome", "executor"} <= set(revisor) or set(revisor)-{"nome", "executor", "ativo"}:
             raise ValueError("Revisor exige nome e executor")
+        if 'ativo' in revisor and type(revisor['ativo']) is not bool:
+            raise ValueError('Revisor: ativo deve ser booleano')
         nome = revisor["nome"]
         if not isinstance(nome, str) or not nome.strip() or nome.casefold() in nomes_revisores:
             raise ValueError("Revisor sem nome ou duplicado")
@@ -224,6 +226,8 @@ def revisores(cfg, autor):
     autor_cloud = cloud_executor(autor)
     usados, escolhidos = set(), []
     for revisor in politica["revisores"]:
+        if revisor.get('ativo',True) is False:
+            continue
         cloud = cloud_executor(revisor["executor"])
         if cloud in usados or (politica["separar_autor"] and cloud == autor_cloud):
             continue

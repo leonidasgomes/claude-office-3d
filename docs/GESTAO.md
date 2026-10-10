@@ -1,5 +1,13 @@
 # Gestão do escritório por projeto
 
+Cada item de `revisao.revisores` aceita `ativo: false` para suspender um revisor
+indisponível, conservando nome e executor. O campo omitido conserva o comportamento
+anterior. Suspender um revisor não desativa a revisão nem reduz `clouds_distintas`:
+a seleção considera somente os habilitados e bloqueia antes de chamar qualquer
+modelo quando faltam fornecedores independentes do autor. Reative explicitamente
+com `ativo: true` após conferir acesso no console. Alterar a política invalida
+relatórios anteriores; não autentica, não troca modelo e não inicia agentes.
+
 ## Desempenho e resultado das tentativas
 
 Gestão agrupa as execuções dos últimos sete dias por equipe, console, modelo

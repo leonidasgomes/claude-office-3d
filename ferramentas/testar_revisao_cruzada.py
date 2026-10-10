@@ -13,6 +13,24 @@ AUTOR = {"console": "claude", "modelo": ""}
 
 
 class Revisao(unittest.TestCase):
+    def test_revisor_indisponivel_nao_e_chamado_nem_conta_para_diversidade(self):
+        cfg=self.cfg()
+        anterior=revisar(cfg,AUTOR,SHA,'diff','aceite','regras',lambda *_:{'veredito':'aprovado','achados':[]})
+        cfg['revisao']['revisores'][2]['ativo']=False
+        self.assertTrue(validar(cfg)['revisao']['ativo'])
+        chamadas=[]
+        with self.assertRaises(ValueError):
+            revisar(cfg,AUTOR,SHA,'diff','aceite','regras',lambda *a:chamadas.append(a))
+        self.assertEqual(chamadas,[])
+        self.assertFalse(conferir(cfg,anterior,SHA))
+        self.assertFalse(decidir_merge(cfg,{'CI':'success'},relatorio_revisao=anterior,sha=SHA))
+        self.assertEqual(validar(cfg)['revisao']['revisores'][2]['executor']['console'],'gemini')
+        cfg['revisao']['revisores'][2]['ativo']=True
+        self.assertEqual([r['nome'] for r in revisores(cfg,AUTOR)],['Codex','Gemini'])
+        for valor in (0,1,'false',None):
+            cfg['revisao']['revisores'][2]['ativo']=valor
+            with self.subTest(valor=valor),self.assertRaises(ValueError):validar(cfg)
+
     def test_aliases_do_mesmo_fornecedor_nao_criam_diversidade(self):
         from gestao_projeto import cloud_executor
         familias={'openai':['OpenAI','Open AI','open-ai','OpenAI API','ＯｐｅｎＡＩ'],
