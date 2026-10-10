@@ -183,6 +183,7 @@ def extras():
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     guardar = banco.ARQ, banco.EVENTOS_JSONL, servidor.MAX_PERIODO
     with tempfile.TemporaryDirectory() as tmp:
         banco.ARQ = Path(tmp) / "escritorio.db"

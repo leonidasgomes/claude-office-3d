@@ -214,9 +214,31 @@ def evento(d):
             "detalhe": detalhe_de(entrada), **resultado_de(nome_evento, ferramenta, d)}
 
 
+def principal_no_stream(d):
+    """Só este hook, nesta sessão; filhos e comunicação mantêm eventos nativos."""
+    if not isinstance(d, dict):
+        return False
+    caminho = os.environ.get('OFFICE_CLAUDE_STREAM_HOOK')
+    sessao = os.environ.get('OFFICE_CLAUDE_STREAM_SESSION')
+    if not caminho or not sessao or d.get('session_id') != sessao:
+        return False
+    try:
+        if Path(caminho).resolve() != Path(__file__).resolve():
+            return False
+    except (OSError, ValueError):
+        return False
+    if any(d.get(c) for c in ('agent_id', 'teammate_name', 'agent_name', 'agent_transcript_path')):
+        return False
+    if d.get('tool_name') in ('Agent', 'Task', 'SendMessage'):
+        return False  # relações/comunicação continuam sendo a semântica do hook
+    return d.get('hook_event_name') in ('PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop')
+
+
 def main():
     try:
         d = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace") or "{}")
+        if principal_no_stream(d):
+            sys.exit(0)
         # o hook pode valer para todas as sessões do usuário: só registra o que é dos projetos monitorados
         if CFG["projetos"] and not configuracao.pasta_dentro(d.get("cwd", ""), CFG["projetos"]):
             sys.exit(0)

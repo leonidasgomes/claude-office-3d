@@ -231,6 +231,24 @@ def auditar(seco=False, log=print, cfg=None):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     seco = "--seco" in sys.argv
+    base=configuracao.carregar()
+    if '--projeto' in sys.argv:
+        try:
+            i=sys.argv.index('--projeto');projeto=Path(sys.argv[i+1]).resolve()
+            if projeto not in [Path(p).resolve() for p in base['projetos']]:raise ValueError('Projeto não cadastrado')
+            import auditor_projeto,xp_projeto
+            if seco:
+                ctx=xp_projeto.contexto(projeto,base)
+                print(json.dumps({'somente_previa':True,'candidatos':auditor_projeto.candidatos(ctx)},ensure_ascii=False))
+            else:
+                feitos=auditor_projeto.auditar(projeto,base)
+                print(json.dumps({'consultivo':True,'pareceres':feitos},ensure_ascii=False))
+            return 0
+        except (IndexError,ValueError,OSError,RuntimeError,TypeError):
+            print('Auditor do projeto indisponível; confira política, Placar e acesso',file=sys.stderr);return 2
+    import kanban_painel
+    if kanban_painel.habilitado(base['projetos']):
+        print('Gestão ativa exige --projeto PASTA; auditor global não será usado',file=sys.stderr);return 2
     feitos = auditar(seco=seco)
     if not feitos and not seco:
         print("nenhum amarelo pendente auditado nesta rodada")

@@ -53,6 +53,16 @@ ROTAS_PUBLICAS = ("/manifest.webmanifest", "/icone-192.png", "/icone-512.png")
 PERMISSAO_ROTA = {"/api/xp/conferido": {"pc", "conferir"}, "/api/xp/desfazer": {"pc", "conferir"}, "/api/xp/liberar": {"pc"},
                   # sugestões do bot de revisão: tratar (encaminhar/ignorar/resolver) é só do PC; o celular só lê (GET)
                   "/api/sugestoes/tratar": {"pc"},
+                  "/api/gestao/funcionarios": {"pc"},
+                  "/api/gestao/funcionarios/perfil": {"pc"},
+                  "/api/gestao/executores": {"pc"},
+                  "/api/gestao/merge": {"pc"},
+                  "/api/gestao/modelos": {"pc"},
+                  "/api/gestao/coordenar": {"pc"},
+                  "/api/gestao/coordenacao/executar": {"pc"},
+                  "/api/gestao/coordenacao/conciliar": {"pc"},
+                  "/api/gestao/retomar": {"pc"},
+                  "/api/gestao/retomada/conciliar": {"pc"},
                   # painel Saúde: ignorar/reativar um item e avisar o líder (pedido entregue pelo vigia) são só do PC
                   "/api/saude/ignorar": {"pc"}, "/api/saude/avisar": {"pc"}, "/api/saude/triagem": {"pc"},
                   # alertas (push.py): qualquer aparelho pareado (ver ou mais) e o PC inscrevem o próprio navegador

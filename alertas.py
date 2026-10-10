@@ -29,9 +29,10 @@ MAX_FILA = 200
 INTERVALO = 60                 # s entre leituras do detector
 REPETICAO_PR = 1800            # s: o mesmo alerta de PR não se repete antes disso (checks que piscam)
 LEMBRETE_INTERVALO = 86400     # no máximo 1 lembrete por dia
-PAINEIS = {"prs": "/#alerta=prs", "placar": "/#alerta=placar", "saude": "/#alerta=saude"}
+PAINEIS = {"prs": "/#alerta=prs", "placar": "/#alerta=placar", "saude": "/#alerta=saude", "gestao": "/#alerta=gestao"}
 
 TIPOS = [
+    {"id": "tarefa_pendente", "rotulo": "Tarefa bloqueada, falha ou tentativa sem retorno", "padrao": True, "painel": "gestao"},
     {"id": "pr_pronto", "rotulo": "PR pronto para o seu merge", "padrao": True, "painel": "prs"},
     {"id": "pr_problema", "rotulo": "PR com conflito ou reprovado", "padrao": True, "painel": "prs"},
     {"id": "auditoria", "rotulo": "Auditoria vermelha nova no placar", "padrao": True, "painel": "placar"},
@@ -333,12 +334,49 @@ def _detectar_eventos(est, total, eventos, opc, novos):
     est["eventos"], base["eventos"] = total, True
 
 
+def _detectar_tarefas(est, fonte, agora, novos):
+    """Novidade registrada; espera de 30 min não significa agente morto."""
+    atuais={}
+    rotulos={'bloqueada':'tarefa bloqueada','falha':'última tentativa falhou',
+             'sem_retorno':'tentativa sem retorno há pelo menos 30 min',
+             'sem_medicao':'execução sem medição há pelo menos 30 min'}
+    for t in fonte.get('pendencias',[]):
+        registro=t.get('registro')
+        if not isinstance(registro,str) or not re.fullmatch('[0-9a-f]{32}',registro):continue
+        sinais=[]
+        atividade=t.get('atividade') or {}
+        sinal=atividade.get('ultimo_sinal')
+        recente=(type(sinal) in (int,float) and 0<=agora-sinal<=60
+                 and atividade.get('estado')=='acompanhando' and atividade.get('console_observado') is True
+                 and atividade.get('codigo_console') is None)
+        for sinal in t.get('sinais',[]):
+            if sinal not in rotulos:continue
+            if sinal=='sem_retorno' and recente:continue
+            data=t.get('inicio') if sinal=='sem_retorno' else t.get('atualizado')
+            if sinal in ('sem_retorno','sem_medicao') and (type(data) not in (int,float) or agora-data<1800):continue
+            sinais.append(sinal)
+        if sinais:atuais[registro+':'+','.join(sorted(sinais))]=(t,sinais)
+    anteriores=set(est.get('tarefas',[]))
+    if est.get('base',{}).get('tarefas'):
+        for chave in sorted(set(atuais)-anteriores):
+            t,sinais=atuais[chave]
+            novos.append(_alerta('tarefa_pendente','Tarefa requer conferência',
+                f"Cartão #{_push.sanear(t.get('cartao',''),40)} · {_push.sanear(t.get('equipe',''),30)} · {_push.sanear(t.get('console',''),20)}: "+'; '.join(rotulos[s] for s in sinais)+'.',
+                'tarefa:'+chave,'Confira console e worktree antes de retomar; o registro não confirma processo vivo ou encerrado.'))
+    # Cobertura parcial não comprova resolução de registros fora da janela.
+    est['tarefas']=sorted(anteriores|set(atuais) if fonte.get('limitado') else atuais)
+    est.setdefault('base',{})['tarefas']=True
+
+
 def detectar(est, entradas, agora, opc):
     """Compara as entradas com o estado `est` (alterado no lugar) e devolve a lista de alertas novos (sem id/ts).
     entradas: {"prs": dict do /prs, "placar": dict do /xp, "eventos": (total, [eventos novos]), "escalonamentos": dict,
     "sugestoes": dict do /api/sugestoes (com "pronto"), "cota": dict do vigia da cota}.
     Fonte ausente, com erro ou vazia por falha não apaga o estado (nada de alerta falso quando o gh cai)."""
     novos = []
+    escopo=entradas.get('projetos')
+    if isinstance(escopo,dict) and escopo.get('ativo'):
+        entradas={k:v for k,v in entradas.items() if k in ('projetos','cota')}
     d, sg = entradas.get("prs"), entradas.get("sugestoes")
     # com bots/revisor ativos, o PRONTO ainda não calculado (logo depois de reiniciar) não conta: sem ele todo PR aprovado
     # viraria "espera" e voltaria a "pronto" na rodada seguinte, repetindo o pr_pronto e zerando o lembrete
@@ -363,6 +401,26 @@ def detectar(est, entradas, agora, opc):
     sd = entradas.get("saude")
     if isinstance(sd, dict) and not sd.get("erro"):
         _detectar_saude(est, sd, agora, novos)
+    projetos=entradas.get('projetos')
+    if isinstance(projetos,dict) and projetos.get('ativo'):
+        estados=est.setdefault('projetos',{})
+        for projeto in projetos.get('projetos',[]):
+            if not isinstance(projeto,dict) or projeto.get('erro'):continue
+            ident=projeto.get('projeto_id');chave=projeto.get('chave');repo=projeto.get('repo')
+            if not isinstance(ident,str) or not isinstance(chave,str) or not isinstance(repo,str):continue
+            dados=projeto.get('entradas',{})
+            # Somente fontes com vínculo comprovado; não aceita pronto/PRs globais.
+            tarefas=dados.get('tarefas')
+            dados={k:v for k,v in dados.items() if k in ('sugestoes','placar')}
+            estado_projeto=estados.setdefault(chave,{})
+            avisos=detectar(estado_projeto,dados,agora,opc)
+            if isinstance(tarefas,dict):_detectar_tarefas(estado_projeto,tarefas,agora,avisos)
+            for a in avisos:
+                a.update(projeto_id=ident,repo=repo,politica_versao=projeto.get('politica_versao',''))
+                a['chave']='projeto:'+chave+':'+a['chave']
+                a['titulo']=_push.sanear(projeto.get('nome','Projeto'),40)+': '+a['titulo']
+                a['url']+='&projeto='+ident
+                novos.append(a)
     ult = est.get("ultimo", {})   # esquece chaves com mais de 2 dias
     est["ultimo"] = {k: v for k, v in ult.items() if agora - v < 2 * 86400}
     return novos
@@ -481,14 +539,19 @@ class Alertas:
         """Uma leitura do detector. Devolve os alertas que saíram. Falha de uma fonte não derruba as outras."""
         agora = time.time() if agora is None else agora
         ent = {}
+        if self.fontes.get('projetos'):
+            try:ent['projetos']=self.fontes['projetos']()
+            except Exception:ent['projetos']={'ativo':True,'erro':'Fontes por projeto indisponíveis'}
+        gestao=isinstance(ent.get('projetos'),dict) and ent['projetos'].get('ativo')
         for nome in ("prs", "placar", "escalonamentos", "sugestoes", "cota", "saude"):
+            if gestao and nome!='cota':continue
             fn = self.fontes.get(nome)
             if fn:
                 try:
                     ent[nome] = fn()
                 except Exception as e:   # fonte fora do ar: segue sem ela
                     print(f"[alertas] fonte {nome}: {str(e)[:120]}", flush=True)
-        if self.fontes.get("eventos"):
+        if self.fontes.get("eventos") and not gestao:
             try:
                 ent["eventos"] = self.fontes["eventos"](self.estado.get("eventos", 0))
             except Exception as e:

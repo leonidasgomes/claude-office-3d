@@ -4,6 +4,7 @@
 // Com o Kanban ligado, também lê o /kanban em segundo plano e avisa a cena com o evento "kanban" (quadro na parede e aba
 // Cartões da ficha); o servidor responde do cache, então isso não gasta a cota do GitHub.
 import { CONFIG, agenteConfig, temServidor } from './config.js';
+import { seletorProjetos } from './kanban_projetos.mjs';
 
 const MAX_CONCLUIDO = 15;           // a coluna de concluídos cresce sem parar: mostra só os mais recentes
 const ATUALIZAR_MS = 60000;
@@ -14,6 +15,13 @@ const GH = CONFIG.github;
 const $ = (id) => document.getElementById(id);
 const painel = $('kanban'), colunasEl = $('kanbanColunas'), filtrosEl = $('kanbanFiltros'), infoEl = $('kanbanInfo');
 let dados = null, filtro = '', timer = null;
+let requisicao = 0;
+const seletor = seletorProjetos(infoEl, () => {
+  filtro = '';
+  dados = {cartoes: [], projeto: '', atualizado: '', erro: 'Carregando o projeto selecionado…'};
+  window.dispatchEvent(new CustomEvent('kanban', {detail: dados}));
+  desenhar(); carregar();
+});
 $('kanbanTitulo').textContent = 'Kanban — ' + CONFIG.titulo;
 
 function el(tag, cls, texto) {
@@ -35,9 +43,10 @@ function infoTime(t) {
   const ag = agenteDoTime(t);
   return ag ? { agente: ag.titulo, cor: ag.cor } : { agente: t, cor: '#64748b' };
 }
-const ehConcluida = (s) => CONCLUIDAS.includes(String(s || '').toLowerCase());
+const ehConcluida = (s) => dados?.fonte === 'gestao' ? s === dados.concluido : CONCLUIDAS.includes(String(s || '').toLowerCase());
 // ordem das colunas: github.colunas, ou a ordem em que aparecem com as concluídas no fim
 function colunas(cartoes) {
+  if (dados?.fonte === 'gestao') return dados.colunas || [];
   if (GH.colunas && GH.colunas.length) return GH.colunas;
   return [...new Set(cartoes.map((c) => c.status))].sort((a, b) => ehConcluida(a) - ehConcluida(b));
 }
@@ -115,14 +124,19 @@ function desenhar() {
 }
 
 async function carregar() {
+  const atual = ++requisicao;
   if (!temServidor) {
     dados = { configurado: false, cartoes: [], erro: 'sem servidor: abra o escritório pelo abrir_escritorio (.bat ou .sh) para ver o Kanban.' };
     return desenhar();
   }
   try {
-    const r = await fetch('/kanban', { cache: 'no-store' });
-    dados = await r.json();
+    const r = await fetch(seletor.url(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP');
+    const recebido = await r.json();
+    if (atual !== requisicao) return;
+    dados = recebido; seletor.receber(dados);
   } catch (e) {
+    if (atual !== requisicao) return;
     dados = dados || { cartoes: [], atualizado: '', projeto: '' };
     dados.erro = 'servidor do escritório fora do ar (abra pelo abrir_escritorio)';
   }

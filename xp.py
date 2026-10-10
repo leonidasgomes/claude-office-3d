@@ -75,6 +75,20 @@ AMOSTRA_1_EM = XP["amostra_1_em"]   # 1 em cada N PRs vai para conferência huma
 PREFIXOS = XP["atribuicao"]["prefixos_branch"]
 AGENTE_PADRAO = XP["atribuicao"]["padrao"]
 AGENTES_BASE = [a["nome"] for a in CFG["agentes"] if not a["auxiliar"]]
+CONTEXTO_PROJETO = None
+DECISOES = banco
+
+def configurar_projeto(projeto):
+    """Só no processo CLI XP; nunca troca globals do servidor ou do banco legado."""
+    global CONTEXTO_PROJETO,DECISOES,CFG,XP,GITHUB,PESOS,NIVEIS,RE_ARQ_TESTE,RE_ARQ_AVAL,AMOSTRA_1_EM,PREFIXOS,AGENTE_PADRAO,AGENTES_BASE,TIMES,PASTA_XP,ESTADO,PLACAR
+    from xp_projeto import contexto
+    CONTEXTO_PROJETO=contexto(projeto,configuracao.carregar())
+    CFG=CONTEXTO_PROJETO['cfg'];XP=CFG['xp'];GITHUB=CFG['github'];PESOS=XP['pesos'];NIVEIS=XP['niveis']
+    RE_ARQ_TESTE=re.compile('|'.join(f'(?:{p})' for p in XP['padroes_teste']),re.I)
+    RE_ARQ_AVAL=re.compile('|'.join(f'(?:{p})' for p in XP['padroes_avaliacao']),re.I)
+    AMOSTRA_1_EM=XP['amostra_1_em'];PREFIXOS=XP['atribuicao']['prefixos_branch'];AGENTE_PADRAO=XP['atribuicao']['padrao']
+    AGENTES_BASE=[a['nome'] for a in CFG['agentes']];TIMES=mapa_times()
+    PASTA_XP=CONTEXTO_PROJETO['pasta'];ESTADO=CONTEXTO_PROJETO['estado'];PLACAR=CONTEXTO_PROJETO['placar'];DECISOES=CONTEXTO_PROJETO['decisoes']
 
 
 def _saida():
@@ -140,6 +154,10 @@ def _campo(item, nome):
 
 
 def ler_kanban():
+    if CONTEXTO_PROJETO is not None:
+        from kanban_gestao import Kanban
+        k=Kanban(CONTEXTO_PROJETO['politica'],CONTEXTO_PROJETO['kanban_cache'])
+        return {str(i['numero']):{'time':i['equipe'],'status':i['status'],'tipo':'Issue'} for i in k.cartoes(ao_vivo=True)}
     out = gh(["project", "item-list", str(GITHUB["projeto_numero"]), "--owner", GITHUB["projeto_owner"], "--format",
               "json", "--limit", "500"], timeout=60)
     cartoes = {}
@@ -420,6 +438,7 @@ def citacoes_posteriores(pr, todos):
 def cartao_feito(c):
     final = str((GITHUB.get("colunas") or [""])[-1]).strip().lower()
     st = str((c or {}).get("status") or "").strip().lower()
+    if CONTEXTO_PROJETO is not None:return bool(st) and st==final
     return bool(st) and (st in COLUNAS_FINAIS or st == final)
 
 
@@ -470,6 +489,7 @@ def pontuar(pr, fatos, atrib, cartoes, todos, resolvidas, conferidos):
 # ---- Skills ---------------------------------------------------------------------------------------------------
 def pontos_skills():
     """Devolve {agente: {'pontos':N,'motivos':[...],'autor':[nomes],'reusadas':N}} a partir de skills.py e dos eventos."""
+    if CONTEXTO_PROJETO is not None:return {}  # histórico global não comprova uso neste projeto
     try:
         import skills
     except Exception:
@@ -529,9 +549,9 @@ def marcar(argv):
     # banco local (banco.py, tabela decisao_xp): guarda quem decidiu (--origem) e por quê (--motivo)
     opc = {k: argv[argv.index(k) + 1] for k in ("--origem", "--motivo") if k in argv and argv.index(k) + 1 < len(argv)}
     if flag == "--desfazer":
-        banco.desfazer(n)
+        DECISOES.desfazer(n)
     else:
-        banco.decidir(n, "liberado" if flag == "--liberar" else "conferido", opc.get("--origem", "linha de comando"),
+        DECISOES.decidir(n, "liberado" if flag == "--liberar" else "conferido", opc.get("--origem", "linha de comando"),
                       opc.get("--motivo", ""))
     print({"--liberar": f"PR #{n} liberado da auditoria.", "--conferido": f"PR #{n} marcado como conferido.",
            "--desfazer": f"PR #{n} volta a ser auditado/conferido."}[flag])
@@ -540,6 +560,18 @@ def marcar(argv):
 
 def main():
     _saida()
+    if '--projeto' in sys.argv:
+        i=sys.argv.index('--projeto')
+        if i+1>=len(sys.argv):raise ValueError('Informe --projeto PASTA')
+        raiz=Path(sys.argv[i+1]).resolve()
+        if raiz not in [Path(p).resolve() for p in configuracao.carregar()['projetos']]:raise ValueError('Projeto não cadastrado no escritório')
+        configurar_projeto(raiz)
+        if '--versao-politica' in sys.argv:
+            j=sys.argv.index('--versao-politica')
+            if j+1>=len(sys.argv) or sys.argv[j+1]!=CONTEXTO_PROJETO['versao']:raise ValueError('Política mudou antes da ação XP')
+    else:
+        from kanban_painel import habilitado
+        if habilitado(configuracao.carregar()['projetos']):raise ValueError('Gestão por projeto exige --projeto PASTA; XP global não será usado')
     if not XP["ativo"]:
         print('XP desligado: ponha "xp": {"ativo": true} no config.json (ou rode instalar.py de novo).')
         return 0
@@ -552,6 +584,7 @@ def main():
     repo = GITHUB["repo"]
     estado = {} if completo else carregar(ESTADO, {})
     assinatura = json.dumps([repo, GITHUB["check_revisao"], XP["padroes_teste"], XP["padroes_avaliacao"]], ensure_ascii=False)
+    if CONTEXTO_PROJETO is not None:assinatura+=json.dumps(CONTEXTO_PROJETO['politica']['kanban'],sort_keys=True)
     if estado.get("assinatura") != assinatura:   # repositório, check ou padrões de teste/avaliação mudaram: refaz tudo
         estado = {"assinatura": assinatura}
     estado["regra"] = REGRA_VERSAO
@@ -616,7 +649,7 @@ def main():
         estado["lista"] = prs   # PRs mergeados (metadados): permite recalcular o placar sem o GitHub (--so-placar)
     gravar_json(ESTADO, estado)
 
-    resolvidas, conferidos = banco.decisoes("liberado"), banco.decisoes("conferido")
+    resolvidas, conferidos = DECISOES.decisoes("liberado"), DECISOES.decisoes("conferido")
     agentes = {a: novo_agente() for a in AGENTES_BASE}
     resultados, ignorados = [], 0
     for pr in sorted(prs, key=lambda p: p["mergedAt"]):
@@ -674,6 +707,11 @@ def main():
     }
     if avisos:
         placar["avisos"] = avisos
+    if CONTEXTO_PROJETO is not None:
+        from politica_painel import snapshot
+        if snapshot(CONTEXTO_PROJETO['raiz'])[1]!=CONTEXTO_PROJETO['versao']:raise ValueError('Política mudou durante cálculo do XP')
+        placar.update(projeto_id=CONTEXTO_PROJETO['id'],politica_versao=CONTEXTO_PROJETO['versao'],
+                      cobertura_skills='Uso global não atribuído ao projeto',fonte='gestao')
     gravar_json(PLACAR, placar)
 
     t = placar["time"]
@@ -695,4 +733,5 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:sys.exit(main())
+    except (ValueError,OSError) as e:print('XP: '+str(e),file=sys.stderr);sys.exit(2)

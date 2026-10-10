@@ -5,7 +5,10 @@ glossario_triagem.md
 __pycache__/
 .venv/
 config.json
+precos_tokens.json
 config.json.bak-*
+cadastro.edicao.lock
+cadastro-*.tmp
 dados/
 dist/
 vendor/

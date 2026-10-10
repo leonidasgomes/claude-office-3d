@@ -1,0 +1,37 @@
+{
+  "versao": 1,
+  "ativo": false,
+  "fontes": {
+    "regras": "CLAUDE.md",
+    "produto": "PRODUTO.md",
+    "arquitetura": "docs/ARCHITECTURE_GRAPH.yaml",
+    "skills": ".claude/skills"
+  },
+  "merge": {"modo": "manual", "checks": [], "rotulos_manuais": ["merge-manual"]},
+  "ceo": {"console": "codex", "modelo": "", "execucao": "cloud", "autonomia": "limites_aprovados"},
+  "diretor": {"console": "codex", "modelo": "", "execucao": "cloud"},
+  "equipes": [
+    {"nome": "Dev", "especialidade": "Implementação e testes", "executor": {"console": "codex", "modelo": "", "execucao": "cloud"}},
+    {"nome": "Pesquisa", "especialidade": "Dados e pesquisa", "executor": {"console": "opencode", "modelo": "opencode/space-bunny-free", "execucao": "cloud"}}
+  ],
+  "rotas": {},
+  "sugestoes": {"ativo": false, "bots": [], "triagem": false},
+  "auditor": {"ativo": false, "max_diff": 60000, "max_prs": 3},
+  "revisao": {
+    "ativo": false,
+    "clouds_distintas": 2,
+    "separar_autor": true,
+    "revisores": [
+      {"nome": "Revisor Anthropic", "executor": {"console": "claude", "modelo": "", "execucao": "cloud"}},
+      {"nome": "Revisor OpenAI", "executor": {"console": "codex", "modelo": "", "execucao": "cloud"}},
+      {"nome": "Revisor Google", "executor": {"console": "gemini", "modelo": "", "execucao": "cloud"}}
+    ]
+  },
+  "kanban": {
+    "repo": "", "owner": "", "numero": 0, "tipo_owner": "users",
+    "campo_status": "Status", "campo_time": "Time",
+    "campo_prioridade": "Prioridade", "campo_etapa": "Etapa GDD", "prioridades": [],
+    "backlog": "Backlog", "andamento": "Em andamento", "revisao": "Em revisão", "feito": "Feito"
+  },
+  "local": {"ativo": false, "team": false, "max_paralelo": 1, "ram_livre_min_gb": 8, "bloquear_pesados": true, "cpu_uso_max_pct": 75, "ollama_memoria_max_gb": 4, "vram_livre_min_gb": 2, "gpu_uso_max_pct": 75}
+}

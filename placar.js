@@ -3,6 +3,8 @@
 
 import { CONFIG } from './config.js';
 import { dica } from './dica.js';
+import { instalarIndicadores } from './indicadores_providers.mjs';
+import { seletorProjetos } from './kanban_projetos.mjs';
 
 const ATUALIZAR_MS = 60000;
 const CHAVE_NIVEIS = 'office.xp.niveis', CHAVE_ORDEM = 'office.placar.ordem', CHAVE_PRS = 'office.xp.prs';
@@ -25,6 +27,14 @@ const lerLS = (k, padrao) => { try { const v = localStorage.getItem(k); return v
 const gravarLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 
 let real = null;          // último /xp válido (null = indisponível)
+let revisaoBusca=0;
+const selecaoXP=seletorProjetos(infoEl,()=>{
+  real=null;injetado=false;historico=[];toastEl.hidden=true;custos=null;uso=null;
+  aplicar({agentes:{},time:{}},{fonte:'real'});buscar();
+},{endpoint:'/xp',nome:'Projeto do Placar'});
+window.addEventListener('office-projeto-alerta',e=>{
+  if(e.detail?.painel==='placar')selecaoXP.selecionar(e.detail.projeto);
+});
 let injetado = false;     // __placar.aplicar() manual: não deixa a demonstração sobrescrever
 let demo = null;          // placar falso
 let atual = null;         // dados normalizados em exibição
@@ -54,6 +64,7 @@ function normalizar(obj) {
   }
   const regras = obj.regras && typeof obj.regras === 'object' ? obj.regras : null;   // xp.py: pesos, desde, janela, amostra (ⓘ)
   return { atualizado: obj.atualizado || '', repo: String(obj.repo || ''), niveis, regras, time: obj.time || {}, agentes,
+    projeto_id:obj.projeto_id||'',fonte:obj.fonte||'',erro:obj.erro||'',
     resolvidos: Array.isArray(obj.resolvidos) ? obj.resolvidos.filter((x) => x && Number.isInteger(x.pr)) : [] };
 }
 
@@ -110,10 +121,10 @@ function aplicar(obj, opcoes = {}) {
   // níveis vistos antes: localStorage (dados reais) ou memória (demonstração)
   let anteriores = null;
   if (novaFonte === 'demo') anteriores = novaFonte !== fonte ? null : visto;
-  else { try { anteriores = JSON.parse(lerLS(CHAVE_NIVEIS, 'null')); } catch (e) { anteriores = null; } }
+  else { try { anteriores = JSON.parse(lerLS(CHAVE_NIVEIS+(dados.projeto_id?'.'+dados.projeto_id:''), 'null')); } catch (e) { anteriores = null; } }
   let prsAntes = null;
   if (novaFonte === 'demo') prsAntes = novaFonte !== fonte ? null : vistoPrs;
-  else { try { prsAntes = JSON.parse(lerLS(CHAVE_PRS, 'null')); } catch (e) { prsAntes = null; } }
+  else { try { prsAntes = JSON.parse(lerLS(CHAVE_PRS+(dados.projeto_id?'.'+dados.projeto_id:''), 'null')); } catch (e) { prsAntes = null; } }
   const pausado = !!(o && o.emReplay && o.emReplay());   // replay aberto: não comemora nem grava como visto; a festa fica para depois
   const novos = {}, subiram = [], prsNovos = {}, mergeados = [];
   for (const [nome, d] of Object.entries(dados.agentes)) {
@@ -125,8 +136,8 @@ function aplicar(obj, opcoes = {}) {
     if (!pausado && !subiu && prsAntes && typeof prsAntes[nome] === 'number' && n > prsAntes[nome]) mergeados.push([nome, (d.ultimos || []).find((u) => u && u.pr) || null, n - prsAntes[nome]]);
   }
   if (!pausado) {
-    if (novaFonte === 'demo') vistoPrs = prsNovos; else gravarLS(CHAVE_PRS, JSON.stringify({ ...(prsAntes || {}), ...prsNovos }));
-    if (novaFonte === 'demo') visto = novos; else gravarLS(CHAVE_NIVEIS, JSON.stringify({ ...(anteriores || {}), ...novos }));
+    if (novaFonte === 'demo') vistoPrs = prsNovos; else gravarLS(CHAVE_PRS+(dados.projeto_id?'.'+dados.projeto_id:''), JSON.stringify({ ...(prsAntes || {}), ...prsNovos }));
+    if (novaFonte === 'demo') visto = novos; else gravarLS(CHAVE_NIVEIS+(dados.projeto_id?'.'+dados.projeto_id:''), JSON.stringify({ ...(anteriores || {}), ...novos }));
   }
   fonte = novaFonte; atual = dados;
   if (o) {
@@ -246,7 +257,7 @@ async function pegarJson(url) {
   try { const r = await fetch(url, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; }
 }
 async function carregarSessao() { const j = await pegarJson('/api/sessao'); if (j) sessao = j; if (!painel.hidden && atual) desenhar(); }
-async function carregarHistorico() { const j = await pegarJson('/api/acoes'); if (j && Array.isArray(j.acoes)) historico = j.acoes; if (!painel.hidden && atual) desenharFaixas(); }
+async function carregarHistorico() { if(real?.fonte==='gestao'){historico=[];return;}const j = await pegarJson('/api/acoes'); if(real?.fonte!=='gestao' && j && Array.isArray(j.acoes)) historico = j.acoes; if (!painel.hidden && atual) desenharFaixas(); }
 function permitido(tipo, resolvidoTipo) {
   if (fonte !== 'real' || !sessao) return false;
   if (sessao.permissao === 'pc') return true;
@@ -260,19 +271,23 @@ function nota(tipo) {   // por que não há botão (celular)
 async function acao(tipo, pr, botao) {
   if (ocupado) return;
   ocupado = true;
+  const escopo=real;
   const rotulo = botao ? botao.textContent : '';
   if (botao) { botao.disabled = true; botao.textContent = 'salvando…'; }
   try {
     const cab = { 'Content-Type': 'application/json', 'X-Office-Acao': '1' };
     if (sessao && sessao.csrf) cab['X-Office-Csrf'] = sessao.csrf;
-    const r = await fetch('/api/xp/' + tipo, { method: 'POST', headers: cab, body: JSON.stringify({ pr }) });
+    const payload={pr};if(escopo?.fonte==='gestao'){payload.projeto_id=escopo.projeto_id;payload.versao=escopo.politica_versao;}
+    const r = await fetch('/api/xp/' + tipo, { method: 'POST', headers: cab, body: JSON.stringify(payload) });
     let j = null; try { j = await r.json(); } catch (e) { /* corpo vazio */ }
     if (!r.ok || !j || !j.ok) throw new Error((j && j.erro) || 'HTTP ' + r.status);
+    if(real!==escopo)return;
     normalizar(j.placar);
     real = j.placar; decidir();   // aplica o placar novo sem recarregar a página
     toast('PR #' + pr + ' ' + TEXTO_ACAO[tipo], tipo === 'desfazer' ? 0 : pr);
     carregarHistorico();
   } catch (e) {
+    if(real!==escopo)return;
     if (botao) { botao.disabled = false; botao.textContent = rotulo; }
     toast('Não consegui salvar (PR #' + pr + '): ' + e.message, 0, true);
   } finally { ocupado = false; }
@@ -452,9 +467,21 @@ function desenhar() {
     listaEl.append(li);
   }
   const hora = atual.atualizado ? new Date(atual.atualizado).toLocaleTimeString('pt-BR') : '';
+  if(real?.fonte==='gestao' && real.auditor?.ativo){
+    const det=el('details'),rs=Array.isArray(real.auditor.pareceres)?real.auditor.pareceres:[];
+    det.append(el('summary',null,'Auditor independente · pareceres consultivos'));
+    det.append(el('p',null,real.auditor.erro||real.auditor.limite||'Não autoriza merge ou liberação de XP.'));
+    for(const r of rs){
+      det.append(el('p',null,`PR #${r.pr} · ${r.estado} · ${r.veredito} · commit ${r.sha||'desconhecido'} · ${r.quando||''}`));
+      for(const p of Array.isArray(r.pareceres)?r.pareceres:[]){
+        det.append(el('p',null,`${p.nome} (${p.cloud_declarada}, declarada): ${p.resposta?.motivo||''} ${p.resposta?.evidencia||''}`));
+      }
+    }
+    listaEl.append(det);
+  }
   infoEl.textContent = fonte === 'demo'
     ? (real === null ? '⚠️ placar indisponível — mostrando uma demonstração' : 'modo demonstração — pontos de mentira') + (hora ? ' · ' + hora : '')
-    : 'atualizado às ' + hora + (fonte === 'injetado' ? ' · dados injetados' : '');
+    : (atual.erro || 'atualizado às ' + hora) + (fonte === 'injetado' ? ' · dados injetados' : '');
 }
 function abrir() {
   ['prs', 'kanban'].forEach((id) => { const e = $(id); if (e) e.hidden = true; });
@@ -471,15 +498,18 @@ window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !painel.hi
 
 // ---------------------------------------------------------------- Busca periódica
 async function buscar() {
+  const sequencia=++revisaoBusca;
   try {
-    const r = await fetch('/xp', { cache: 'no-store' });
+    const r = await fetch(selecaoXP.url(), { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
+    if(sequencia!==revisaoBusca)return;
+    selecaoXP.receber(j);if(j.fonte==='gestao')historico=[];
     custos = j.custos || null;   // custo_time.py: US$ por agente e por PR (só com dados reais)
     uso = j.uso || null;         // statusline_uso.py: % do plano na janela de 5 h e na semana, consumo por dia
     normalizar(j);
     real = j;
-  } catch (e) { real = null; }
+  } catch (e) { if(sequencia!==revisaoBusca)return;real = null; }
   decidir();
 }
 function decidir() {   // escolhe entre dados reais e demonstração
@@ -497,6 +527,7 @@ function vigiar() {   // religa a decisão quando o botão Demo muda ou ganha me
   setTimeout(vigiar, 1000);
 }
 if (xpAtivo) {
+  instalarIndicadores(painel, $('placarOrdem'));
   setInterval(() => { if (!injetado && fonte === 'demo') { evoluirDemo(); decidir(); } }, 40000);
   setInterval(() => { if (!document.hidden) buscar(); }, ATUALIZAR_MS);   // aba oculta: não consulta
   buscar(); vigiar(); carregarSessao(); carregarHistorico();

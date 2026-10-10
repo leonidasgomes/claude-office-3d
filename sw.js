@@ -31,7 +31,7 @@ self.addEventListener('notificationclick', (event) => {
     for (const c of janelas) {
       if (new URL(c.url).origin === self.location.origin) {
         try { await c.focus(); } catch (e) { /* sem foco: a mensagem ainda abre o painel */ }
-        c.postMessage({ tipo: 'abrir', painel });
+        c.postMessage({ tipo: 'abrir', painel, url: alvo.pathname+alvo.search+alvo.hash });
         return;
       }
     }

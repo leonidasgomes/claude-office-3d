@@ -1,0 +1,9 @@
+.gestaoAbrir { position: fixed; right: 16px; bottom: 18px; z-index: 30; padding: 8px 16px; }
+.gestaoPainel { width: min(760px, calc(100vw - 48px)); max-height: 80vh; overflow: auto; background: #161c24; color: #e7edf5; border: 1px solid #526276; border-radius: 12px; padding: 24px; }
+.gestaoPainel::backdrop { background: #0009; }
+.gestaoPainel button { margin: 0 12px 16px 0; padding: 8px 12px; }
+.gestaoPainel section { border-top: 1px solid #526276; margin-top: 16px; }
+.gestaoPainel form > label { display: block; margin: 12px 0; }
+.gestaoPainel input:not([type=checkbox]), .gestaoPainel textarea, .gestaoPainel select { box-sizing: border-box; display: block; width: 100%; padding: 8px; }
+.gestaoPainel fieldset label { display: block; margin: 8px 0; }
+.gestaoPainel code { display: block; overflow-wrap: anywhere; }

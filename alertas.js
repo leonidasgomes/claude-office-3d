@@ -64,19 +64,28 @@ const querTipo = (id) => id === 'teste' || prefs()[id] !== false;
 
 // ---------------------------------------------------------------- abrir o painel certo
 function abrirPainel(nome) {
+  if (nome === 'gestao') { window.dispatchEvent(new CustomEvent('office-gestao-abrir')); return; }
   const mapa = { prs: ['prs', 'btnPrs'], placar: ['placar', 'btnPlacar'], saude: ['saude', 'btnSaude'] }, m = mapa[nome];
   if (!m) return;
   const sec = $(m[0]), b = $(m[1]);
   if (sec && b && sec.hidden) b.click();
 }
 function painelDaUrl(u) { const m = /alerta=([a-z]+)/.exec(String(u || '')); return m ? m[1] : ''; }
+function abrirAlerta(u) {
+  const painel=painelDaUrl(u),m=/[&#]projeto=([0-9a-f]{20})(?:&|$)/.exec(String(u||''));
+  if(m)window.dispatchEvent(new CustomEvent('office-projeto-alerta',{detail:{painel,projeto:m[1]}}));
+  abrirPainel(painel);
+}
 function tratarHash() {
   const p = painelDaUrl(location.hash);
   if (!p) return;
-  setTimeout(() => { abrirPainel(p); history.replaceState(null, '', location.pathname + location.search); }, 600);
+  const destino=location.hash;
+  setTimeout(() => { abrirAlerta(destino); history.replaceState(null, '', location.pathname + location.search); }, 600);
 }
 window.addEventListener('hashchange', tratarHash);
-if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.tipo === 'abrir') abrirPainel(e.data.painel); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.tipo === 'abrir') {
+  if(e.data.url)abrirAlerta(e.data.url);else abrirPainel(e.data.painel);
+} });
 
 // ---------------------------------------------------------------- toast e notificação
 const toasts = el('div'); toasts.id = 'alertasToasts'; document.body.append(toasts);
@@ -86,7 +95,7 @@ function toast(a) {
   const x = el('button', null, '×'); x.title = 'Dispensar';
   const fechar = () => t.remove();
   x.addEventListener('click', (ev) => { ev.stopPropagation(); fechar(); });
-  t.addEventListener('click', () => { abrirPainel(painelDaUrl(a.url)); fechar(); });
+  t.addEventListener('click', () => { abrirAlerta(a.url); fechar(); });
   t.append(txt, x);
   toasts.append(t);
   while (toasts.children.length > 4) toasts.firstChild.remove();
@@ -97,7 +106,7 @@ function notificar(a) {
   if (!temNotif || Notification.permission !== 'granted' || estadoPush.inscrito || !document.hidden) return;
   try {
     const n = new Notification((titulo ? titulo + ': ' : '') + a.titulo, { body: a.corpo, tag: a.tipo, icon: '/icone-192.png' });
-    n.onclick = () => { window.focus(); abrirPainel(painelDaUrl(a.url)); n.close(); };
+    n.onclick = () => { window.focus(); abrirAlerta(a.url); n.close(); };
   } catch (e) { /* alguns navegadores móveis só aceitam via service worker */ }
 }
 
@@ -262,10 +271,10 @@ function desenhar() {
     li.append(el('span', 'hora', horaDe(a.ts) + (querTipo(a.tipo) ? '' : ' · tipo desligado') + (a.resumo ? ' · no resumo' : '')), el('b', null, a.titulo), el('span', null, a.corpo));
     if (a.detalhe) li.append(el('span', 'det', a.detalhe));
     const destino = painelDaUrl(a.url);
-    li.addEventListener('click', () => abrirPainel(destino));
+    li.addEventListener('click', () => abrirAlerta(a.url));
     if (destino === 'prs' || destino === 'placar' || destino === 'saude') {   // abre o painel do alerta: acessível pelo teclado também
       li.tabIndex = 0; li.setAttribute('role', 'button');
-      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirPainel(destino); } });
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirAlerta(a.url); } });
     }
     ol.append(li);
   }

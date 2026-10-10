@@ -15,7 +15,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 IGNORAR = {".git", ".venv", "dist", "vendor", "dados", "__pycache__", "node_modules"}
-TEXTO = {".py", ".js", ".css", ".html", ".md", ".json", ".bat", ".sh", ".txt", ".yml", ".yaml", ""}
+TEXTO = {".py", ".js", ".mjs", ".css", ".html", ".md", ".json", ".bat", ".ps1", ".sh", ".txt", ".yml", ".yaml", ""}
 
 # Padrões genéricos de vazamento (sem nada pessoal aqui dentro)
 PADROES = {
@@ -44,7 +44,7 @@ def verificar_sintaxe(erros):
                 ast.parse(p.read_text(encoding="utf-8"), str(p))
             except SyntaxError as e:
                 erros.append(f"sintaxe Python: {p.relative_to(RAIZ)}:{e.lineno}: {e.msg}")
-        elif p.suffix == ".js" and shutil.which("node"):
+        elif p.suffix in (".js", ".mjs") and shutil.which("node"):
             r = subprocess.run(["node", "--check", str(p)], capture_output=True, text=True)
             if r.returncode:
                 erros.append(f"sintaxe JS: {p.relative_to(RAIZ)}: {r.stderr.strip().splitlines()[-1] if r.stderr else 'erro'}")

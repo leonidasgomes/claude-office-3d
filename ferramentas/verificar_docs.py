@@ -11,6 +11,7 @@ Falha (código 1) listando o que falta no SDD:
   * toda variável de ambiente OFFICE_* lida ou passada pelos scripts — em qualquer lugar do SDD.
 Exclusões intencionais ficam em IGNORAR (com o motivo).
 """
+import ast
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 SDD = RAIZ / "docs" / "SDD.md"
 SCRIPTS_EXTRAS = ["modelos/briefing_diretor.py", "grafo/grafo.py", "grafo/claude/instalar_grafo.py",
                   "grafo/claude/hooks/grafo_hook.py"]   # CLIs fora da raiz que o SDD também descreve
+TABELAS_EXTRAS = ["ponte_eventos.py"] # extensão do SQLite do escritório, sem executar migradores
 # exclusões intencionais: "tipo:valor" -> motivo
 IGNORAR = {
     "script:registrar_evento.py": "hook do Claude Code (JSON no stdin, sem flags); descrito na seção 5.2",
@@ -71,7 +73,8 @@ def rotas():
 
 
 def tabelas():
-    return sorted(set(RX_TABELA.findall(ler(RAIZ / "banco.py"))))
+    return sorted({nome for arquivo in ["banco.py",*TABELAS_EXTRAS]
+                   for nome in RX_TABELA.findall(ler(RAIZ/arquivo))})
 
 
 def scripts():
@@ -82,7 +85,7 @@ def scripts():
         fonte = ler(RAIZ / rel)
         if '__name__ == "__main__"' not in fonte and "__name__ == '__main__'" not in fonte:
             continue
-        flags = set()
+        flags = flags_argparse(fonte)
         for rx in RX_FLAG:
             flags.update(rx.findall(fonte))
         for linha in fonte.splitlines():
@@ -91,6 +94,18 @@ def scripts():
                     flags.update(re.findall(r'"(--[\w-]+)"', grupo))
         saida[rel] = sorted(flags)
     return saida
+
+
+def flags_argparse(fonte):
+    """Lê literais de add_argument sem executar/importar o CLI ou ler comentários."""
+    flags=set()
+    for node in ast.walk(ast.parse(fonte)):
+        if (isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute)
+            and node.func.attr=='add_argument'):
+            for arg in node.args:
+                if isinstance(arg,ast.Constant) and isinstance(arg.value,str) and re.fullmatch(r'--[\w-]+',arg.value):
+                    flags.add(arg.value)
+    return flags
 
 
 def chaves_config():
@@ -117,6 +132,23 @@ def linhas_do_script(tabela, script):
             if citado(nome, primeira) or citado(script, primeira):
                 out.append(linha)
     return "\n".join(out)
+
+
+def links_locais():
+    """Guias canônicos: confere destinos locais; não certifica semântica/URLs remotas."""
+    from urllib.parse import urlsplit,unquote
+    erros=[]
+    for nome in ('README.md','INSTALACAO.md','docs/GESTAO.md','docs/PROVIDERS.md',
+                 'docs/VERSOES.md','docs/CLAUDE-COMPATIBILIDADE.md','docs/SDD.md'):
+        arquivo=RAIZ/nome
+        if not arquivo.is_file():continue  # Manifesto/build conferem presença no pacote.
+        for destino in re.findall(r'\[[^\]]+\]\(([^)]+)\)',ler(arquivo)):
+            url=urlsplit(destino)
+            if url.scheme or url.netloc or not url.path:continue
+            alvo=(arquivo.parent/unquote(url.path)).resolve()
+            if not alvo.is_relative_to(RAIZ.resolve()) or not alvo.is_file():
+                erros.append(f'link local ausente ou fora do pacote: {nome} → {destino}')
+    return erros
 
 
 def faltas():
@@ -149,7 +181,7 @@ def faltas():
     for v in variaveis_ambiente():
         if f"ambiente:{v}" not in IGNORAR and not citado(v, texto):
             erros.append(f"variável de ambiente {v} não está no SDD")
-    return erros
+    return erros+links_locais()
 
 
 def main():

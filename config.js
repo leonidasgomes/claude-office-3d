@@ -1,9 +1,9 @@
-// Claude Office 3D — configuração da página, lida do servidor (GET /config) antes de montar a cena.
+// Office Multi-provider — configuração da página, lida do servidor (GET /config) antes de montar a cena.
 // Os três módulos (escritorio.js, kanban.js, prs.js) importam daqui e recebem o MESMO objeto.
 // Sem servidor (index.html aberto direto do disco) vale o padrão abaixo e a página entra em modo demonstração.
 
 const PADRAO = {
-  titulo: 'Claude Office 3D',
+  titulo: 'Office Multi-provider',
   tema: 'neutro',
   apelidos: 'desligado',
   agentes: [

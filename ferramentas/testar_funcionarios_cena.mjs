@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { distribuirFuncionarios, buscarFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from '../funcionarios_cena.mjs';
+const f = (id,nome='Dev')=>({id,nome,funcao:'História',equipe:'Dev',executor:{console:'codex'}});
+const dados={projetos:[{ativo:true,nome:'A',funcionarios:[f('a'.repeat(32))]},{ativo:true,nome:'B',funcionarios:[f('b'.repeat(32))]}]};
+const lista=distribuirFuncionarios(dados);
+assert.equal(lista.length,2); assert.notEqual(lista[0].nome,lista[1].nome);
+assert.equal(lista[0].titulo,'Dev'); assert.notEqual(lista[0].nome,'Dev'); assert.deepEqual(lista[0].outros_nomes,[]);
+assert.equal(tituloFuncionario(lista[0].nome,lista),'Dev · codex'); assert.equal(tituloFuncionario('Team_Dev',lista),'Team Dev');
+assert.deepEqual([...assentosFuncionarios(lista).values()],[10,11]);
+assert.deepEqual(Array.from({length:10},(_,i)=>xMesa(i)),[11,5.8,1.2,-3.4,-8,-12.6,-17.2,-21.8,-26.4,-31]);
+assert.equal(limiteEsquerdo([]),-34); assert.ok(xMesa(10)<-34); assert.ok(limiteEsquerdo(lista)<xMesa(11));
+assert.equal(distribuirFuncionarios({projetos:[{ativo:false,funcionarios:dados.projetos[0].funcionarios}]}).length,0);
+assert.equal(distribuirFuncionarios({projetos:[{ativo:true,funcionarios:[f('../escape'),f('a'.repeat(32)),f('a'.repeat(32))]}]}).length,1);
+assert.equal(distribuirFuncionarios({projetos:[{ativo:true,funcionarios:Array.from({length:40},(_,i)=>f(i.toString(16).padStart(32,'0')))}]}).length,30);
+assert.deepEqual(await buscarFuncionarios(async()=>{throw Error('offline');}),[]);
+assert.deepEqual(await buscarFuncionarios(async()=>({ok:false})),[]);
+assert.equal((await buscarFuncionarios(async(url,op)=>{assert.equal(url,'/api/gestao');assert.equal(op.cache,'no-store');return {ok:true,json:async()=>dados};})).length,2);
+console.log('Funcionários: identidade por ID, dez assentos legados preservados, expansão e falha sem regressão — OK');

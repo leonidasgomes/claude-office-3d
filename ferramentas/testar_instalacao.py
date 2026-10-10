@@ -96,6 +96,9 @@ def main():
             f"sem lider.md: devia mostrar a seção para o CLAUDE.md sem criá-lo:\n{saida[-1500:]}"
         py = instalar.python_venv(tmp / "app")
         assert py.is_file() and (tmp / "app" / ".venv" / "pyvenv.cfg").is_file(), "o .venv do escritório não existe"
+        smoke=subprocess.run([str(py),'-c','import servidor, gestao_cli, configurar_gestao, funcionarios, executor_local, consumo_providers, revisao_execucao'],
+                             cwd=tmp/'app',capture_output=True,text=True,timeout=30)
+        assert smoke.returncode == 0, f'instalação copiada não carrega os módulos de gestão: {smoke.stderr}'
         cmds = comandos(settings)
         assert len(cmds) == 7 and all(c.startswith(f'"{py.as_posix()}" ') for c in cmds), f"sem o python do .venv: {cmds}"
         for rel in ("modelos/diretor.md", "modelos/briefing_diretor.py", "skills-candidatos/externo/README.md", "VERSION",
