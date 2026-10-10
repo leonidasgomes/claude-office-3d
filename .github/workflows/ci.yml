@@ -72,6 +72,7 @@ jobs:
         run: |
           python -W error ferramentas/testar_gestao_projeto.py
           python -W error ferramentas/testar_controle_tarefas.py
+          python -W error ferramentas/testar_conclusao_tarefas.py
           python -W error ferramentas/testar_claude_sessao.py
           python -W error ferramentas/testar_gestao_execucao.py
           python -W error ferramentas/testar_gestao_kanban.py

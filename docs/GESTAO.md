@@ -693,6 +693,16 @@ Mudanças invalidam a rodada. Reprovação/erro dos revisores mantém estado loc
 do banco de tarefas e move para Em revisão; nunca marca Feito, publica comentário ou faz merge.
 O CLI retorna 1 para entrega bloqueada, mesmo se o implementador terminou com zero.
 
+Após merge real, `python gestao_cli.py --projeto PROJETO concluir --cartao N --pr N`
+mostra a prévia sem escrever. Repetir com `--executar` exige reserva em revisão,
+PR fechado e mergeado no repositório e branch vinculados, vínculo `Closes`/`Fixes`/
+`Resolves` ao cartão inteiro, issue fechada, política e instruções preservadas e
+checks obrigatórios aprovados no head exato. Com revisão ativa exige a entrega
+aprovada e vinculada ao mesmo PR/head; com revisão desativada não exige revisores.
+O comando registra evidência local, move para Feito e marca a reserva concluída.
+Se a escrita local falhar após o movimento remoto, a próxima execução concilia
+a evidência já registrada. Não realiza merge nem publica checks.
+
 O painel Gestão mostra a última revisão, PR e SHA, sem expor relatório/prompt/token da
 reserva. Isso é histórico do commit exibido, não autorização atual de merge. Nenhum
 percentual da conta e nenhum bool enviado pelo revisor substitui o gate de commit/política.
