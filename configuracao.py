@@ -1,4 +1,4 @@
-"""Configuração do Claude Office 3D (somente biblioteca padrão).
+"""Configuração do Office Multi-provider (somente biblioteca padrão).
 
 Lida por servidor.py, registrar_evento.py e instalar.py. O arquivo é config.json, na mesma pasta deste
 script (ou o caminho da variável de ambiente OFFICE_CONFIG). Toda chave ausente recebe o valor padrão.
@@ -66,7 +66,7 @@ XP_PREFIXOS_POR_MESA = {"pesquisa": ["research/", "docs/", "estudo/"], "design":
 
 # Alertas (notificação/push quando algo espera por você): cada tipo liga/desliga; "conferir" vem desligado
 ALERTAS_TIPOS = {"pr_pronto": True, "pr_problema": True, "auditoria": True, "conferir": False, "escalonamento": True,
-                 "pergunta": True, "lembrete": True, "sugestao": True, "cota": True, "duplicado": True, "circulo": True, "pr_parado": True}
+                 "pergunta": True, "lembrete": True, "sugestao": True, "cota": True, "duplicado": True, "circulo": True, "pr_parado": True, "tarefa_pendente": True}
 # Orçamento de atenção: só estes tipos avisam na hora; os outros vão num push de resumo a cada alertas.resumo_horas
 ALERTAS_IMEDIATOS = ["pr_pronto", "pr_problema", "pergunta", "escalonamento", "auditoria", "cota"]
 
@@ -84,7 +84,7 @@ AUDITOR_MAX_DIFF = 40_000
 
 PADRAO = {
     "porta": 8765,
-    "titulo": "Claude Office 3D",
+    "titulo": "Office Multi-provider",
     "projetos": [],
     "agentes": AGENTES_PADRAO,
     "github": {

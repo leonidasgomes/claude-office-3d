@@ -26,6 +26,7 @@ Estado em dados/sugestoes/estado.json e caixa em dados/sugestoes/caixa.jsonl (fo
 Situação de cada item: nova -> triada -> encaminhada | ignorada | discutir -> resolvida (arquivada = PR já fechado).
 """
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -44,16 +45,34 @@ PASTA = RAIZ / "dados" / "sugestoes"
 GLOSSARIO = RAIZ / "glossario_triagem.md"   # contexto do projeto para a triagem (editável)
 
 
-def config_base():
+def config_base(projeto=None):
     """Dict da configuração: repo, bots (logins do bot de revisão; lista vazia = desligado), modelo da triagem ("" desliga),
     intervalo_min, janela_dias, times (rótulo do PR -> agente), agentes, publicar_status, gh e pasta. Tudo do config.json do pacote."""
     c = _pacote.carregar()
     g, s = c["github"], c["sugestoes"]
-    return {"repo": g["repo"], "bots": list(g["bots_revisao"]), "modelo": s["triagem_modelo"],
+    cfg={"repo": g["repo"], "bots": list(g["bots_revisao"]), "modelo": s["triagem_modelo"],
             "revisor": bool((c.get("revisor") or {}).get("ativo")),
             "publicar_status": g["publicar_status"],   # status `revisor-ia`/`sugestoes` no commit (merge automático)
             "intervalo_min": s["intervalo_min"], "janela_dias": s["janela_dias"], "times": dict(g["times"]),
             "agentes": [a["nome"] for a in c["agentes"]], "gh": _pacote.localizar_gh() or "gh", "pasta": PASTA}
+    if projeto is not None:
+        from politica_painel import snapshot
+        from gestao_cli import pasta_dados,RAIZ as app
+        from funcionarios import id_projeto
+        raiz=Path(projeto).resolve();politica,versao,_=snapshot(raiz)
+        if not politica['ativo'] or not politica['kanban']['repo']:raise ValueError('Projeto sem gestão/repositório')
+        repo=politica['kanban']['repo'];base=pasta_dados(raiz)
+        pasta=base/'sugestoes'/hashlib.sha256(repo.casefold().encode()).hexdigest()[:20]
+        if (not base.resolve().is_relative_to(app.resolve()) or not pasta.resolve().is_relative_to(base.resolve())
+            or pasta.is_symlink() or any((pasta/n).is_symlink() for n in ('estado.json','caixa.jsonl'))):raise ValueError('Pasta de sugestões inválida')
+        cfg.update(repo=repo,bots=list(politica['sugestoes']['bots']) if politica['sugestoes']['ativo'] else [],
+                   ativo=politica['sugestoes']['ativo'],modelo='',revisor=False,publicar_status=False,
+                   times={e['nome']:e['nome'] for e in politica['equipes']},agentes=[e['nome'] for e in politica['equipes']],
+                   pasta=pasta,projeto=raiz,projeto_id=id_projeto(raiz),politica_versao=versao)
+        if politica['sugestoes']['triagem']:
+            from gestao_projeto import executor
+            cfg['triagem_provider']=executor(politica,papel='diretor')
+    return cfg
 # ---- fim da configuração -------------------------------------------------------------------------------------------------
 
 SITUACOES = ("nova", "triada", "encaminhada", "ignorada", "discutir", "resolvida", "arquivada")
@@ -94,10 +113,15 @@ class ErroApi(Exception):
         return self.status in (403, 429) and bool(RE_LIMITE.search(self.mensagem))
 
 
-def configuracao():
-    cfg = config_base()
+def configuracao(projeto=None):
+    cfg = config_base(projeto) if projeto is not None else config_base()
     cfg["pasta"] = Path(cfg["pasta"])
     return cfg
+
+def conferir_projeto(cfg):
+    if cfg.get('projeto') is not None:
+        from politica_painel import snapshot
+        if snapshot(cfg['projeto'])[1]!=cfg['politica_versao']:raise ValueError('Política mudou; recarregue o projeto')
 
 
 # ---------------------------------------------------------------- arquivos (estado, caixa, trava)
@@ -120,8 +144,9 @@ def _iso(dt):
 class trava:
     """Trava entre processos (servidor e linha de comando) por arquivo; só envolve leitura-e-gravação, nunca rede."""
 
-    def __init__(self, pasta, espera=30):
+    def __init__(self, pasta, espera=30, expirar=True):
         self.arq, self.espera = Path(pasta) / ".trava", espera
+        self.expirar=expirar
 
     def __enter__(self):
         self.arq.parent.mkdir(parents=True, exist_ok=True)
@@ -132,7 +157,7 @@ class trava:
                 return self
             except FileExistsError:
                 try:
-                    if time.time() - self.arq.stat().st_mtime > 120:   # trava velha (processo morto)
+                    if self.expirar and time.time() - self.arq.stat().st_mtime > 120:   # protocolo legado
                         self.arq.unlink()
                         continue
                 except OSError:
@@ -153,16 +178,24 @@ def _gravar(arq, texto):
     tmp.write_text(texto, encoding="utf-8")
     os.replace(tmp, arq)
 
+def trava_caixa(cfg,espera=30):
+    return trava(cfg['pasta'],espera=espera,expirar=cfg.get('projeto') is None)
+
 
 def ler_estado(cfg):
     try:
         e = json.loads((cfg["pasta"] / "estado.json").read_text(encoding="utf-8"))
+        if cfg.get('projeto') and not isinstance(e,dict):raise ValueError('Estado de sugestões inválido')
         return e if isinstance(e, dict) else {}
+    except FileNotFoundError:
+        return {}
     except (OSError, ValueError):
+        if cfg.get('projeto'):raise
         return {}
 
 
 def gravar_estado(cfg, est):
+    conferir_projeto(cfg)
     cfg["pasta"].mkdir(parents=True, exist_ok=True)
     _gravar(cfg["pasta"] / "estado.json", json.dumps(est, ensure_ascii=False, indent=1))
 
@@ -171,19 +204,25 @@ def ler_caixa(cfg):
     itens = []
     try:
         linhas = (cfg["pasta"] / "caixa.jsonl").read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return itens
     except OSError:
+        if cfg.get('projeto'):raise
         return itens
     for t in linhas:
         try:
             x = json.loads(t)
         except ValueError:
+            if cfg.get('projeto') and t.strip():raise ValueError('Caixa de sugestões inválida')
             continue
+        if cfg.get('projeto') and (not isinstance(x,dict) or x.get('id') is None):raise ValueError('Item de sugestões inválido')
         if isinstance(x, dict) and x.get("id") is not None:
             itens.append(x)
     return itens
 
 
 def gravar_caixa(cfg, itens):
+    conferir_projeto(cfg)
     cfg["pasta"].mkdir(parents=True, exist_ok=True)
     _gravar(cfg["pasta"] / "caixa.jsonl", "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in itens))
 
@@ -321,6 +360,17 @@ def _item(cfg, c, prs, tipo="linha", prefixo=""):
 # ---------------------------------------------------------------- coleta
 def _baixar_prs_abertos(cfg, est):
     """Atualiza est['prs'] ({numero: {branch, autor, titulo, time, atualizado}}). Devolve o número de chamadas contadas."""
+    if cfg.get('projeto') is not None:
+        todos=[]
+        for pagina in range(1,MAX_PAGINAS+1):
+            status,lote,_=gh_api(cfg,f"repos/{cfg['repo']}/pulls?state=open&per_page=100&page={pagina}")
+            if status!=200 or not isinstance(lote,list):raise ValueError('Lista de PRs do projeto incompleta')
+            todos.extend(lote)
+            if len(lote)<100:break
+        else:raise ValueError('Limite da lista de PRs do projeto; não arquivar sugestões')
+        est['prs']={str(p['number']):{'branch':(p.get('head') or {}).get('ref',''),'autor':(p.get('user') or {}).get('login',''),
+            'titulo':p.get('title',''),'time':_time_do_pr(cfg,p.get('labels')),'url':p.get('html_url',''),'atualizado':p.get('updated_at','')} for p in todos}
+        est.pop('etag_prs',None);return pagina
     status, dados, cab = gh_api(cfg, f"repos/{cfg['repo']}/pulls?state=open&per_page=100", est.get("etag_prs"))
     if status == 304 or not isinstance(dados, list):
         return 0
@@ -420,6 +470,8 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
     cfg = cfg or configuracao()
     log = log or (lambda m: None)
     res = {"novas": 0, "chamadas": 0, "erro": "", "limite": 0, "triadas": 0}
+    if cfg.get('ativo') is False:
+        res['erro']='desligado na política do projeto';return res
     if not cfg["bots"] and not cfg.get("revisor"):
         res["erro"] = "desligado (nenhum bot de revisão configurado)"
         return res
@@ -427,7 +479,8 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
         res["erro"] = "repositório não configurado"
         return res
     try:
-        with trava(cfg["pasta"]):
+        conferir_projeto(cfg)
+        with trava_caixa(cfg):
             est = ler_estado(cfg)
         if recoletar:
             for k in ("since", "etag_url", "etag_comentarios"):
@@ -438,8 +491,9 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
         prs = est.get("prs", {})
         do_bot = [c for c in comentarios if (eh_bot((c.get("user") or {}).get("login"), cfg["bots"])
                                              or MARCA_REVISOR in (c.get("body") or ""))
+                  and (cfg.get('projeto') is None or re.fullmatch('https://api.github.com/repos/'+re.escape(cfg['repo'])+'/pulls/[1-9][0-9]*',str(c.get('pull_request_url') or ''),re.I))
                   and not c.get("in_reply_to_id") and (c.get("body") or "").strip()]
-        with trava(cfg["pasta"]):
+        with trava_caixa(cfg):
             caixa = ler_caixa(cfg)
             ids = {str(x["id"]) for x in caixa}
             novos = []
@@ -463,7 +517,7 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
                 if e.limite:
                     raise
                 log(f"reviews do PR #{n}: {e}")
-        with trava(cfg["pasta"]):
+        with trava_caixa(cfg):
             caixa = ler_caixa(cfg)
             ja = {str(x["id"]) for x in caixa}
             caixa += [x for x in novos if str(x["id"]) not in ja]
@@ -486,7 +540,7 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
         return res
     # tria o que estiver "nova" na caixa, não só as desta coleta: a thread `pronto` do servidor coleta sem triagem a cada
     # 3 min e pegava as novas primeiro, então a coleta com triagem achava 0 novas e a triagem nunca rodava (7 out. 2026)
-    if triagem and cfg["modelo"] and (res["novas"] or _ha_para_triar(cfg)):
+    if triagem and (cfg["modelo"] or cfg.get('triagem_provider')) and (res["novas"] or _ha_para_triar(cfg)):
         try:
             res["triadas"] = triar(cfg, log)
         except Exception as e:
@@ -496,7 +550,7 @@ def coletar(cfg=None, triagem=True, log=None, recoletar=False):
 
 def _anotar_erro(cfg, res):
     try:
-        with trava(cfg["pasta"], espera=5):
+        with trava_caixa(cfg,espera=5):
             est = ler_estado(cfg)
             est["erro"] = res["erro"]
             if res["limite"]:
@@ -538,7 +592,7 @@ def contexto_triagem(cfg):
     triagem (caso real: "regera" -> "regenera" foi triado como corrigir, e "regerar" era o termo do projeto)."""
     partes = []
     try:
-        g = GLOSSARIO.read_text(encoding="utf-8").strip()
+        g = GLOSSARIO.read_text(encoding="utf-8").strip() if cfg.get('projeto') is None else ''
         if g:
             partes.append("Contexto do projeto (use para separar falso positivo de problema real):\n" + g[:2500])
     except OSError:
@@ -579,7 +633,7 @@ def _para_triar(caixa):
 
 def _ha_para_triar(cfg):
     try:
-        with trava(cfg["pasta"]):
+        with trava_caixa(cfg):
             return bool(_para_triar(ler_caixa(cfg)))
     except Exception:
         return False
@@ -587,11 +641,14 @@ def _ha_para_triar(cfg):
 
 def triar(cfg, log=None, itens_max=MAX_TRIAGEM):
     """Triagem de até 30 itens 'nova' em UMA chamada de `claude -p` (Haiku, sem ferramentas). Devolve quantos foram triados."""
+    if cfg.get('projeto'):
+        from triagem_providers import triar as comum
+        return comum(cfg,itens_max=itens_max)
     log = log or (lambda m: None)
     exe = _achar_claude()
     if not exe or not cfg["modelo"]:
         return 0
-    with trava(cfg["pasta"]):
+    with trava_caixa(cfg):
         alvo = _para_triar(ler_caixa(cfg))[:itens_max]
         if alvo:   # conta a tentativa ANTES de chamar: resposta inválida ou falha não vira chamada sem fim
             ids = {str(x["id"]) for x in alvo}
@@ -627,7 +684,7 @@ def triar(cfg, log=None, itens_max=MAX_TRIAGEM):
             continue
         aplicadas[str(o["id"])] = {"acao_sugerida": acao, "motivo": str(o.get("motivo") or "")[:120],
                                    "time_sugerido": str(o.get("time_sugerido") or "")[:40]}
-    with trava(cfg["pasta"]):
+    with trava_caixa(cfg):
         caixa = ler_caixa(cfg)
         for x in caixa:
             a = aplicadas.get(str(x["id"]))
@@ -655,7 +712,7 @@ def tratar(cfg, id_, acao, nota=""):
     acao = (acao or "").strip().lower()
     if acao != "reabrir" and acao not in ACOES_TRATAR:
         return False, "acao deve ser encaminhada, ignorada, discutir, resolvida ou reabrir"
-    with trava(cfg["pasta"]):
+    with trava_caixa(cfg):
         caixa = ler_caixa(cfg)
         x = next((i for i in caixa if str(i["id"]) == str(id_).strip()), None)
         if x is None:
@@ -824,7 +881,16 @@ def _arg(args, nome, padrao=""):
 def main(argv=None):
     _saida()
     args = list(sys.argv[1:] if argv is None else argv)
-    cfg = configuracao()
+    if '--projeto' in args:
+        raiz=Path(_arg(args,'--projeto')).resolve()
+        if raiz not in [Path(p).resolve() for p in _pacote.carregar()['projetos']]:
+            print('Projeto não cadastrado no escritório');return 2
+        cfg=configuracao(raiz)
+    else:
+        from kanban_painel import habilitado
+        if habilitado(_pacote.carregar()['projetos']):
+            print('Gestão por projeto exige --projeto PASTA');return 2
+        cfg=configuracao()
     pr = _arg(args, "--pr") if "--pr" in args else None
     if pr is not None and not str(pr).isdigit():
         print("uso: --pr <número do PR>")
@@ -839,7 +905,8 @@ def main(argv=None):
             print("uso: sugestoes_bot.py --pronto <número do PR>")
             return 2
         ok, motivos = pronto(cfg, n)
-        print(("OK" + "".join(f"\n  {m}" for m in motivos)) if ok
+        rotulo='OK (somente sugestões; não autoriza merge)' if cfg.get('projeto') is not None else 'OK'
+        print((rotulo + "".join(f"\n  {m}" for m in motivos)) if ok
               else f"PR #{n} ainda não está pronto para o merge:\n  " + "\n  ".join(motivos))
         return 0 if ok else 1
     if "--listar" in args:

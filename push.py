@@ -88,6 +88,7 @@ def sanear(texto, limite=LIMITE_CORPO):
 def url_relativa(u):
     """Endereço do painel dentro do escritório ('/#alerta=prs'); qualquer outra coisa vira '/'."""
     u = str(u or "")
+    if re.fullmatch(r'/#alerta=(?:prs|placar|gestao)&projeto=[0-9a-f]{20}',u):return u
     return u if re.fullmatch(r"/(?:#[A-Za-z0-9=_-]{0,40})?", u) else "/"
 
 

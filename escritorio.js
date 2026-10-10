@@ -6,6 +6,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MOVEL, COMPACTO, gavetaInfo } from './movel.js';   // celular/tablet: modo leve (pixel ratio 1, sem antialias, menos confete)
 const K_ROTULO = COMPACTO ? 1.45 : 1;   // balões e rótulos 3D maiores em tela pequena
 import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG } from './config.js';
+import { buscarFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from './funcionarios_cena.mjs';
+const FUNCIONARIOS = await buscarFuncionarios();
+const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(FUNCIONARIOS);
 
 const TEMA_SP = CONFIG.tema === 'sao-paulo';   // "sao-paulo": decoração temática; "neutro": sem ela
 const AGENTES_CFG = CONFIG.agentes;
@@ -32,7 +35,6 @@ const MAX_FEED = 30;
 const Z_CORREDOR = 5;               // corredor atrás das cadeiras
 const SALA = { x0: 2, x1: 14, z0: 7.5, z1: 17, cx: 8, cz: 12.5 };
 const ONDE_ESTOU = { porta: new THREE.Vector3(SALA.cx, 0, SALA.z0 + 0.6) };
-const X_MESAS = [11, 5.8, 1.2, -3.4, -8, -12.6, -17.2, -21.8, -26.4, -31];
 // Agente com "sala": "diretoria" no config: ganha uma sala fechada à direita da sala de reunião, com a mesa dele lá dentro
 // (a porta fica na parede oeste). Sem nenhum agente assim, o escritório fica como sempre foi (sem a sala, piso menor).
 const DIRETORIA = { x0: 18, x1: 28, z0: 7.5, z1: 17, cx: 23, mesaZ: 9.3, portaZ: 12.6, xCorredor: 16.6 };
@@ -59,6 +61,11 @@ AGENTES_CFG.forEach((ag, i) => {
   for (const o of [ag.nome, ...(ag.outros_nomes || [])]) ALIAS[chaveNome(o)] = ag.nome;
 });
 for (const o of ['main', 'lead', 'leader', 'team_lead']) if (!ALIAS[o]) ALIAS[o] = LIDER;
+for (const f of FUNCIONARIOS) {
+  const k = f.nome.toLowerCase();
+  PERFIS[k] = [f.titulo, f.funcao]; CORES_FIXAS[k] = corHex(f.cor, 0x475569);
+  MESA_DE[k] = 'padrao'; CARGOS[k] = f.cargo; ALIAS[chaveNome(f.nome)] = f.nome;
+}
 // Desconhecido: nome do evento + função do tipo.
 // Subagentes avulsos (bonequinho temporário): função pelo tipo.
 const FUNCOES_SUB = {
@@ -242,6 +249,11 @@ const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 300);
 const VISAO_GERAL = TEM_DIRETORIA   // com a diretoria o escritório fica mais largo: a câmera enquadra tudo
   ? { pos: new THREE.Vector3(-3, 52, 74), alvo: new THREE.Vector3(-3, 0, 8) }
   : { pos: new THREE.Vector3(-10, 48, 68), alvo: new THREE.Vector3(-10, 0, 8) };
+if (FUNCIONARIOS.length) {
+  const extra = -34-limiteEsquerdo(FUNCIONARIOS), centro = VISAO_GERAL.alvo.x-extra/2;
+  VISAO_GERAL.alvo.x = centro; VISAO_GERAL.pos.set(centro,48+extra*0.6,68+extra*0.85);
+}
+camera.far=Math.max(300,VISAO_GERAL.pos.length()*6);
 // em telas estreitas (retrato) a visão geral se afasta para a cena caber na largura
 function posVisaoGeral() {
   const k = Math.min(2.1, Math.max(1, 0.9 / (camera.aspect || 1.5)));
@@ -253,7 +265,7 @@ controles.target.copy(VISAO_GERAL.alvo);
 controles.enableDamping = true;
 controles.maxPolarAngle = Math.PI * 0.47;
 controles.minDistance = 5;
-controles.maxDistance = 150;
+controles.maxDistance = Math.max(150,VISAO_GERAL.pos.length()*2.2);
 
 const luzAmbiente = new THREE.AmbientLight(0xffffff, 0.75);
 cena.add(luzAmbiente);
@@ -309,7 +321,7 @@ function texturaPiso() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.round((LIM.x1 - LIM.x0) / 2), Math.round((LIM.z1 - LIM.z0) / 2)); t.magFilter = THREE.NearestFilter;
   return t;
 }
-const LIM = { x0: -34, x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // piso ampliado: à esquerda as áreas de pausa, à frente a praça (maquete de SP no tema "sao-paulo")
+const LIM = { x0: limiteEsquerdo(FUNCIONARIOS), x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // mantém o piso legado e estende para os especialistas
 const matJanela = new THREE.MeshBasicMaterial({ color: 0x7fb7e6 });   // própria (não do cache): muda com o dia e a noite (ajustarLuz)
 (function construirAmbiente() {
   const piso = new THREE.Mesh(new THREE.PlaneGeometry(LIM.x1 - LIM.x0, LIM.z1 - LIM.z0), new THREE.MeshLambertMaterial({ map: texturaPiso() }));
@@ -1103,7 +1115,7 @@ function texturaMapa() {
 }
 function criarMesa(indice, nome, cor, dir = false) {   // dir: mesa dentro da diretoria (agente com "sala": "diretoria")
   const kind = dir ? 'diretoria' : tipoMesa(nome), boss = kind === 'lider';
-  const x = dir ? DIRETORIA.cx : X_MESAS[indice], z0 = dir ? DIRETORIA.mesaZ : 0;
+  const x = dir ? DIRETORIA.cx : xMesa(indice), z0 = dir ? DIRETORIA.mesaZ : 0;
   const g = new THREE.Group(); g.position.set(x, 0, z0); cena.add(g);
   const largura = dir ? 5.2 : boss ? 4.2 : 3.2, prof = dir ? 2.1 : boss ? 1.9 : 1.6;
   const tampo = mat(dir ? 0x5a3a22 : boss ? 0x7a5230 : 0xb08a5e), pe = mat(dir ? 0x2a1a10 : 0x2b313a);
@@ -1335,9 +1347,10 @@ function garantirAgente(nome) {
   nome = normalizarNome(nome) || 'Desconhecido';
   if (agentes.has(nome)) return agentes.get(nome);
   const naDiretoria = TEM_DIRETORIA && SALA_DE[nome.toLowerCase()] === 'diretoria' && !mesaDiretoria;   // uma mesa só na diretoria
-  if (!naDiretoria && mesasComuns >= MAX_MESAS) return null; // sem mesa disponível
+  const indiceFuncionario = ASSENTOS_FUNCIONARIOS.get(nome);
+  if (!naDiretoria && indiceFuncionario === undefined && mesasComuns >= MAX_MESAS) return null; // dez lugares legados
   const cor = corDoAgente(nome);
-  const mesa = criarMesa(naDiretoria ? 7 : mesasComuns++, nome, cor, naDiretoria);
+  const mesa = criarMesa(naDiretoria ? 7 : (indiceFuncionario ?? mesasComuns++), nome, cor, naDiretoria);
   if (naDiretoria) mesaDiretoria = mesa;
   const fig = criarFigura(cor);
   cena.add(fig.raiz);
@@ -1363,6 +1376,7 @@ function garantirAgente(nome) {
 }
 // o time do config já começa sentado nas mesas (até MAX_MESAS); os demais ganham mesa quando aparecem nos eventos
 AGENTES_CFG.slice(0, MAX_MESAS).forEach((ag) => garantirAgente(ag.nome));
+FUNCIONARIOS.forEach((f) => garantirAgente(f.nome));
 
 // Ações da fila: {t:'caminho', pts, estado, sentarAoFinal, yawFinal} | {t:'esperar', dur, estado, balao} | {t:'fn', fn}
 function enfileirar(a, acao) {
@@ -2074,7 +2088,7 @@ function liFeed(ev, ag) {
   const cor = ag ? corCss(ag.cor) : '#666';
   li.style.borderLeftColor = cor;
   const t = document.createElement('span'); t.className = 't'; t.textContent = horaDe(ev);
-  const n = document.createElement('b'); n.style.color = cor; n.textContent = String(ev.agente || '?').replace(/_/g, ' ');
+  const n = document.createElement('b'); n.style.color = cor; n.textContent = tituloFuncionario(ev.agente,FUNCIONARIOS);
   const para = Array.isArray(ev.para) && ev.para.length ? ' → ' + ev.para.join(', ') : '';
   const falhou = ev.ok === false ? ' ✖' : '';
   const rest = document.createTextNode(` ${iconeDe(ev.ferramenta)}${falhou}${para}: ${String(ev.resumo || ev.tipo || '').slice(0, 120)}`);
@@ -2542,7 +2556,7 @@ function processar(ev, animar = true, silencioso = false) {   // silencioso: ava
     enfileirar(a, { t: 'fn', fn: () => { a.base = 'ocioso'; a.balao = null; if (!a.atual) a.estado = 'ocioso'; } });
   } else if (tipo === 'subagente') {
     const alvoNome = para.find((p) => p !== '*') || '';
-    const temMesa = PERFIS[alvoNome.toLowerCase()] && alvoNome.toLowerCase() !== 'outra_sessao';
+    const temMesa = (ev.sessao_filho || PERFIS[alvoNome.toLowerCase()]) && alvoNome.toLowerCase() !== 'outra_sessao';
     const dest = temMesa ? agentes.get(alvoNome) : null;
     if (dest && dest !== a) {
       falar(a, dest, 'tarefa: ' + (resumo || 'nova tarefa'), ferr);

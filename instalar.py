@@ -1,4 +1,4 @@
-"""Assistente de instalação do Claude Office 3D (somente biblioteca padrão, Python 3.9+).
+"""Assistente de instalação do Office Multi-provider (somente biblioteca padrão, Python 3.9+).
 
     python instalar.py                                   instalação guiada, passo a passo
     python instalar.py --sem-perguntas --config X.json   instalação silenciosa (para automatizar)
@@ -45,7 +45,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 if sys.version_info < (3, 9):
-    print("O Claude Office 3D precisa do Python 3.9 ou mais novo (você tem %d.%d)." % sys.version_info[:2])
+    print("O Office Multi-provider precisa do Python 3.9 ou mais novo (você tem %d.%d)." % sys.version_info[:2])
     sys.exit(1)
 
 PASTA = Path(__file__).resolve().parent
@@ -68,14 +68,23 @@ EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "PostToolUseFailure", "TeammateIdle
 MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*", "PostToolUseFailure": "Bash|PowerShell"}
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
-          "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh",
+          "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh", "preparar_maquina.ps1", "preparar_maquina.bat",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "opcoes.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "arquitetura.js", "arquitetura.css", "grafo_painel.py", "dica.js", "push.py", "cota.py", "saude.py", "saude_triagem.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "binarios_em_pr.py", "sw.js",
-          "icone-192.png", "icone-512.png", "xp.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
+          "icone-192.png", "icone-512.png", "xp.py", "xp_projeto.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
           "grafo/grafo.py", "grafo/LEIAME.md", "grafo/claude/SKILL.md", "grafo/claude/hooks/grafo_hook.py",
           "grafo/claude/instalar_grafo.py", "grafo/testes/testar_grafo.py", "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/auto-merge.exemplo.yml", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
           "modelos/praticas/python-venv.md", "modelos/praticas/scripts-do-projeto.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
           "modelos/time/pesquisa.md", "modelos/time/revisor.md", "modelos/time/agente.md",
+          "emit_evento.py", "ponte_eventos.py", "importar_opencode.py", "opencode/office.js", "opencode/LEIAME.md",
+          "providers_console.py", "console_provider.py", "codex_observador.py", "skills_compartilhados.py",
+          "console.exemplo.json", "docs/PROVIDERS.md", "docs/VERSOES.md", "docs/CLAUDE-COMPATIBILIDADE.md",
+          "gestao_projeto.py", "gestao_cli.py", "controle_tarefas.py", "claude_sessao.py", "kanban_gestao.py", "kanban_painel.py", "prs_gestao.py", "kanban_projetos.mjs", "dependencias_tarefas.py",
+          "gestao_painel.py", "gestao_painel.js", "gestao_painel.css", "atividade_execucao.py", "modelos_opencode.py", "funcionarios.py", "funcionarios_form.js", "politica_painel.py", "fontes_documentais.py", "executores_form.mjs", "merge_form.mjs", "prs_evidencias.py", "prs_pendencias.py", "prs_evidencias.mjs",
+          "recursos_local.py", "memoria_local.py", "executor_local.py", "revisao_cruzada.py", "revisao_execucao.py", "revisores_console.py",
+          "rpc_console.py", "uso_providers.py", "consumo_providers.py", "precos_tokens.py", "precos_tokens.exemplo.json", "indicadores_providers.mjs", "EDICAO.json", "iniciar_projeto.py", "compatibilidade_skills.py", "skills_execucao.py", "retorno_console.py", "coordenacao.py", "coordenacao_registro.py", "coordenacoes_painel.mjs",
+          "coordenacao_execucao.py", "consumo_coordenacao.py", "triagem_providers.py", "alertas_projetos.py", "auditor_projeto.py", "coordenacao_painel.py", "coordenacao_form.mjs", "retomada_painel.py", "retomada_form.mjs", "configurar_gestao.py", "diagnostico_instalacao.py", "projeto.exemplo.json", "docs/GESTAO.md",
+          "funcionarios_cena.mjs", "agentes_nativos.py", "agentes_nativos_form.mjs",
           "skills-candidatos/externo/README.md", "docs/SDD.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]
@@ -148,6 +157,8 @@ def rodar(cmd, timeout=20, cwd=None):
 # ---------------------------------------------------------------- checagens
 def checar_ambiente(silencioso=False):
     info = {"python": platform.python_version(), "claude": None, "gh": configuracao.localizar_gh(), "gh_auth": False}
+    from configurar_gestao import detectar
+    info['consoles']=detectar()
     claude = shutil.which("claude")
     if claude:
         cod, out = rodar([claude, "--version"])
@@ -157,6 +168,10 @@ def checar_ambiente(silencioso=False):
         info["gh_auth"] = cod == 0
     if not silencioso:
         print(f"  [ok] Python {info['python']}")
+        for console in info['consoles']:
+            if console['console'] != 'claude':
+                print(f"  [{'ok' if console['instalado'] else '--'}] {console['console']}: "
+                      f"{'CLI encontrado; autenticação não verificada' if console['instalado'] else 'não encontrado no PATH'}")
         print(f"  [{'ok' if info['claude'] else '!!'}] Claude Code: "
               f"{info['claude'] or 'não encontrado no PATH (instale: https://docs.claude.com/claude-code)'}")
         if info["gh"]:
@@ -463,7 +478,7 @@ def como_encadear(pasta):
     """Texto para quem já tem statusline: chamar a nossa com --so-gravar (grava e não imprime), com o mesmo stdin."""
     return ("  Para ter o uso do plano no Placar sem trocar a sua, chame a do escritório no SEU script, com o mesmo stdin:\n"
             f"    entrada=$(cat); printf '%s' \"$entrada\" | {comando_statusline(pasta)} --so-gravar\n"
-            "    (depois continue usando \"$entrada\" no seu script; detalhes no INSTALACAO.md, seção Uso do plano)")
+            "    (depois continue usando \"$entrada\" no seu script; detalhes no docs/CLAUDE-COMPATIBILIDADE.md, seção Uso do plano)")
 
 
 def instalar_statusline(arq, pasta):
@@ -511,14 +526,14 @@ def arquivos_settings(escopo, projetos, args):
 
 # ---------------------------------------------------------------- arquivos da instalação
 ATALHO_BAT = """@echo off
-rem Abre o Claude Office 3D: sobe o servidor local (porta do config.json) e abre o navegador.
+rem Abre o Office Multi-provider: sobe o servidor local (porta do config.json) e abre o navegador.
 rem   abrir_escritorio.bat           -> so neste PC (127.0.0.1)
 rem   abrir_escritorio.bat celular   -> liga o acesso pelo celular na rede local (QR code no botao Celular)
 chcp 65001 >nul
 cd /d "%~dp0"
 set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
-echo Iniciando o Claude Office 3D...
+echo Iniciando o Office Multi-provider...
 rem Python do .venv do escritorio, se existir; senao o do PATH
 set PY=python
 where python >nul 2>nul || set PY=py -3
@@ -527,18 +542,18 @@ if exist ".venv\\Scripts\\python.exe" set PY=.venv\\Scripts\\python.exe
 pause
 """
 ATALHO_SH = """#!/usr/bin/env sh
-# Abre o Claude Office 3D: sobe o servidor local (porta do config.json) e abre o navegador.
+# Abre o Office Multi-provider: sobe o servidor local (porta do config.json) e abre o navegador.
 #   ./abrir_escritorio.sh           -> só neste PC (127.0.0.1)
 #   ./abrir_escritorio.sh celular   -> liga o acesso pelo celular na rede local (QR code no botão Celular)
 cd "$(dirname "$0")" || exit 1
-echo "Iniciando o Claude Office 3D..."
+echo "Iniciando o Office Multi-provider..."
 if [ "$1" = "celular" ]; then shift; set -- --rede-local "$@"; fi
 PY=python3
 [ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
 exec "$PY" servidor.py "$@"
 """
 REINICIAR_BAT = """@echo off
-rem Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo, minimizado.
+rem Reinicia o Office Multi-provider: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo, minimizado.
 rem   reiniciar_escritorio.bat celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -553,12 +568,12 @@ echo Encerrando o servidor antigo do escritorio (porta %PORTA%)...
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort %PORTA% -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue; Write-Host ('  processo ' + $_ + ' encerrado') }"
 powershell -NoProfile -Command "Start-Sleep -Seconds 1"
 echo Subindo o escritorio de novo...
-start "Claude Office 3D" /min /D "%~dp0" cmd /c %PY% servidor.py --sem-navegador %EXTRA%
+start "Office Multi-provider" /min /D "%~dp0" cmd /c %PY% servidor.py --sem-navegador %EXTRA%
 echo Pronto: http://127.0.0.1:%PORTA%/  (a pagina aberta reconecta sozinha)
 if defined EXTRA echo Acesso pelo celular LIGADO: use o botao Celular na pagina para ver o QR code.
 """
 REINICIAR_SH = """#!/usr/bin/env sh
-# Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo em segundo plano.
+# Reinicia o Office Multi-provider: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo em segundo plano.
 #   ./reiniciar_escritorio.sh celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
 cd "$(dirname "$0")" || exit 1
 EXTRA=""
@@ -590,16 +605,41 @@ def escrever_atalhos(destino):
     return feitos
 
 
+def validar_edicao(destino):
+    """A nova distribuição não assume propriedade de instalação antiga/ambígua."""
+    destino = Path(destino).resolve()
+    marcador = destino / 'EDICAO.json'
+    if marcador.exists():
+        if marcador.is_symlink() or marcador.stat().st_size > 1024:
+            raise ValueError('Identificação da edição inválida')
+        dados = json.loads(marcador.read_text(encoding='utf-8'))
+        if dados != {'edicao':'office-multi-provider','formato':1} or type(dados.get('formato')) is not int:
+            raise ValueError('Pasta pertence a outra edição do escritório')
+        versao = destino / 'VERSION'
+        if versao.exists() and not versao.read_text(encoding='utf-8').strip().startswith('2.'):
+            raise ValueError('Versão incompatível com a nova edição')
+    elif any((destino/n).exists() for n in ['config.json', *PACOTE]):
+        raise ValueError('Instalação existente sem identificação da nova edição; use uma pasta separada e revise a migração')
+    return destino
+
+
 def copiar_pacote(destino):
-    destino = Path(destino)
+    destino = Path(destino).resolve()
+    validar_edicao(destino)
+    origens=[]
+    for nome in PACOTE:
+        origem=(PASTA/nome).resolve(); alvo=(destino/nome).resolve()
+        if not origem.is_relative_to(PASTA.resolve()) or not origem.is_file():
+            raise ValueError('Pacote incompleto ou arquivo fora da origem: '+nome)
+        if not alvo.is_relative_to(destino):
+            raise ValueError('Arquivo aponta para fora da instalação: '+nome)
+        origens.append((nome,origem))
     destino.mkdir(parents=True, exist_ok=True)
     copiados = 0
-    for nome in PACOTE:
-        origem = PASTA / nome
-        if origem.is_file():
-            (destino / nome).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(origem, destino / nome)
-            copiados += 1
+    for nome,origem in origens:
+        (destino / nome).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(origem, destino / nome)
+        copiados += 1
     if (PASTA / "vendor").is_dir() and not (destino / "vendor").exists():
         shutil.copytree(PASTA / "vendor", destino / "vendor")
     return copiados
@@ -635,6 +675,7 @@ def abrir_escritorio(destino):
 # ---------------------------------------------------------------- aplicação (comum aos dois modos)
 def aplicar(plano, args, log=print):
     destino = Path(plano["destino"]).resolve()
+    validar_edicao(destino)
     if destino != PASTA:
         n = copiar_pacote(destino)
         log(f"  {n} arquivos copiados para {destino}")
@@ -736,14 +777,14 @@ def relatar_praticas(projetos, config, args, log=print):
 def assistente(args):
     print()
     print("  ┌──────────────────────────────────────────────────────────┐")
-    print("  │   Claude Office 3D — assistente de instalação            │")
+    print("  │   Office Multi-provider — assistente de instalação            │")
     print("  │   Um escritório 3D que mostra seus agentes trabalhando.  │")
     print("  └──────────────────────────────────────────────────────────┘")
     print("  Enter aceita o valor entre colchetes. Ctrl+C cancela a qualquer momento (nada é gravado antes do fim).")
 
     titulo_passo(1, "Boas-vindas e checagens")
     amb = checar_ambiente()
-    if not amb["claude"] and not sim_nao("  Claude Code não encontrado. Continuar mesmo assim?", True):
+    if not any(c['instalado'] for c in amb['consoles']) and not sim_nao("  Nenhum console encontrado. Continuar mesmo assim?", True):
         raise Cancelado()
 
     titulo_passo(2, "Onde instalar")
@@ -833,8 +874,9 @@ def assistente(args):
 
     titulo_passo(7, "Revisão de PR (líder + revisor)")
     print("  Fluxo: o colega abre o PR → o líder cria o Revisor (vida nova por PR) → o Revisor roda os testes e publica a")
-    print("  revisão no PR (gh pr review --comment, P0/P1/P2) → o líder devolve P0/P1 ao autor ou avisa você que o merge")
-    print("  é seu (ninguém do time faz merge). O Revisor entra no time e cada projeto ganha .claude/agents/revisor.md")
+    print("  revisão no PR (gh pr review --comment, P0/P1/P2) → o líder devolve P0/P1 ao autor e segue a política do projeto.")
+    print("  Merge manual: decisão sua. Auto-merge: GitHub pelos checks configurados; o time nunca faz merge à mão.")
+    print("  O Revisor entra no time e cada projeto ganha .claude/agents/revisor.md")
     print("  (um que já exista é mantido).")
     revisao = not args.sem_revisao and sim_nao("  Ligar a revisão de PR com líder e revisor?", True)
     revisor_ia = None
@@ -848,7 +890,7 @@ def assistente(args):
                 revisor_ia = {"ativo": True, "modelo": perguntar("  Modelo do revisor-ia", configuracao.REVISOR_MODELO)}
 
     titulo_passo(8, "Aparência e servidor")
-    titulo = perguntar("  Título do escritório", "Claude Office 3D")
+    titulo = perguntar("  Título do escritório", "Office Multi-provider")
     tema = ("neutro", "sao-paulo")[escolher("  Tema", ["neutro (escritório genérico)",
                                                   "sao-paulo (maquete de SP, placas de rua, orelhão, ipês, coxinha…)"], 1)]
     apelidos = configuracao.MODOS_APELIDO[escolher("  Apelidos na tela (só diversão; os nomes reais seguem nos eventos)",
@@ -867,7 +909,7 @@ def assistente(args):
     e = escolher("  Onde instalar o hook?", [
         f"usuário — {settings_usuario(args)} (vale para todas as sessões; o filtro de pastas do passo 4 se aplica)",
         "projeto — <projeto>/.claude/settings.local.json de cada pasta do passo 4",
-        "não instalar agora (instalação manual, veja INSTALACAO.md)"], 1)
+        "não instalar agora (instalação manual, veja docs/CLAUDE-COMPATIBILIDADE.md)"], 1)
     hook = ("usuario", "projeto", "nenhum")[e]
     if hook != "nenhum":
         print("  Bloco que será ACRESCENTADO (os hooks que você já tem são mantidos; antes é feito um backup):")
@@ -924,10 +966,10 @@ def assistente(args):
           f"{(github['projeto_owner'] + ' #' + str(github['projeto_numero'])) if github['projeto_numero'] else '—'}"
           f"  check={github['check_revisao'] or '(review)'}")
     print(f"  Tema:       {tema}   apelidos: {apelidos}   porta: {porta}   three.js: {'local' if three_offline else 'CDN'}")
-    print(f"  Celular:    {('LIGADO (rede local, ' + ('HTTPS' if rede_https else 'HTTP') + '; veja a seção Acesso pelo celular do INSTALACAO.md)') if rede_local else 'desligado (só neste PC)'}")
+    print(f"  Celular:    {('LIGADO (rede local, ' + ('HTTPS' if rede_https else 'HTTP') + '; veja a seção Acesso pelo celular do docs/CLAUDE-COMPATIBILIDADE.md)') if rede_local else 'desligado (só neste PC)'}")
     print(f"  Revisão PR: {'líder + Revisor' + (' + revisor-ia (' + revisor_ia['modelo'] + ')' if revisor_ia else '') if revisao else 'desligada'}")
-    print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o INSTALACAO.md)' if xp_ativo else 'desligado'}")
-    print("  Alertas:    ligados (botão 🔔 Alertas; Web Push no celular: veja a seção Alertas no celular do INSTALACAO.md)")
+    print(f"  XP/níveis:  {'ativado (rode python xp.py para calcular; veja o docs/CLAUDE-COMPATIBILIDADE.md)' if xp_ativo else 'desligado'}")
+    print("  Alertas:    ligados (botão 🔔 Alertas; Web Push no celular: veja a seção Alertas no celular do docs/CLAUDE-COMPATIBILIDADE.md)")
     alvos = arquivos_settings(hook, projetos, args)
     print(f"  Hook:       {', '.join(str(a) for a in alvos) if alvos else 'não instalar'}")
     print(f"  Statusline: {'uso do plano em ' + str(settings_usuario(args)) if statusline else 'não instalar'}")
@@ -948,9 +990,9 @@ def assistente(args):
         if WINDOWS:   # só mostra: o instalador nunca altera o Firewall
             portas = f"{cfg['porta'] + 1},{cfg['porta'] + 2}" if cfg.get("rede_https", True) else str(cfg["porta"])
             print("  Se o celular não abrir o link (tempo esgotado), crie a regra de entrada UMA vez, no PowerShell como Administrador:")
-            print(f'    New-NetFirewallRule -DisplayName "Claude Office 3D (celular)" -Direction Inbound -Program "{sys.executable}"'
+            print(f'    New-NetFirewallRule -DisplayName "Office Multi-provider (celular)" -Direction Inbound -Program "{sys.executable}"'
                   f" -Protocol TCP -LocalPort {portas} -Profile Private -Action Allow")
-            print("  (confira também: celular e PC na mesma sub-rede e a rede do Windows como Privada; detalhes no INSTALACAO.md,"
+            print("  (confira também: celular e PC na mesma sub-rede e a rede do Windows como Privada; detalhes no docs/CLAUDE-COMPATIBILIDADE.md,"
                   " seção Acesso pelo celular > Não abre no celular?)")
     if hook != "nenhum" or statusline:
         print("  Sessões do Claude Code já abertas precisam ser reiniciadas para carregar o hook e a statusline.")
@@ -981,7 +1023,7 @@ def silencioso(args):
     for p in configuracao.normalizar(dados)["projetos"]:
         if not Path(p).is_dir():
             print(f"Aviso: pasta de projeto não encontrada: {p}")
-    print("Claude Office 3D — instalação silenciosa")
+    print("Office Multi-provider — instalação silenciosa")
     destino, cfg = aplicar(plano, args)
     print("Boas práticas dos projetos:")
     if relatar_praticas(cfg["projetos"], cfg, args) and not plano["praticas"]["corrigir"]:
@@ -996,6 +1038,7 @@ def so_revisao(args):
     """--revisao PROJETO: só o passo "Revisão de PR" numa instalação existente. Mostra o diff do config.json, faz backup
     antes de gravar e cria .claude/agents/revisor.md no projeto (nunca sobrescreve)."""
     destino = Path(args.destino).resolve() if args.destino else PASTA
+    validar_edicao(destino)
     projeto = Path(args.revisao).expanduser().resolve()
     arq_cfg = destino / "config.json"
     if not projeto.is_dir():
@@ -1012,7 +1055,7 @@ def so_revisao(args):
     if not isinstance(atual, dict):
         print("config.json inválido (não é um objeto JSON): nada foi mudado")
         return 2
-    print("Claude Office 3D — revisão de PR (líder + revisor)")
+    print("Office Multi-provider — revisão de PR (líder + revisor)")
     motivos = boas_praticas.revisao_configurada(configuracao.normalizar(atual), projeto)
     print(f"  Hoje quem revisa os PRs: {', '.join(motivos) or 'ninguém'}")
     novo, _ = boas_praticas.com_revisor(atual)
@@ -1050,9 +1093,10 @@ def so_revisao(args):
 
 def desinstalar(args):
     destino = Path(args.destino).resolve() if args.destino else PASTA
+    validar_edicao(destino)
     cfg = configuracao.carregar(destino / "config.json")
     alvos = [settings_usuario(args)] + [Path(p) / ".claude" / "settings.local.json" for p in cfg["projetos"]]
-    print("Claude Office 3D — desinstalação dos hooks")
+    print("Office Multi-provider — desinstalação dos hooks")
     print(f"  Remove só os hooks que chamam {(destino / 'registrar_evento.py').as_posix()} (e a statusline, se for a"
           " do escritório) de:")
     for a in alvos:
@@ -1075,7 +1119,7 @@ def desinstalar(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Assistente de instalação do Claude Office 3D")
+    ap = argparse.ArgumentParser(description="Assistente de instalação do Office Multi-provider")
     ap.add_argument("--sem-perguntas", action="store_true", help="instalação silenciosa (exige --config)")
     ap.add_argument("--config", help="arquivo JSON com a configuração (modo silencioso)")
     ap.add_argument("--desinstalar", action="store_true", help="remove os hooks deste escritório")
@@ -1089,8 +1133,19 @@ def main():
     ap.add_argument("--sem-revisao", action="store_true", help="pula o passo Revisão de PR (líder + revisor)")
     ap.add_argument("--revisao", metavar="PROJETO",
                     help="numa instalação existente, só o passo Revisão de PR para este projeto (diff e backup do config)")
+    ap.add_argument('--gestao',metavar='PROJETO',help='prepara a gestão multi-console deste projeto')
+    ap.add_argument('--politica',help='política JSON para --gestao; sem ela usa assistente')
+    ap.add_argument('--aplicar',action='store_true',help='com --gestao, grava somente arquivos novos')
     args = ap.parse_args()
     try:
+        if args.gestao:
+            if args.sem_perguntas and not args.politica:
+                raise ValueError('--gestao --sem-perguntas exige --politica JSON')
+            import configurar_gestao
+            chamada=['--projeto',args.gestao]
+            if args.politica: chamada+=['--politica',args.politica]
+            if args.aplicar: chamada+=['--aplicar']
+            return configurar_gestao.main(chamada)
         if args.desinstalar:
             return desinstalar(args)
         if args.revisao:

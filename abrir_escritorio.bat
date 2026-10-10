@@ -6,7 +6,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 set EXTRA=
 if /i "%~1"=="celular" set EXTRA=--rede-local
-echo Iniciando o Claude Office 3D...
+echo Iniciando o Office Multi-provider...
 rem Python do .venv do escritorio, se existir; senao o do PATH
 set PY=python
 where python >nul 2>nul || set PY=py -3

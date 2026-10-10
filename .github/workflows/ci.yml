@@ -23,8 +23,14 @@ jobs:
         run: python -m pip install cryptography
       - name: Sintaxe e varredura de vazamento
         run: python ferramentas/verificar.py
+      - name: Conclusão nativa dos novos providers
+        run: |
+          python -W error ferramentas/testar_retorno_console.py
+          python -W error ferramentas/testar_pipe_console.py
       - name: SDD em dia com o código (rotas, tabelas, scripts e flags, chaves do config)
         run: python ferramentas/verificar_docs.py
+      - name: Regressões do verificador de documentação
+        run: python -W error ferramentas/testar_verificar_docs.py
       - name: Instalação silenciosa (instala, repete sem duplicar, desinstala)
         run: python ferramentas/testar_instalacao.py
       - name: Alertas (detector, Web Push cifrado, VAPID, cota)
@@ -37,6 +43,98 @@ jobs:
         run: python -W error ferramentas/testar_saude.py
       - name: Hook do escritório (✔/✖ dos comandos, PostToolUseFailure)
         run: python -W error ferramentas/testar_registrar_evento.py
+      - name: Ponte opcional de eventos entre instalações separadas
+        run: python -W error ferramentas/testar_ponte_eventos.py
+      - name: Entrada neutra de eventos (validação, tetos, fila)
+        run: python -W error ferramentas/testar_emit_evento.py
+      - name: Providers (Claude, Codex e OpenCode)
+        run: |
+          python -W error ferramentas/testar_providers.py
+          python -W error ferramentas/testar_compatibilidade_skills.py
+          python -W error ferramentas/testar_skills_execucao.py
+          python -W error ferramentas/testar_coordenacao.py
+          python -W error ferramentas/testar_coordenacao_registro.py
+          python -W error ferramentas/testar_coordenacao_painel.py
+          python -W error ferramentas/testar_coordenacao_execucao.py
+          python -W error ferramentas/testar_conciliacao_pedidos.py
+          python -W error ferramentas/testar_xp_projeto.py
+          python -W error ferramentas/testar_sugestoes_projeto.py
+          python -W error ferramentas/testar_triagem_providers.py
+          python -W error ferramentas/testar_alertas_projetos.py
+          python -W error ferramentas/testar_alertas_tarefas.py
+          python -W error ferramentas/testar_saude_tarefas.py
+          python -W error ferramentas/testar_atividade_execucao.py
+          node ferramentas/testar_gestao_saude.mjs
+          python -W error ferramentas/testar_auditor_projeto.py
+          python -W error ferramentas/testar_consumo_coordenacao.py
+          python -W error ferramentas/testar_claude_padronizado.py
+      - name: Gestão por projeto (política, reservas, executores e Kanban)
+        run: |
+          python -W error ferramentas/testar_gestao_projeto.py
+          python -W error ferramentas/testar_controle_tarefas.py
+          python -W error ferramentas/testar_claude_sessao.py
+          python -W error ferramentas/testar_gestao_execucao.py
+          python -W error ferramentas/testar_gestao_kanban.py
+          python -W error ferramentas/testar_dependencias_tarefas.py
+          python -W error ferramentas/testar_diretor_tarefas.py
+          python -W error ferramentas/testar_diretor_lotes.py
+          python -W error ferramentas/testar_kanban_painel.py
+          python -W error ferramentas/testar_revisao_cruzada.py
+          python -W error ferramentas/testar_revisores_console.py
+          python -W error ferramentas/testar_revisao_execucao.py
+          python -W error ferramentas/testar_despacho_revisao.py
+          python -W error ferramentas/testar_executor_local.py
+          python -W error ferramentas/testar_memoria_local.py
+          python -W error ferramentas/testar_funcionarios.py
+          python -W error ferramentas/testar_agentes_nativos.py
+          node ferramentas/testar_agentes_nativos_form.mjs
+          python -W error ferramentas/testar_configurar_gestao.py
+          python -W error ferramentas/testar_iniciar_projeto.py
+          python -W error ferramentas/testar_diagnostico_instalacao.py
+          python -W error ferramentas/testar_modelos_opencode.py
+          python -W error ferramentas/testar_politica_painel.py
+          python -W error ferramentas/testar_merge_painel.py
+          python -W error ferramentas/testar_uso_providers.py
+          python -W error ferramentas/testar_consumo_providers.py
+          python -W error ferramentas/testar_precos_tokens.py
+          python -W error ferramentas/testar_consumo_projeto.py
+          python -W error ferramentas/testar_fontes_documentais.py
+      - name: Formulário dos executores
+        run: |
+          node ferramentas/testar_executores_form.mjs
+          node ferramentas/testar_merge_form.mjs
+      - name: Codex interativo (transcritos e isolamento de sessões)
+        run: python -W error ferramentas/testar_codex_observador.py
+      - name: Providers no feed HTTP do escritório
+        run: python -W error ferramentas/testar_providers_http.py
+      - name: Plugin OpenCode (hooks V1, falhas e isolamento)
+        run: node ferramentas/testar_plugin_opencode.mjs
+      - name: Cotas no Placar (fornecedores separados e consultas só com painel aberto)
+        run: node ferramentas/testar_indicadores_providers.mjs
+      - name: PRs por projeto (respostas antigas e isolamento de sugestões)
+        run: node ferramentas/testar_prs_projetos.mjs
+      - name: PRs por projeto (seleção, REST e contrato legado)
+        run: python -W error ferramentas/testar_prs_gestao.py
+      - name: Evidências de PR por projeto/commit
+        run: |
+          python -W error ferramentas/testar_prs_evidencias.py
+          python -W error ferramentas/testar_prs_pendencias.py
+          node ferramentas/testar_prs_evidencias.mjs
+      - name: Kanban por projeto (seleção da página e texto seguro)
+        run: node ferramentas/testar_kanban_projetos.mjs
+      - name: Especialistas na cena (identidade e assentos legados)
+        run: node ferramentas/testar_funcionarios_cena.mjs
+      - name: Compatibilidade de skills no cadastro
+        run: |
+          node ferramentas/testar_funcionarios_form.mjs
+          node ferramentas/testar_coordenacoes_painel.mjs
+          node ferramentas/testar_coordenacao_form.mjs
+          node --experimental-vm-modules ferramentas/testar_placar_projetos.mjs
+          node --experimental-vm-modules ferramentas/testar_prs_sugestoes_projetos.mjs
+      - name: Distribuição isolada (manifesto, ZIP e API extraída)
+        run: python -W error ferramentas/testar_build.py
+      - name: Importação do .claude para o OpenCode (plano, conversão, idempotência)
+        run: python -W error ferramentas/testar_importar_opencode.py
       - name: Replay do dia (GET /eventos?de=&ate=)
         run: python -W error ferramentas/testar_eventos.py
       - name: Triagem das sugestões dos bots (itens já na caixa, teto de tentativas)
@@ -47,5 +145,26 @@ jobs:
         run: python -W error ferramentas/testar_grafo_painel.py
       - name: Boas práticas do projeto (checagens, correções seguras, .venv, CLI, GET /api/praticas)
         run: python -W error ferramentas/testar_praticas.py
+      - name: Retomada explícita de tarefas nos quatro consoles
+        run: python -W error ferramentas/testar_retomada_tarefas.py
+      - name: Retomada assíncrona pelo painel PC
+        run: python -W error ferramentas/testar_retomada_painel.py
+      - name: Formulário de retomada e confirmação
+        run: node ferramentas/testar_retomada_form.mjs
+      - name: Conciliação da tentativa exata de retomada
+        run: python -W error ferramentas/testar_conciliacao_retomada.py
       - name: Build do pacote
+        # Resultados por tentativa são distintos de aceite ou merge.
         run: python ferramentas/build.py
+      - name: Atribuição e resultados históricos das tentativas
+        run: python -W error ferramentas/testar_resultados_tentativas.py
+
+  preparar-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preparação da máquina com instaladores simulados
+        run: python -W error ferramentas/testar_preparar_maquina.py
