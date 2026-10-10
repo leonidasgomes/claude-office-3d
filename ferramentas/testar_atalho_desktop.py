@@ -26,7 +26,9 @@ class Atalho(unittest.TestCase):
             pasta.mkdir()
             (pasta / 'abrir_escritorio.bat').write_text('@echo off')
             (pasta / 'icone-office.ico').write_bytes(b'icone')
+            classe_path = type(pasta)
             with patch.object(atalho_desktop.os, 'name', 'nt'), \
+                 patch.object(atalho_desktop, 'Path', classe_path), \
                  patch.object(atalho_desktop.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
                  patch.object(atalho_desktop.subprocess, 'run') as run:
                 run.return_value = SimpleNamespace(returncode=0, stdout=str(pasta / 'teste.lnk'), stderr='')
