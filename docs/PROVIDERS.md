@@ -38,6 +38,12 @@ regras nativas continuam valendo. Outros consoles não aceitam esse campo e
 revisores Codex continuam isolados em `read-only`. Nenhuma opção altera a
 configuração global do CLI.
 
+Consultas isoladas OpenCode distinguem HTTP 403 como acesso recusado, HTTP 401
+como autenticação indisponível e HTTP 429 como limite/crédito indisponível.
+403 sozinho não determina falta de crédito ou de chave. O diagnóstico não
+expõe corpo, headers ou credenciais, não troca o modelo e mantém a revisão
+bloqueada. A presença de um modelo free no catálogo não comprova acesso.
+
 ## Executar
 
 Execute na pasta `office-multi-provider`; abra o servidor pelo launcher atual.

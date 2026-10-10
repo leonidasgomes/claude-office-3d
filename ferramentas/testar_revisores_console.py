@@ -24,7 +24,7 @@ class Revisores(unittest.TestCase):
         for status,mensagem,nome,motivo in [
             (429,'SEGREDO','APIError','limite_ou_credito'),
             (401,'SEGREDO','APIError','autenticacao_indisponivel'),
-            (403,'Access denied SEGREDO','APIError','console_falhou'),
+            (403,'Access denied SEGREDO','APIError','acesso_recusado'),
             (None,'Invalid token SEGREDO','ProviderAuthError','autenticacao_indisponivel'),
             (403,'insufficient_credit SEGREDO','APIError','limite_ou_credito')]:
             fluxo=json.dumps({'type':'error','error':{'name':nome,'data':{
@@ -49,8 +49,10 @@ class Revisores(unittest.TestCase):
         self.assertEqual(rc.motivo_opencode(erro(429)+'\n'+erro(401)),'console_falhou')
         fluxo=json.dumps({'type':'error','error':{'name':'APIError','data':{
             'statusCode':403,'metadata':{'error':'quota 429'},'responseBody':'invalid_api_key'}}})
-        self.assertEqual(rc.motivo_opencode(fluxo),'console_falhou')
-        for status in (True,'429',429.0):
+        self.assertEqual(rc.motivo_opencode(fluxo),'acesso_recusado')
+        self.assertEqual(rc.motivo_opencode(erro(403)),'acesso_recusado')
+        self.assertEqual(rc.motivo_opencode(erro(403)+'\n'+erro(401)),'console_falhou')
+        for status in (True,'429',429.0,'403',403.0):
             self.assertEqual(rc.motivo_opencode(erro(status)),'console_falhou')
         with patch.object(rc.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout=erro(429),stderr='')):
             self.assertEqual(rc.rodar(['codex','exec','--json'],Path('.'),{}),erro(429))

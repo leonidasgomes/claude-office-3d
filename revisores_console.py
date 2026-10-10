@@ -14,6 +14,7 @@ MOTIVOS_FALHA={
     'workspace_nao_confiavel':'O console recusou o contexto da revisão por falta de confiança.',
     'limite_ou_credito':'O fornecedor informou limite ou crédito indisponível.',
     'autenticacao_indisponivel':'O console não conseguiu autenticar a revisão.',
+    'acesso_recusado':'O servidor recusou acesso ao modelo (HTTP 403). Confira disponibilidade e permissões no console; presença no catálogo gratuito não comprova acesso.',
     'console_falhou':'O console não completou a revisão.',
 }
 
@@ -61,6 +62,8 @@ def motivo_opencode(fluxo):
             elif isinstance(mensagem,str) and len(mensagem)<=4096:
                 # Headers, responseBody, metadata e texto de sucesso não entram no diagnóstico.
                 motivo=motivo_falha(mensagem,1)
+            if motivo=='console_falhou' and type(status) is int and status==403:
+                motivo='acesso_recusado'
         motivos.append(motivo)
     if not motivos:return None
     return motivos[0] if len(set(motivos))==1 else 'console_falhou'
