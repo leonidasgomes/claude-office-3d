@@ -1,4 +1,9 @@
-# Office Multi-provider — 2.0.0-dev
+# Office Multi-provider — 2.0.0-dev.3
+
+**Codex e OpenCode:** baixe a [prévia atual 2.0.0-dev.3](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.3).
+**Claude legado:** a [versão estável 1.19.1](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v1.19.1)
+continua separada. O selo Latest do GitHub aponta para essa linha estável;
+a edição 2.x ainda é uma prévia. Veja [qual versão escolher](docs/VERSOES.md).
 
 Nova linha independente em desenvolvimento. Instalações da edição Claude 1.x
 continuam em suas pastas; instale a edição 2.x em um destino separado.
