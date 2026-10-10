@@ -509,6 +509,18 @@ Princípios que aparecem em todo o código:
   rodapé ("GraphQL: 3.200/5.000 (volta 11:25)" — `texto`) e marca cota baixa abaixo de 20% (`LIMIAR_BAIXA`).
 - O servidor anexa `cota` e `cota_baixa` às respostas de `/kanban` e `/prs` (`servidor.com_cota`).
 
+`conclusao_tarefas.py` fornece `gestao_cli.py concluir --cartao N --pr N`:
+prévia por padrão, `--executar` para conciliação após merge. Lê reserva em revisão,
+contexto de branch e hash da política, fontes e instruções, issue fechada e PR
+fechado/mergeado do mesmo repositório com `Closes`/`Fixes`/`Resolves` ao cartão
+inteiro. Consulta check runs e commit statuses do head exato para todos os checks
+obrigatórios da política. Com revisão ativa, recalcula a aprovação da entrega
+vinculada ao PR/head; desativada não exige revisores. A tabela `conclusao` guarda
+evidência de PR/head/merge/checks antes de mover o cartão a Feito; depois a reserva
+vira `concluido`. Nova execução reconhece Feito somente com a mesma evidência,
+recuperando falha entre escrita remota e transição local. A prévia não grava cache
+do Kanban ou banco. Não faz merge nem publica status de checks.
+
 ### 3.8 `sugestoes_bot.py` — caixa de sugestões dos bots de revisão
 
 - **Coleta** (`coletar`): `_baixar_prs_abertos` (`/pulls?state=open&per_page=100` com ETag), `_baixar_comentarios`
@@ -1090,7 +1102,7 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 | `console_provider.py` | Launcher adicional de providers; `--provider`, `--config`, `--projeto`, `--mesa`, `--modelo`, `--sandbox`, `--sessao`, `--agente`, `--prompt`, `--prompt-arquivo`, `--banco`, `--detectar`, `--preparar-skills`, `--aplicar`, `--papel`, `--equipe`, `--escopo`, `--funcionario`. Arquivo UTF-8 até 128 mil caracteres, exclusivo com prompt literal, sem truncar. Detalhes em `docs/PROVIDERS.md` e `docs/GESTAO.md`. |
 | `executor_local.py` | Módulo interno, sem CLI própria: adapta `--model` do console e aplica reserva/monitor de recursos ao launcher/despacho. Veja docs/GESTAO.md. |
 | `consumo_providers.py` | Ponte de contadores do plugin: `--opencode` (obrigatório), `--banco` (isolado); stdin JSON até 128 KiB; usa tabela consumo separada. Modelo do plugin informado por messageID; pai run fica no launcher, TUI/filhos no plugin. Ver docs/GESTAO.md. |
-| `gestao_cli.py` | Política por projeto e despacho REST; `--projeto`, `--cartao`, `--equipe`, `--escopo`, `--worktree`, `--base`, `--aceite`, `--executar`, `--funcionario`, `--max-cartoes`, `--apos-cartao`, `--plano`, `--solicitacao`, `--consultar`, `--confirmacao`, `--agentes-conciliados`. Subcomandos estado/planejar/despachar/retomar/revisar/lote/coordenar; lote prepara cartões e worktrees e, com --executar, despacha sequencialmente por padrão ou com paralelismo de 1 a 4 definido no JSON, com relatório local e interrupção da admissão após bloqueio. Coordenar recebe candidatos em --plano e objetivo UTF-8 em --solicitacao: sem flags de ação faz prévia, --consultar consulta CEO/diretor cloud sem despacho e --executar consulta e executa a seleção pelos gates comuns. Planejar é diagnóstico limitado/paginado, sem inferência ou reserva. Despacho verifica dependências nativas/textuais antes da execução e na entrega/revisão; revisão por SHA sem publicar. Estado local em SQLite separado; `docs/GESTAO.md`. |
+| `gestao_cli.py` | Política por projeto e despacho REST; `--projeto`, `--cartao`, `--pr`, `--equipe`, `--escopo`, `--worktree`, `--base`, `--aceite`, `--executar`, `--funcionario`, `--max-cartoes`, `--apos-cartao`, `--plano`, `--solicitacao`, `--consultar`, `--confirmacao`, `--agentes-conciliados`. Subcomandos estado/planejar/despachar/retomar/revisar/lote/coordenar; lote prepara cartões e worktrees e, com --executar, despacha sequencialmente por padrão ou com paralelismo de 1 a 4 definido no JSON, com relatório local e interrupção da admissão após bloqueio. Coordenar recebe candidatos em --plano e objetivo UTF-8 em --solicitacao: sem flags de ação faz prévia, --consultar consulta CEO/diretor cloud sem despacho e --executar consulta e executa a seleção pelos gates comuns. Planejar é diagnóstico limitado/paginado, sem inferência ou reserva. Despacho verifica dependências nativas/textuais antes da execução e na entrega/revisão; revisão por SHA sem publicar. Estado local em SQLite separado; `docs/GESTAO.md`. |
 | `servidor.py` | `[--porta N] [--sem-navegador] [--rede-local] [--sem-https]` |
 | `instalar.py` | sem argumentos (assistente); `--sem-perguntas --config X.json`; `--desinstalar`; `--settings-usuario CAMINHO`; `--destino PASTA`; `--hook usuario\|projeto\|nenhum`; `--statusline`; `--sem-abrir`; `--sem-venv`; `--sem-revisao`; `--revisao PROJETO` (só a revisão de PR numa instalação existente); `--gestao PROJETO`, `--politica JSON`, `--aplicar` (política nova de gestão) |
 | `configurar_gestao.py` | Assistente comum de política por projeto; `--projeto`, `--politica`, `--aplicar`. Prévia sem gravação; não substitui política existente, instala CLIs ou altera GitHub. |

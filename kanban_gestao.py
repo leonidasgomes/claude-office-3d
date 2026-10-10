@@ -44,9 +44,10 @@ def api(caminho, metodo="GET", dados=None, paginar=False, campo=None):
 
 
 class Kanban:
-    def __init__(self, politica, cache, chamar=api):
+    def __init__(self, politica, cache, chamar=api, sem_escrita=False):
         self.cfg = politica["kanban"]
         self.cache, self.chamar = Path(cache), chamar
+        self.sem_escrita = sem_escrita
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", self.cfg["repo"]):
             raise ValueError("Configure kanban.repo (owner/repo) no projeto")
         if not re.fullmatch(r"[\w.-]+", self.cfg["owner"]) or self.cfg["numero"] < 1:
@@ -83,6 +84,8 @@ class Kanban:
         itens = self._paginas(f"{self.base}/items?fields={ids}")
         dados = {"base": self.base, "repo": self.cfg["repo"], "gravado_em": time.time(),
                  "campos": campos, "itens": itens, 'campos_consultados': self._nomes_campos()}
+        if self.sem_escrita:
+            return dados
         self.cache.parent.mkdir(parents=True, exist_ok=True)
         # Atomicidade evita um JSON parcial em leitores concorrentes.
         import uuid

@@ -576,6 +576,10 @@ def main(argv=None):
     p.add_argument("--projeto", required=True, type=Path)
     sub = p.add_subparsers(dest="acao", required=True)
     sub.add_parser("estado")
+    conclusao=sub.add_parser('concluir',help='prévia ou conclusão após merge comprovado')
+    conclusao.add_argument('--cartao',required=True,type=int)
+    conclusao.add_argument('--pr',required=True,type=int)
+    conclusao.add_argument('--executar',action='store_true')
     retomada=sub.add_parser('retomar',help='prévia ou retomada explícita de sessão com retorno anterior confirmado')
     retomada.add_argument('--cartao',required=True,type=int)
     retomada.add_argument('--worktree',required=True,type=Path)
@@ -613,6 +617,10 @@ def main(argv=None):
         if args.acao == "estado":
             banco = pasta_dados(args.projeto) / "tarefas.db"
             resultado = {"politica": cfg, "tarefas": Controle(banco).listar(cfg["kanban"]["repo"]) if banco.exists() else []}
+        elif args.acao=='concluir':
+            import conclusao_tarefas
+            resultado=(conclusao_tarefas.executar(args.projeto,args.cartao,args.pr) if args.executar
+                       else conclusao_tarefas.preparar(args.projeto,args.cartao,args.pr)[0])
         elif args.acao=='retomar':
             resultado=retomar(args.projeto,args.cartao,args.worktree,args.confirmacao,agentes_conciliados=args.agentes_conciliados) if args.executar else preparar_retomada(args.projeto,args.cartao,args.worktree)[0]
         elif args.acao == 'planejar':
