@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 class Elemento {
-  constructor(tag) { this.tag=tag; this.children=[]; this.open=false; this.textContent=''; this.dataset={}; }
+  constructor(tag) { this.tag=tag; this.children=[]; this.open=false; this.textContent=''; this.dataset={}; this.handlers={}; }
   append(...filhos) { this.children.push(...filhos); }
   replaceChildren(...filhos) { this.children=filhos; }
   setAttribute() {}
-  addEventListener() {}
+  addEventListener(nome, fn) { this.handlers[nome]=fn; }
   querySelector(seletor) {
     const id=/section\[data-projeto="([0-9a-f]{20})"\]/.exec(seletor)?.[1];
     return id ? this.children.find(e=>e.dataset.projeto===id) || null : null;
@@ -18,6 +18,8 @@ class Elemento {
   set innerHTML(v) { throw Error('HTML externo proibido'); }
 }
 const body=new Elemento('body');
+const botoes=Object.fromEntries(['btnGestao','btnOpcoes','btnMenu'].map(id=>[id,new Elemento('button')]));
+let compacto=false; const menusFechados=[];
 const dados={projetos:[{id:'a'.repeat(20),nome:'Projeto',ativo:true,ceo:{console:'codex'},diretor:{console:'gemini'},
   politica_versao:'b'.repeat(64),pedidos_retomada:{itens:[{cartao:44,estado:'concluida',resultado:'bloqueado',codigo:0},{id:'c'.repeat(32),cartao:45,estado:'incerto',resultado:null,codigo:null}]},consumo:{escopo:'projeto',grupos:[{provider:'codex',modelo:'modelo deste projeto',origem_modelo:'informado',agente:'CEO',amostras:1,entrada:12,com_entrada:1,saida:2,com_saida:1,total:14,com_total:1}]},local:{ativo:false},merge:'manual',merge_config:{modo:'manual',checks:[],rotulos_manuais:['merge-manual']},equipes:[],funcionarios:[],tarefas:[{cartao:42,equipe:'Dev',console:'claude',estado:'executando',
     atividade:{estado:'acompanhando',ultimo_sinal:Date.now()/1000-.1,console_observado:true,codigo_console:null,eventos:{ultimo_evento:Date.now()/1000-.2,total:3,eventos_filhos:1,ultimo_tipo:'<script>fala</script>'}}},{cartao:44,equipe:'Dev',console:'codex',estado:'bloqueado',atividade:{estado:'encerrado',ultimo_sinal:Date.now()/1000,codigo_console:0}}],
@@ -39,8 +41,8 @@ dados.projetos.push({id:'d'.repeat(20),nome:'Projeto inativo',ativo:false,docume
   instrucoes_consoles:[{arquivo:'AGENTS.md',consoles:['codex','opencode'],estado:'presente',necessario:false,cita_regras:true}],
   limite:'Presença não comprova concordância das regras'}});
 const eventos={};
-const contexto=vm.createContext({document:{body,hidden:false,createElement:t=>new Elemento(t),addEventListener(){}},
-  window:{addEventListener:(nome,fn)=>{eventos[nome]=fn;},dispatchEvent:e=>eventos[e.type]?.(e)},
+const contexto=vm.createContext({document:{body,hidden:false,getElementById:id=>botoes[id]||null,documentElement:{classList:{contains:()=>compacto}},createElement:t=>new Elemento(t),addEventListener(){}},
+  window:{__opcoes:{fechar:foco=>menusFechados.push(foco)},addEventListener:(nome,fn)=>{eventos[nome]=fn;},dispatchEvent:e=>eventos[e.type]?.(e)},
   CustomEvent:class {constructor(type,opts={}){this.type=type;this.detail=opts.detail;}},
   fetch:async()=>({ok:true,json:async()=>dados}),formularioFuncionarios:vazio,formularioExecutores:vazio,
   formularioCoordenacao:vazio,renderizarCoordenacoes(){},renderizarPedidos(){},
@@ -111,3 +113,16 @@ assert.match(resultado,/<script>Equipe<\/script>/);
 assert.match(resultado,/1 despacho\(s\) · 1 retomada\(s\)/);
 assert.match(resultado,/1 falha\(s\) de console/);
 assert.match(resultado,/Encaminhamento à revisão não comprova merge/);
+
+// O acesso usa o botão do menu e fecha o popover antes de abrir o diálogo.
+assert.equal(vm.runInContext('botao',contexto),botoes.btnGestao);
+assert.equal(body.children.includes(botoes.btnGestao),false);
+botoes.btnGestao.handlers.click();
+assert.equal(menusFechados.at(-1),false);
+assert.equal(vm.runInContext('painel.open',contexto),true);
+vm.runInContext('painel.handlers.close()',contexto);
+assert.equal(botoes.btnOpcoes.focado,true);
+compacto=true;
+vm.runInContext('painel.handlers.close()',contexto);
+assert.equal(botoes.btnMenu.focado,true);
+console.log('Gestão no menu: abertura e retorno de foco no PC e celular — OK');
