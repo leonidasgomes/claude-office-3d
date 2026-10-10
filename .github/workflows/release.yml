@@ -25,6 +25,11 @@ jobs:
       - name: Publicar release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256
-          --title "Office Multi-provider ${GITHUB_REF_NAME}" --notes-file NOTAS.md
+        shell: bash
+        run: |
+          flags=(--verify-tag)
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256 \
+            --title "Office Multi-provider ${GITHUB_REF_NAME}" --notes-file NOTAS.md "${flags[@]}"

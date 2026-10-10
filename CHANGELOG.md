@@ -1,6 +1,13 @@
 # Changelog
 
 ## 2.0.0-dev
+- Prévia instalável: tags de desenvolvimento são publicadas como prerelease,
+  sem substituir a versão estável.
+- Codex permite sandbox por escopo e saída UTF-8 no Windows. OpenCode distingue
+  acesso recusado de erros de execução, sem expor respostas ou credenciais.
+- Revisores podem ser suspensos sem remover sua configuração. O painel informa
+  a suspensão e o instalador não exige esses consoles. A exigência de revisão
+  por fornecedores diferentes continua bloqueando tarefas sem revisores suficientes.
 - Edição multi-provider separada do legado, com adapters Claude, Codex, OpenCode e Gemini.
 - Gestão por projeto: CEO/diretor/equipes, especialistas, Kanban, worktrees, reservas,
   revisão por fornecedores distintos, gates por commit e retomada explícita.
