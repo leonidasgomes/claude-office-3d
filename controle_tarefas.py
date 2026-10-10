@@ -56,6 +56,8 @@ class Controle:
             db.execute('''CREATE TABLE IF NOT EXISTS entrega (
                 token TEXT PRIMARY KEY, sha TEXT NOT NULL, pr INTEGER NOT NULL,
                 aprovado INTEGER NOT NULL, relatorio TEXT NOT NULL, atualizado REAL NOT NULL)''')
+            db.execute('''CREATE TABLE IF NOT EXISTS conclusao (
+                token TEXT PRIMARY KEY, evidencia TEXT NOT NULL, atualizado REAL NOT NULL)''')
             db.execute("""CREATE TABLE IF NOT EXISTS execucao_tarefa (
                 id TEXT PRIMARY KEY,token TEXT NOT NULL,console TEXT NOT NULL,
                 modelo TEXT NOT NULL,origem_modelo TEXT NOT NULL,execucao TEXT NOT NULL,
@@ -282,3 +284,27 @@ class Controle:
         with closing(self._abrir()) as db:
             linha = db.execute('SELECT * FROM entrega WHERE token=?', (token,)).fetchone()
         return dict(linha, relatorio=json.loads(linha['relatorio'])) if linha else None
+
+    def registrar_conclusao(self, token, evidencia):
+        """Diário local anterior à escrita remota; permite conciliar uma falha posterior."""
+        texto=json.dumps(evidencia,ensure_ascii=False,sort_keys=True)
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            linha=db.execute('SELECT estado FROM reserva WHERE token=?',(token,)).fetchone()
+            if not linha or linha['estado']!='revisao':
+                raise ValueError('Conclusão exige reserva em revisão')
+            anterior=db.execute('SELECT evidencia FROM conclusao WHERE token=?',(token,)).fetchone()
+            if anterior and anterior['evidencia']!=texto:
+                raise ValueError('Evidência de conclusão diverge da registrada')
+            db.execute('INSERT OR IGNORE INTO conclusao VALUES (?,?,?)',(token,texto,time.time()))
+
+    def concluir(self, token):
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            linha=db.execute('SELECT estado FROM reserva WHERE token=?',(token,)).fetchone()
+            if not linha or linha['estado'] not in ('revisao','concluido'):
+                raise ValueError('Reserva não admite conclusão')
+            if not db.execute('SELECT 1 FROM conclusao WHERE token=?',(token,)).fetchone():
+                raise ValueError('Conclusão sem evidência persistida')
+            if linha['estado']=='revisao':
+                db.execute('UPDATE reserva SET estado=?,atualizado=? WHERE token=?',('concluido',time.time(),token))
