@@ -314,6 +314,9 @@ def resumo(projetos,banco_consumo=None):
                           "funcionarios":membros, "skills":funcionarios.skills(raiz,cfg),
                           "ativo": cfg["ativo"], "politica_versao":politica_versao, "ceo": cfg["ceo"],
                           "diretor": cfg["diretor"], "equipes": cfg["equipes"],
+                          "revisao":{**{k:cfg['revisao'][k] for k in ('ativo','clouds_distintas','separar_autor')},
+                              'revisores':[{'nome':r['nome'],'console':r['executor']['console'],'ativo':r.get('ativo',True)}
+                                           for r in cfg['revisao']['revisores']]},
                           "merge": cfg["merge"]["modo"], "local": cfg["local"],
                           "merge_config":cfg["merge"],
                           "documentacao":resumo_fontes(raiz,cfg),

@@ -71,6 +71,12 @@ async function carregar() {
       linha('p', `CEO: ${executor(p.ceo)}`, secao);
       linha('p', `Diretor: ${executor(p.diretor)}`, secao);
       linha('p', `Merge: ${p.merge} · Local: ${p.local.ativo ? (p.local.team ? 'equipes habilitadas' : 'tarefas simples') : 'desativado'}`, secao);
+      if(p.revisao) {
+        const r=p.revisao,habilitados=r.revisores.filter(x=>x.ativo).length;
+        linha('p',r.ativo?`Revisão ativa: exige ${r.clouds_distintas} fornecedor(es) distinto(s)${r.separar_autor?' e diferentes do autor':''}. ${habilitados} revisor(es) habilitado(s) pela política.`:'Revisão cruzada desativada neste projeto.',secao);
+        if(r.revisores.length)linha('p','Revisores: '+r.revisores.map(x=>`${x.nome} (${x.console}): ${x.ativo?'habilitado':'suspenso'}`).join(' · '),secao);
+        linha('p','Habilitação não comprova login, cota ou disponibilidade. Se faltarem fornecedores independentes habilitados, o despacho é bloqueado antes de iniciar agentes.',secao);
+      }
       const lista = linha('ul', '', secao);
       for (const equipe of p.equipes) linha('li', `${equipe.nome}: ${equipe.especialidade} — ${executor(equipe.executor)}`, lista);
       if(p.politica_versao)secao.append(formularioExecutores(p, async()=>{await carregar();}));

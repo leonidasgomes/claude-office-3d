@@ -19,6 +19,20 @@ from recursos_local import reservar, verificar
 
 
 class GestaoExecucao(unittest.TestCase):
+    def test_painel_exibe_revisores_suspensos_sem_expor_contextos_ou_mutar_politica(self):
+        from gestao_painel import resumo
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);(raiz/'.office').mkdir()
+            cfg={'revisao':{'ativo':True,'revisores':[
+                {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
+                {'nome':'QA Codex','executor':{'console':'codex'}}]}}
+            arq=raiz/'.office/projeto.json';arq.write_text(json.dumps(cfg),encoding='utf-8');antes=arq.read_bytes()
+            r=resumo([raiz])['projetos'][0]['revisao']
+            self.assertTrue(r['ativo']);self.assertEqual(r['clouds_distintas'],2)
+            self.assertEqual(r['revisores'],[{'nome':'QA Claude','console':'claude','ativo':False},
+                                            {'nome':'QA Codex','console':'codex','ativo':True}])
+            self.assertEqual(arq.read_bytes(),antes)
+
     def test_sandbox_politica_propagado_e_argumento_divergente_bloqueado(self):
         with tempfile.TemporaryDirectory() as tmp:
             raiz=Path(tmp);(raiz/'.office').mkdir()

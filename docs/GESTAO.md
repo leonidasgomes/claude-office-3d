@@ -8,6 +8,9 @@ modelo quando faltam fornecedores independentes do autor. Reative explicitamente
 com `ativo: true` após conferir acesso no console. Alterar a política invalida
 relatórios anteriores; não autentica, não troca modelo e não inicia agentes.
 
+O painel Gestão mostra a exigência de diversidade e os revisores habilitados ou
+suspensos pela política. Essa contagem não confirma login, cota nem disponibilidade.
+
 ## Desempenho e resultado das tentativas
 
 Gestão agrupa as execuções dos últimos sete dias por equipe, console, modelo
