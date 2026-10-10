@@ -126,3 +126,18 @@ compatibilidade. Em gestão ativa, a política por projeto continua sendo a auto
 | docs/CLAUDE-COMPATIBILIDADE.md | Hooks/statusline e recursos globais compatíveis |
 | docs/SDD.md | Interfaces, persistência e contratos verificados contra o código |
 | docs/VERSOES.md | Identidade da edição, separação e limites de migração |
+
+## Atalho na área de trabalho
+
+No Windows, o instalador cria automaticamente **Office Multi-provider** na área
+de trabalho, com o ícone do escritório. Depois de reiniciar o PC, dê dois cliques
+nesse atalho para abrir o painel. O console e as equipes são selecionados na Gestão.
+Não há inicialização automática ao ligar o computador.
+
+O atalho usa a pasta instalada e acompanha o Desktop redirecionado para OneDrive.
+Reinstalar atualiza o mesmo atalho; um atalho de outro programa com esse nome é
+preservado. Se sua área de trabalho não estiver disponível, a instalação continua
+e informa como usar `abrir_escritorio.bat`. No modo silencioso, inclua
+`"atalho_desktop": false` no bloco `instalacao` para desativar a criação.
+Linux e macOS continuam usando `abrir_escritorio.sh`.
+

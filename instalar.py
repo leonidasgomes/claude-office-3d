@@ -17,7 +17,7 @@ Opções:
 
 No modo silencioso, o arquivo de --config tem o formato do config.json e pode trazer um bloco extra
 "instalacao": {"destino": "...", "hook": "usuario|projeto|nenhum", "statusline": false, "three_offline": false,
-"abrir": false, "venv": true, "revisao": true} e o bloco "praticas": {"corrigir": false, "instalar_deps": false} (boas práticas dos projetos:
+"abrir": false, "venv": true, "revisao": true, "atalho_desktop": true} e o bloco "praticas": {"corrigir": false, "instalar_deps": false} (boas práticas dos projetos:
 o relatório sai sempre; as correções seguras só com "corrigir": true).
 
 O escritório roda no próprio .venv (<destino>/.venv, sem pip: só a biblioteca padrão), criado no passo do Python ou
@@ -70,7 +70,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh", "preparar_maquina.ps1", "preparar_maquina.bat",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "opcoes.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "arquitetura.js", "arquitetura.css", "grafo_painel.py", "dica.js", "push.py", "cota.py", "saude.py", "saude_triagem.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "binarios_em_pr.py", "sw.js",
-          "icone-192.png", "icone-512.png", "xp.py", "xp_projeto.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
+          "icone-192.png", "icone-512.png", "icone-office.ico", "atalho_desktop.py", "xp.py", "xp_projeto.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
           "grafo/grafo.py", "grafo/LEIAME.md", "grafo/claude/SKILL.md", "grafo/claude/hooks/grafo_hook.py",
           "grafo/claude/instalar_grafo.py", "grafo/testes/testar_grafo.py", "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/auto-merge.exemplo.yml", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
@@ -703,6 +703,12 @@ def aplicar(plano, args, log=print):
         log(f"  gravado {arq_cfg}")
     (destino / "dados").mkdir(exist_ok=True)
     escrever_atalhos(destino)
+    if WINDOWS and plano.get('atalho_desktop', True):
+        from atalho_desktop import criar
+        try:
+            log(f"  atalho na área de trabalho: {criar(destino)}")
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            log(f"  ! atalho não criado: {exc}; use abrir_escritorio.bat na pasta instalada")
     log(f"  atalhos: abrir_escritorio.{'bat' if WINDOWS else 'sh'} e reiniciar_escritorio.{'bat' if WINDOWS else 'sh'}")
     if plano.get("three_offline"):
         erros = baixar_three(destino)
@@ -1014,6 +1020,7 @@ def silencioso(args):
         "statusline": bool(args.statusline or inst.get("statusline")),
         "three_offline": bool(inst.get("three_offline")),
         "venv": not args.sem_venv and inst.get("venv") is not False,
+        "atalho_desktop": inst.get("atalho_desktop") is not False,
         "revisao": not args.sem_revisao and inst.get("revisao") is not False,
         "praticas": configuracao.normalizar(dados)["praticas"],
     }

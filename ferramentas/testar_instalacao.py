@@ -73,6 +73,7 @@ def main():
         settings.write_text(json.dumps({"hooks": {"PostToolUse": [alheio]}}), encoding="utf-8")
         cfg = json.loads((RAIZ / "config.exemplo.json").read_text(encoding="utf-8"))
         cfg["projetos"] = [str(tmp)]
+        cfg['instalacao'] = {'atalho_desktop': False}
         (tmp / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
         comum = ["--sem-perguntas", "--config", str(tmp / "config.json"), "--destino", str(tmp / "app"),
                  "--settings-usuario", str(settings), "--hook", "usuario", "--sem-abrir", "--statusline"]
