@@ -43,7 +43,7 @@
   "alertas": {
     "ativo": true,
     "tipos": {"pr_pronto": true, "pr_problema": true, "auditoria": true, "conferir": false, "escalonamento": true, "pergunta": true, "lembrete": true, "sugestao": true, "cota": true,
-              "duplicado": true, "circulo": true, "pr_parado": true},
+              "duplicado": true, "circulo": true, "pr_parado": true, "tarefa_pendente": true},
     "lembrete_horas": 24,
     "limite_push_hora": 20,
     "toast_windows": false,

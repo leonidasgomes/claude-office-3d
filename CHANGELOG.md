@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.0.0-dev.1
+- Revisão por IA opcional e configurável por projeto no painel Gestão: ativação,
+  quantidade de fornecedores e separação do autor. Preserva revisores e checks,
+  com backup e proteção contra edição concorrente.
+
+## 2.0.0-dev
+- Prévia instalável: tags de desenvolvimento são publicadas como prerelease,
+  sem substituir a versão estável.
+- Codex permite sandbox por escopo e saída UTF-8 no Windows. OpenCode distingue
+  acesso recusado de erros de execução, sem expor respostas ou credenciais.
+- Revisores podem ser suspensos sem remover sua configuração. O painel informa
+  a suspensão e o instalador não exige esses consoles. A exigência de revisão
+  por fornecedores diferentes continua bloqueando tarefas sem revisores suficientes.
+- Edição multi-provider separada do legado, com adapters Claude, Codex, OpenCode e Gemini.
+- Gestão por projeto: CEO/diretor/equipes, especialistas, Kanban, worktrees, reservas,
+  revisão por fornecedores distintos, gates por commit e retomada explícita.
+- Skills referenciadas na fonte original, com diagnóstico de compatibilidade;
+  listas do Kanban aceitam um ponto final sem dispensar validação no catálogo.
+- Indicadores por console/modelo/tentativa e cota Codex; custos e dados ausentes
+  não são confundidos com cobrança zero ou limite semanal.
+- Preparador Windows e bootstrap de projetos com prévia, preservação de dados
+  e edição independente. Novas configurações recomendam Codex quando instalado.
+- Candidato em validação; não comprova disponibilidade de todas as clouds,
+  instalação em Windows limpo, ciclo real completo ou migração automática.
+
+## 1.20.0
+- **Escritório com outros harnesses** (a 1.20.0 anterior foi revertida antes de sair; esta a substitui):
+  `emit_evento.py` (porta neutra: `--evento '{...}'` ou stdin, `--banco` para testes; valida tipo/agente/fonte e os
+  tetos do hook, grava no SQLite, banco falhando cai na fila, entrada inválida sai com 2), plugin do OpenCode
+  (`opencode/office.js`: `tool.execute.before` do `bash` vira `trabalho` com `inicio`, `tool.execute.after` vira
+  `trabalho`, a tool `skill` vira ferramenta `Skill` para o `contar-uso`; env `OFFICE_EMIT`/`OFFICE_AGENTE`/
+  `OFFICE_PROJETOS`/`OFFICE_PYTHON`) e `importar_opencode.py` (converte `.claude/agents/*.md` em
+  `.opencode/agents/*.md`, garante `instructions` com `CLAUDE.md` e o plugin no `opencode.json`, confere as `skills/`).
+  Detalhes em `INSTALACAO.md` §20.
+- Skills do `.claude/skills` já funcionam no OpenCode sem nada (descoberta nativa); agentes `.claude/agents` precisam
+  da conversão (`Monitor` vira `task`, `effort` vira linha no prompt, model omitido sem `--opus/--sonnet/--haiku`).
+
 ## 1.19.1
 - **Caminho em Program Files some inteiro no celular** (`saude.py`, `RE_CAMINHO_ABS`):
   `C:\Program Files (x86)\App\a.exe` e `C:/Program Files/Common Files/x/y.txt` viram `…/a.exe` e `…/y.txt` em

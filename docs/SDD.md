@@ -1,9 +1,107 @@
-# Documento de Projeto de Software (SDD) — Claude Office 3D
+# Documento de Projeto de Software (SDD) — Office Multi-provider
+
+Resultados por tentativa: tabela privada `execucao_resultado` no banco de tarefas,
+criada por Controle, grava equipe e tipo (despacho/retomada) junto do início da
+medição. Resultado final enumerado, imutável/idempotente, exige retorno registrado
+compatível; ausência permanece desconhecida. Despacho registra falha do console,
+sem entrega, revisão aprovada/desativada/reprovada ou bloqueio nos gates depois
+do retorno. Exceção sem retorno não inventa resultado; erro secundário de gravação
+não substitui exceção original. Históricos anteriores não são preenchidos.
+Gestão agrega por equipe/console/modelo configurado/modo, com contadores de tipos,
+resultados e cobertura ausente; junta consumo por tentativa como antes, sem IDs
+privados na API. Leitura só leitura, filtros/limites semanais preservados. Resultado
+encaminhado não comprova merge/aceite; retomada não mede retrabalho ou qualidade.
+
+Consulta Codex isolada: `revisores_console.resposta_codex` usa o contrato comum
+`Retorno` para sessão/turno, recusa segunda sessão/conclusão e eventos posteriores.
+Itens têm identidade/tipo estáveis e conclusão única; mensagens não vazias e
+raciocínio são os únicos tipos aceitos. Ferramentas inclusive item.updated,
+eventos desconhecidos/erros, turno sem início e itens abertos bloqueiam a decisão.
+Aplicado a todos os chamadores da consulta isolada (revisão, CEO/diretor, auditor,
+triagem), sem alterar flags/autenticação ou execução normal. Testes ampliados
+e prova Codex nativa com diff sintético e contadores registrados; diversidade
+cloud e aceite de código real continuam gates separados.
+
+Preparação Windows: `preparar_maquina.ps1` e `.bat` funcionam antes do Python.
+Planejam componentes ausentes por console escolhido; WinGet instala Python/Git/
+GitHub CLI/Node/Claude e Node executa npm-cli.js para os outros consoles.
+Não atualizam componentes existentes nem executam login/inferência. Aplicação
+exige confirmar hash do plano revalidado; bloqueia versões antigas, gerenciador
+ausente, links/junções e pasta ocupada sem marcador próprio. Cache/tmp próprios,
+PATH do usuário registrado ao concluir, backup local e interrupção sem rollback
+de software em falha. Flags: -Consoles, -PastaFerramentas, -Aplicar, -Confirmacao,
+-Interativo. Detalhes e fontes oficiais em INSTALACAO.md. Oito testes em PowerShell
+Windows com gerenciadores simulados passaram; instalação real em máquina limpa
+não foi comprovada. Nenhum modelo local é baixado. O bootstrap Python abaixo
+continua apenas diagnosticando; o preparador de máquina é uma etapa separada.
+
+Consumo por tentativa: `tentativa_consumo` opcional do launcher/executor local
+é fornecido pelo despacho/retomada após `iniciar_execucao`. `Registro` grava a
+tabela privada `consumo_tentativa` (chave PK, projeto, tentativa) no ledger de
+consumo separado, na mesma transação dos contadores; valida identidade, recusa
+reatribuir outra tentativa ou histórico sem vínculo. Índice por projeto/tentativa.
+Snapshots Claude e deltas Codex mantêm saldos/transações existentes. Plugin externo
+OpenCode e consultas isoladas não recebem tentativa. Não altera o banco legado.
+
+`resumos_tentativas` lê vínculos de até mil IDs em lote, sem criar banco/tabela,
+filtrando a mesma identidade de projeto e janela móvel de sete dias para tokens
+e tarifas. Preços usam os mesmos critérios de `precos_tokens.equivalente`; erro
+de catálogo conserva contadores. `gestao_painel.consumo_desempenho` retira IDs
+internos, acrescenta cobertura/totais/equivalente teórico nos grupos configurados
+de duração e detalhamento dos modelos observados na última tentativa. Ledger
+inválido não oculta duração/tarefas. Data de início seleciona tentativas e data
+de registro seleciona amostras; execuções longas/cumulativas podem ter cobertura
+parcial. Não calcula qualidade, aceite ou eficiência, nem integra cobrança real.
+
+Diagnóstico do bootstrap: diagnostico_instalacao.verificar valida política e
+consulta Python atual, importações sqlite3/ssl, PATH de git/gh/consoles e bind
+temporário da porta. Consoles obrigatórios derivam de CEO/diretor/equipes/rotas
+e revisores ativos; Ollama somente se execução local escolhida. Não expõe caminhos
+de executáveis nem lê credenciais; comando_nativo verifica resolução do adapter
+sem executar CLI. Reporta links oficiais e limites de versão/login/capacidades/
+cloud não verificados. --exigir-requisitos retorna 3 antes de qualquer aplicação
+se requisito obrigatório falta. Sem flag, pode preparar configuração e informar
+pendências. Não há instalação automática de pré-requisitos e disponibilidade é
+snapshot sujeito a mudança. Testar_diagnostico_instalacao.py cobre seleção,
+revisores, shim/local/porta e bloqueio sem gravação; bootstrap conserva repetição.
+
+Atividade dos despachos: `atividade_execucao.Acompanhamento` cria tabela local
+atividade_execucao no banco de tarefas (execucao PK, controlador UUID privado,
+pid_controlador, pid_console opcional, ultimo_sinal, estado, codigo_console).
+Contexto único por tentativa sem retorno, insert transacional sem substituição.
+Thread de 15 s escreve sinal e poll do objeto Popen vinculado pelo callback
+ao_processo do launcher; local encaminha o mesmo callback. Saída/interrupção
+registra encerrado/interrompido, sem concluir tarefa ou liberar ocupação. Erro de
+persistência bloqueia retorno normal; callback inválido recolhe processo lançado.
+Projeção não expõe PID/UUID, só timestamp/estado/console_observado/codigo_console.
+Até 60 s é sinal recente, não progresso/aceite nem prova sobre descendentes.
+Alerta sem_retorno não dispara enquanto há processo principal observado recente;
+sinal antigo pede conferência, não declara morte. Testar_atividade_execucao.py
+usa Python/Popen/SQLite reais e adapters com comandos substituídos, sem cloud.
+
+Projeção operacional adicional em GET /api/gestao: `saude_tarefas` contém
+consultadas, limitado, contagens e pendencias da reserva atual por repositório.
+`gestao_painel.saude_tarefas` lê até 201 reservas para exibir 200 e reconhecer
+cobertura parcial, sem janela semanal; correlaciona a última medição pelo token
+da reserva, sem expor token, sessão ou pacote. Estados bloqueado/sem retorno/
+falha/sem medição são sinais registrados, não prova de processo vivo ou morto.
+Não modifica SQLite, reservas ou GitHub. Testes: testar_saude_tarefas.py (SQLite
+real) e testar_gestao_saude.mjs (renderização do módulo real com DOM simulado).
+
+`alertas_projetos.fontes` acrescenta fonte local `tarefas` via saude_projeto,
+somente leitura, sem consultas a skills/modelos. Detector tarefa_pendente tem
+base/deduplicação por projeto/repo e fingerprint opaco da reserva/tentativa.
+Bloqueio/falha avisam quando novos; sem retorno/medição só após 1800 s. Primeira
+leitura não avisa; erro preserva base; limitado não apaga registros não observados.
+É tipo de rotina com preferências existentes; não altera limites de push.
+URL /#alerta=gestao&projeto=ID_HEX_20 abre/foca Gestão via eventos da página.
+Só aceita ID opaco, sem caminho ou comando. Teste testar_alertas_tarefas.py usa
+fonte/SQLite/fila reais e não entrega push; teste do painel cobre navegação.
 
 | Item | Valor |
 |---|---|
-| Produto | Claude Office 3D (repositório `claude-office-3d`; o nome "Office One" só aparece no comentário da primeira linha de `kanban.css` e `prs.css`) |
-| Versão descrita | 1.19.1 (arquivo `VERSION`) |
+| Produto | Office Multi-provider, nova linha independente; mantém os contratos do núcleo Claude Office 3D |
+| Versão descrita | 2.0.0-dev (arquivo `VERSION`; edição em `EDICAO.json`) |
 | Linguagens | Python 3.9+ (só biblioteca padrão; `cryptography` opcional), JavaScript (módulos ES, three.js 0.160.0) |
 | Fontes deste documento | o código do repositório e `README.md`, `INSTALACAO.md`, `CHANGELOG.md`, `config.exemplo.json` |
 
@@ -16,12 +114,20 @@ documento é mantido em dia com o código (`ferramentas/verificar_docs.py`, no C
 
 ### 1.1 Propósito
 
-O Claude Office 3D é um escritório em 3D, aberto no navegador, que mostra em tempo real o que os agentes do Claude Code
-estão fazendo: cada agente tem uma mesa, o monitor acende quando ele usa uma ferramenta, ele anda até a mesa do colega
+O Office Multi-provider é um escritório em 3D, aberto no navegador, com gestão por projeto e adapters
+Claude, Codex, OpenCode e Gemini. O núcleo Claude preservado mostra eventos nativos: cada agente tem uma mesa,
+o monitor acende quando ele usa uma ferramenta, ele anda até a mesa do colega
 quando manda mensagem, o time vai para a sala de vidro nas reuniões e quem fica ocioso vai para as áreas de pausa
-(`README.md`, `INSTALACAO.md` §1). Em volta dessa visualização o pacote oferece painéis opcionais ligados ao GitHub
+(`README.md`, `docs/CLAUDE-COMPATIBILIDADE.md` §1). Em volta dessa visualização o pacote oferece painéis opcionais ligados ao GitHub
 (Kanban, PRs), um placar cooperativo de XP com auditoria anti-trapaça nos testes, a caixa de sugestões dos bots de
 revisão, um revisor de código próprio, alertas com Web Push, medição de custo e do uso do plano.
+
+Capacidades variam por console. Teams, hooks, permissões e ativação de skills nativos
+não têm paridade integral comprovada. Gestão usa .office/projeto.json, Kanban canônico,
+reservas e adapters comuns; consultas cloud positivas nesta máquina ainda estão
+limitadas às provas Codex registradas. Seções de serviços globais descrevem o caminho
+compatível quando não há gestão ativa. Não se aplicam automaticamente a cada projeto.
+Os contratos específicos estão nas subseções por projeto e em GESTAO/PROVIDERS/VERSOES.
 
 ### 1.2 Escopo
 
@@ -33,14 +139,21 @@ Dentro do escopo (tudo roda na máquina do usuário, servidor em `127.0.0.1` —
 - chamadas opcionais a `claude -p` sem ferramentas (triagem, revisor, auditor);
 - acesso opcional pelo celular na rede local (HTTPS com CA própria) e alertas Web Push;
 - instalador, desinstalador, verificação e empacotamento.
+- política por projeto, seleção de CEO/diretor/equipes/especialistas, despacho comum,
+  consultas isoladas multi-provider, consumo, recuperação de acompanhamento e
+  sugestões/XP/alertas/pareceres consultivos vinculados ao projeto.
 
-Fora do escopo: fazer merge (o escritório "só mostra: o merge é sempre seu" — `INSTALACAO.md` §7, `prs.js`), mexer no
-Firewall (`INSTALACAO.md` §9, "o escritório nunca mexe nele") e expor o servidor à internet (`INSTALACAO.md` §9, "Fora
+O escritório não executa merge. A política escolhe manual/automático por projeto;
+o GitHub e seus checks/proteções executam o auto-merge quando habilitado. O projeto de validação
+tem auto-merge autorizado e exceção merge-manual; adoção da nova gestão nesse jogo
+continua pendente, sem alterar seu workflow existente.
+Fora do escopo do serviço: mexer no
+Firewall (`docs/CLAUDE-COMPATIBILIDADE.md` §9, "o escritório nunca mexe nele") e expor o servidor à internet (`docs/CLAUDE-COMPATIBILIDADE.md` §9, "Fora
 de casa: Tailscale").
 
 ### 1.3 Público
 
-Desenvolvedores que mantêm o pacote, quem integra o escritório a um time de agentes do Claude Code e revisores de
+Desenvolvedores que mantêm o pacote, quem integra o escritório aos consoles suportados e revisores de
 segurança.
 
 ### 1.4 Glossário
@@ -170,6 +283,15 @@ Princípios que aparecem em todo o código:
   disso o evento não leva `ok` (neutro). `tool_input` que não é objeto não quebra.
 - **Saída**: `banco.gravar_evento` (timeout de 5 s); se falhar, uma linha em `dados/eventos.falha.jsonl`.
 - **Execução**: instalado com `"async": true` e `timeout: 5` (`instalar.bloco_hooks`), então não trava a ferramenta.
+- **Outros harnesses**: `emit_evento.py` (`--evento` JSON ou stdin; `--banco`) valida o evento neutro (mesmo esquema e
+  tetos, mais `"fonte"`: `opencode`, `claude`, `manual`) e grava pelo `banco.ESQUEMA`; banco falhando cai na fila (código 0),
+  entrada inválida sai com 2. `opencode/office.js` (plugin do OpenCode, `opencode/LEIAME.md`) traduz
+  `tool.execute.before` do `bash` em `trabalho` com `inicio` e `tool.execute.after` em `trabalho` (sem `ok`; a tool
+  `skill` vira ferramenta `Skill`, que o `contar-uso` conta), configurado por ambiente (`OFFICE_EMIT`, `OFFICE_AGENTE`,
+  `OFFICE_PROJETOS`, `OFFICE_PYTHON`). `importar_opencode.py` (`[--projeto P] [--aplicar] [--forcar]
+  [--opus ID] [--sonnet ID] [--haiku ID] [--modo M]`) converte `.claude/agents/*.md` em `.opencode/agents/*.md`,
+  garante `instructions` com `CLAUDE.md` e a cópia do plugin em `.opencode/plugins/office.js` (com backup do
+  `opencode.json`) e confere as `skills/`.
 
 ### 3.3 `banco.py` — banco SQLite local
 
@@ -333,7 +455,7 @@ Princípios que aparecem em todo o código:
 - Ameaça aceita: ignorar e avisar são POST locais; um processo da própria máquina pode forjá-los. Camadas: `Sec-Fetch-Site`
   same-origin e `Sec-Fetch-Mode` obrigatórios (`rede.ROTAS_NAVEGADOR`, que curl e scripts não mandam por padrão),
   User-Agent no histórico de ações e no painel, e o líder trata o pedido como informação, nunca como ordem
-  (`vigia_lider.AVISO_PEDIDO` e a regra do prompt do líder em `INSTALACAO.md` §11 e `modelos/GUIA-TIME-ENXUTO.md`: nada de
+  (`vigia_lider.AVISO_PEDIDO` e a regra do prompt do líder em `docs/CLAUDE-COMPATIBILIDADE.md` §11 e `modelos/GUIA-TIME-ENXUTO.md`: nada de
   merge, force-push, fechar PR/issue, apagar branch/worktree ou outra ação irreversível por causa dele sem confirmar com o
   desenvolvedor). O mesmo vale para o aviso da triagem: o modelo lê dado de terceiros (branch, título, comando), então o dado
   vai delimitado e escapado, a resposta é validada por enum e tamanho, e a linha ao líder sai de template fixo com só o
@@ -418,7 +540,7 @@ Princípios que aparecem em todo o código:
   nem gravar estado.
 - **Status `revisor-ia`** (só com `github.publicar_status`, padrão desligado): cada revisão publica no commit
   `failure` com P0/P1 e `success` sem (`publicar_status`, `POST repos/{repo}/statuses/{sha}`), o check obrigatório do
-  merge automático (`INSTALACAO.md` §19). O resultado fica em `estado["status"][pr]` (`sha`, `graves`, `publicado`);
+  merge automático (`docs/CLAUDE-COMPATIBILIDADE.md` §19). O resultado fica em `estado["status"][pr]` (`sha`, `graves`, `publicado`);
   `pendentes()` republica o que não saiu sem revisar de novo e, no commit já revisado sem status (chave ligada depois),
   conta os P0/P1 da revisão que já está no PR (`graves_da_revisao`; sem revisão no PR, revisa de novo com `forcar`).
   `--pr N --forcar` no mesmo commit relê as conversas, incluindo as respostas na conversa geral do PR, para o falso
@@ -430,13 +552,35 @@ Princípios que aparecem em todo o código:
 
 ### 3.10 `xp.py` — motor de XP
 
+Na gestão ativa, `--projeto PASTA` exige projeto cadastrado. xp_projeto.contexto
+usa a política comum para repo/owner/número/campos/colunas/equipes, mesmo cache
+Kanban REST do despacho e tabela decisao_xp separada por projeto/repositório em
+dados/gestao/<id>/xp/<hash-repo>/. Não migra decisões pelo número do PR do banco
+global. --versao-politica HASH é a pré-condição usada pelos botões do painel.
+Sem projeto explícito, CLI recusa o XP global se houver gestão ativa/inválida.
+Config sem gestão conserva o caminho e comportamento anterior. Pesos/níveis e
+expressões de avaliação continuam no config da instalação; não são regra de merge.
+No projeto, a coluna final é exatamente kanban.feito; aliases legados não a
+substituem. Times correspondem às equipes da política; fallback global e histórico
+global de skills não atribuem pontos ao projeto sem vínculo. Publicação valida
+novamente a versão da política. Placar stale/estrangeiro não é mostrado.
+GET /xp?projeto=ID e ações /api/xp/conferido, /api/xp/liberar, /api/xp/desfazer
+selecionam projeto opaco cadastrado. Ações recebem pr/projeto_id/versao; processo
+XP isolado evita trocar globals de banco no servidor. Placar tem seletor, descarta
+respostas de buscas antigas e separa níveis vistos por projeto no localStorage.
+Custos/uso globais e histórico geral de ações não são atribuídos ao Placar do
+projeto. Indicadores de fornecedor continuam no componente próprio.
+Sugestões e alertas de sugestões/Placar já são vinculados ao projeto; auditor produz
+pareceres consultivos por SHA. Custos globais não são atribuídos ao XP. Saúde/atividade,
+atestação de revisores, automação de decisões e gates completos permanecem pendentes.
+
 - Lê via `gh` os PRs mergeados desde `xp.desde` (padrão 30 dias, até `LIMITE_PRS = 300` — `listar_prs`), o Kanban
   (`ler_kanban`, por `gh project item-list`, ou seja GraphQL), o veredito da revisão (`reprovou_revisao`) e o diff
   (`analisar_diff`); pontua (`pontuar`), atribui (`atribuir`), classifica em faixas (`classificar`) e grava
   `dados/xp/placar.json`. Busca PRs novos com `ThreadPoolExecutor(max_workers=6)`.
 - **Cache incremental** em `dados/xp/estado.json` (`assinatura` de repo/check/padrões; `REGRA_VERSAO = 2` dispara
   reanálise só do diff).
-- **Atribuição** (ordem, `INSTALACAO.md` §8): cartão que o PR fecha ou cita → rótulo mapeado em `github.times` →
+- **Atribuição** (ordem, `docs/CLAUDE-COMPATIBILIDADE.md` §8): cartão que o PR fecha ou cita → rótulo mapeado em `github.times` →
   prefixo de branch → `xp.atribuicao.padrao` (senão mesa `dev`, senão líder).
 - **Janela de retrabalho**: 14 dias (`JANELA_DIAS`); XP nunca negativo; níveis de `xp.niveis`.
 - **Skills**: soma pontos de skills (`pontos_skills`, a partir do que o `skills.py` registra).
@@ -561,13 +705,13 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
   `gh`; CLI na seção 5.3; `secao_custo`: US$ por PR mergeado da última foto de `custo_diario` contra a média das fotos de
   8 a 35 dias antes, mínimo de 3, alerta acima de `CUSTO_ALERTA` = 120%), `auto-merge.exemplo.yml` (workflow
   `pull_request_target` que liga o auto-merge do GitHub, menos com o rótulo `merge-manual` ou arquivo de regra;
-  `INSTALACAO.md` §19), `sugestoes_lider.md` (modelo de skill do líder), `GUIA-TIME-ENXUTO.md` (`README.md`,
+  `docs/CLAUDE-COMPATIBILIDADE.md` §19), `sugestoes_lider.md` (modelo de skill do líder), `GUIA-TIME-ENXUTO.md` (`README.md`,
   `CHANGELOG.md` 1.6.0), `praticas/python-venv.md` (regra do .venv gravada em `.claude/rules/` do projeto) e `time/`
   (`lider.md`, `dev.md`, `designer.md`, `pesquisa.md`, `revisor.md`, `agente.md`: definições dos agentes com
   `{{nome}}`, `{{projeto}}`, `{{stacks}}`, `{{testes}}`... — ambos usados pelo `boas_praticas.corrigir`). Copiados pelo
   instalador para a pasta de destino (`instalar.PACOTE`).
 - `glossario_triagem.exemplo.md`: modelo do glossário usado pela triagem e pelo revisor.
-- `skills-candidatos/MODELO.md` e `skills-candidatos/externo/` (quarentena de skills de terceiros — `INSTALACAO.md` §12).
+- `skills-candidatos/MODELO.md` e `skills-candidatos/externo/` (quarentena de skills de terceiros — `docs/CLAUDE-COMPATIBILIDADE.md` §12).
 
 ---
 
@@ -626,9 +770,11 @@ Constantes de animação relevantes (`escritorio.js`): `TEMPO_FALA = 4` s, `TEMP
 
 ### 4.1 Tabelas do `dados/escritorio.db` (`banco.ESQUEMA`)
 
+A extensão opcional `ponte_eventos` guarda origem, caminho, identidade física, provider, âncora e cursor. É criada pela ponte explícita no banco da edição nova, sem modificar a fonte legada; cursor/inserções de eventos compartilham transação.
+
 | Tabela | Colunas | Chave | Quem grava | Quem lê |
 |---|---|---|---|---|
-| `evento` | `id INTEGER`, `ts TEXT`, `agente TEXT`, `ferramenta TEXT`, `dados TEXT NOT NULL` (JSON do evento) | `id` (índices `evento_ferramenta` e `evento_ts`, este para o replay por período) | `registrar_evento.py` | `servidor.py` (`/eventos`, replay), `alertas.py` (perguntas), `skills.py` |
+| `evento` | `id INTEGER`, `ts TEXT`, `agente TEXT`, `ferramenta TEXT`, `dados TEXT NOT NULL` (JSON do evento) | `id` (índices `evento_ferramenta` e `evento_ts`, este para o replay por período) | `registrar_evento.py`, `emit_evento.py` | `servidor.py` (`/eventos`, replay), `alertas.py` (perguntas), `skills.py` |
 | `custo_sessao` | `id TEXT`, `usd REAL`, `ao_vivo INTEGER`, `ate TEXT`, `visto TEXT` | `id` | `custo_time.py` | `banco.acumulado`, `banco.sessoes_fechadas` (usado pelo `custo_time.py` para não reler sessões fechadas) |
 | `custo_revisao` | `chave TEXT` (`pr:commit:quando`), `pr INTEGER`, `commit_ TEXT`, `quando TEXT`, `usd REAL` | `chave` | `custo_time.py` | `banco.acumulado` |
 | `custo_diario` | `dia TEXT`, `janela_usd REAL`, `acumulado_usd REAL`, `prs INTEGER` | `dia` | `custo_time.py` com a janela padrão de 7 dias (sem `--dias` ou `--dias 7`; inclui a execução disparada pelo servidor) | `python banco.py` |
@@ -647,6 +793,7 @@ Formato do JSON em `evento.dados` (docstring de `registrar_evento.py`):
 
 Eventos `subagente` levam também `funcao` (tipo do subagente) e `modelo` (`registrar_evento.evento`). O `trabalho` do fim de
 um comando Bash/PowerShell leva `ok` (true/false) e, na falha, `codigo` e `erro` (`registrar_evento.resultado_de`).
+Eventos de outro harness (`emit_evento.py`) levam ainda `"fonte"` (`opencode`, `claude`, `manual`).
 
 ### 4.2 Arquivos JSON/JSONL que continuam existindo e por quê
 
@@ -681,7 +828,7 @@ Toda a pasta `dados/`, o `config.json`, `vendor/`, `dist/` e `glossario_triagem.
 
 ### 4.3 Migrações automáticas (uma vez)
 
-Implementadas em `banco.py` e descritas no `CHANGELOG.md` 1.10.0 e `INSTALACAO.md` §6:
+Implementadas em `banco.py` e descritas no `CHANGELOG.md` 1.10.0 e `docs/CLAUDE-COMPATIBILIDADE.md` §6:
 
 1. **Banco da 1.9** (`dados/xp/escritorio.db`) movido para `dados/escritorio.db` com checkpoint do WAL e os
    `-wal`/`-shm` (`_arquivo`); se outro processo o mantiver aberto, usa o antigo e tenta depois.
@@ -701,13 +848,178 @@ além das marcas em `meta`.
 
 ### 5.1 Rotas HTTP (`servidor.py` + `rede.py`)
 
+`POST /api/gestao/funcionarios/perfil`: PC, Origin/JSON/X-Office-Acao; projeto_id, funcionario_id, aplicar booleano e confirmacao da prévia quando aplicar=true. Prévia sem escrita de perfil; criação exclusiva com lock, contexto/fontes/arquivo ligados ao hash, sem substituir perfil divergente. Retorna 200/400/403/409. Não inicia inferência nem altera permissões/configs do console.
+
+`POST /api/gestao/modelos`: consulta explícita PC de catálogo OpenCode, protegida
+por Origin/JSON/X-Office-Acao. Aceita somente console=opencode. Retorna 200/400/403/
+503; comando fixo models opencode --verbose --pure, sem inferência, plugin externo
+ou refresh. Timeout 20 s, stdout lido até 2 MiB, até 500 IDs. Catálogo sanitizado
+somente Zen ativo/toolcall e custos input/output/cache read/write numericamente
+zero; campos/tarifas extras não recebem selo zero. Headers/options/URLs privadas
+não são expostos. Cache em memória de 300 s, mutex contra consulta simultânea;
+erro não oferece catálogo vencido como atual. executores_form consulta ao clicar,
+seleção explícita preenche modelo e limpa cloud para nova declaração. Não altera
+política/sessões/contas nem inicia inferência; custo no CLI/cache não comprova tarifa
+atual, acesso ou fornecedor real. Testes testar_modelos_opencode.py e formulário.
+
+GET /api/sugestoes?projeto=ID seleciona projeto cadastrado, caixa/estado locais,
+repo e versao da política, sem inferência/GitHub. POST /api/sugestoes/tratar
+recebe id/acao/nota opcionais, projeto_id e versao em gestão; exige seleção/versão
+e preserva proteção PC/CSRF existente. Não publica mensagem/status no GitHub.
+O bloco opcional sugestoes (ativo=false, bots=[], triagem=false) exige logins explícitos únicos
+para habilitar. config_base/configuracao aceitam projeto sem trocar globals.
+Caixa/cursor isolados em dados/gestao/<id>/sugestoes/<hash-repo>/. Escrita confere
+versão; PRs são paginados com teto de dez páginas completas, falhando antes de
+arquivar se a lista não foi completada. Comentários de URL de outro repo são recusados.
+trava_caixa de projeto não expira por prazo. Legacy mantém protocolo.
+sugestoes_laco itera projetos habilitados; não usa revisor/auditor/triagem/status
+globais nesse modo. pronto_laco e fonte global de alertas não atribuem estado ao
+projeto. Prontidão final e alertas completos de saúde/atividade ainda pendentes.
+triagem_providers usa diretor cloud explicitamente habilitado, fontes canônicas,
+revisores_console.chamar sem ferramentas e ColetorIsolado no papel Triagem.
+Valida lista estrita de até 30 propostas com IDs/equipes conhecidos; conta duas
+tentativas máximas antes da consulta, libera a trava durante inferência e confere
+política/fontes/item antes de aplicar. Tratamento humano não é sobrescrito.
+OpenCode sem modelo cloud explícito não inicia. Recibo registra estado/tempo/provider
+sem presumir custo; tokens informados vão ao ledger compartilhado. Não há despacho,
+tratamento, merge ou troca de conta/modelo automáticos. Testes de roteamento simulados
+em ferramentas/testar_triagem_providers.py; o protocolo legacy permanece separado.
+
+revisores_console.rodar aceita ajuda em stdout/stderr exclusivamente quando o
+último argumento é --help, preservando exit/limites. OpenCode 1.18.35 escreve
+ajuda em stderr com exit 0. Inferência continua stdout JSON; não mistura erros
+ou outros textos no normalizador. Teste inclui subprocesso real sem cloud.
+
+Política auditor {ativo:false,max_diff:60000,max_prs:3} habilita pareceres
+consultivos dos amarelos XP. Exige revisão >=2 clouds e separar_autor; reutiliza
+revisao.revisores. auditor_projeto lê Placar/decisões por projeto, coleta PR/files
+REST paginado com contagens de linhas, rejeita patches omitidos/truncados e diff
+grande. Consulta revisores_console isolado com fontes canônicas, JSON estrito,
+ledger papel Auditor e até duas tentativas/contexto, gravadas antes da consulta.
+Registros auditor.json ficam no XP de projeto/repo; lock sem expiração automática.
+Confere política/fontes/SHA/diff e candidato antes de concluir. xp_projeto.vista
+projeta pareceres na política atual; placar.js mostra histórico/SHA, sem afirmar
+commit atual. Não marca conferido/liberado nem publica issue/Kanban/merge.
+auditor_xp.py --projeto PASTA [--seco] seleciona cadastro; --seco lê candidatos
+sem inferência/GitHub. CLI com gestão ativa/inválida exige --projeto; legado sem
+gestão preservado. Autoria/cloud são declaradas; automação de decisão e recuperação
+de processos interrompidos continuam pendentes. Testes: testar_auditor_projeto.py.
+
+alertas_projetos.fontes projeta sugestões/Placar e reservas de tarefas locais com
+snapshot de política estável. Alertas.passo lê fonte projetos primeiro: gestão
+ativa/inválida suspende fontes globais, mantendo cota da conta. detectar mantém
+base por projeto/hash-repo, prefixa identidade/chaves/títulos e preserva estado
+em falha. Fila e orçamento de atenção comuns mantêm contratos existentes.
+Alertas de sugestões P0/P1 e conferir/auditoria XP carregam projeto/repo/versão;
+não declaram prontidão/merge. alertas.js/sw.js propagam ID opaco ao seletor de
+PRs/Placar e Gestão; push.url_relativa aceita esses três destinos com ID hex20.
+Sugestões na gestão falham com JSON inválido em vez de presumir caixa vazia;
+legacy conserva leitores permissivos. Testes em testar_alertas_projetos.py e
+VM dos módulos reais de PRs/Placar. Saúde/eventos/escalonamentos nativos por
+projeto e entrega em aparelho real ainda não comprovados.
+prs.js lê caixa do mesmo ID/repo e descarta respostas antigas, inclusive de tratar;
+erros deixam caixa não conferida, sem atribuir aprovação. identidade da coordenação
+normaliza defaults da política para preservar planos antigos que omitiram o bloco
+opcional; mudanças reais de política/Kanban/snapshots continuam bloqueadas.
+
+`POST /api/gestao/coordenacao/conciliar`: PC/CSRF; projeto_id, versao, pedido_id,
+acao previa/aplicar. Aplicar exige evidencia_sha256 retornada na prévia. Revalida
+pedido/recibo e lote final, sem worker acompanhado. Muda somente o pedido para
+conciliada; não libera reservas/processos nem muda Kanban. Recibos sem conclusão
+ou vínculo/tipo e lotes divergentes continuam bloqueados. A tabela pedido_contexto
+(id, tipo, sha_conciliacao), no banco próprio de pedidos, distingue consulta de
+execução e registra o hash conciliado. Pedidos antigos sem contexto não são
+inferidos. O callback ao_recibo associa a consulta antes da primeira inferência;
+erro não apaga esse vínculo. A ausência de thread por si só não autoriza conciliar.
+
+`POST /api/gestao/retomada/conciliar`: PC/CSRF; projeto_id, versao, pedido_id,
+acao previa/aplicar e evidencia_sha256 ao aplicar. Vínculo privado pedido/reserva/
+tentativa registrado antes do console; retorno exato e processo principal encerrado
+permitem conciliar só o acompanhamento. Reserva/travas/Kanban preservados.
+Pedido histórico sem vínculo, tentativa diferente/pendente e handle vivo bloqueiam.
+
+`POST /api/gestao/retomar`: PC/CSRF; projeto_id, versao, cartao e acao
+previa/executar. Prévia usa worktree e sessão da reserva, sem aceitar paths/IDs
+enviados pelo browser. Executar exige confirmacao (hash da prévia) e
+agentes_conciliados true. Retorno 202 com pedido_id; worker usa os gates da
+retomada CLI e registra resultado bloqueado/revisao. GET /api/gestao inclui
+pedidos_retomada, resumo limitado por projeto/repo sem texto nativo. Pedido
+sem handle após reinício aparece incerto e continua impedindo nova retomada
+do mesmo cartão; não presume encerramento, nem libera trava/reserva.
+
+`POST /api/gestao/coordenacao/executar`: PC/CSRF, assíncrono. Aceita somente
+projeto_id, versao, recibo_id e plano_sha256. Revalida o plano privado persistido,
+política e snapshots do lote; claim organizado→despachando impede repetição.
+Não reconsulta modelos nem aceita caminhos/executores novos. Usa o controlador
+comum e seus gates. Pedidos executando sem handle após reinício aparecem incertos.
+Planos privados em planos_coordenacao/<recibo_id>.json contêm caminhos e snapshots;
+somente hash/identidade são projetados ao painel. Recibos antigos sem plano não
+podem despachar por esta rota. Conciliação assistida ainda pendente.
+
+`POST /api/gestao/coordenar`: consulta CEO/diretor em segundo plano, somente PC
+com Origin/JSON/X-Office-Acao. Recebe projeto_id, versao, solicitacao e plano;
+retorna 202 com pedido_id, 400 inválido, 403 acesso/origem, 409 conflito.
+Não recebe executar nem despacha. GET /api/gestao projeta pedidos_coordenacao
+e recibos por projeto sem prompts/caminhos. Estado sem thread após reinício é
+incerto e exige conciliação. Detalhes na seção de coordenação e docs/GESTAO.md.
+
+`GET /api/uso/providers`: limites do Codex via `account/rateLimits/read` do App Server
+por stdio. Cache de cinco minutos; percentual usado/restante e renovação por janela.
+Não inicia modelo, login ou reset. Sem token/identidade da conta na resposta.
+
+`POST /api/gestao/funcionarios`: cadastro de especialista no projeto registrado, somente PC; guarda Origin/JSON/X-Office-Acao de rede.py. Campos projeto_id e funcionario (nome, funcao, equipe, executor, skills). Retorna 201 ou erro 400/403. Persistência .office/funcionarios.db separada; não inicia consoles.
+
+`POST /api/gestao/revisao`: recebe exatamente projeto_id, versao e revisao (ativo, clouds_distintas, separar_autor). Somente PC com guarda Origin/JSON/X-Office-Acao. Preserva revisores, merge e todos os outros campos; valida política, hash, lock, backup e gravação atômica. Retorna 200, 400/403 ou 409. Auditor ativo impede desativar a revisão ou reduzir sua independência. revisao_form.mjs permite configurar revisão opcional por projeto; não chama modelos ou GitHub. Revisão desativada dispensa seleção/chamada dos revisores, mas mantém checks e requisitos de entrega. Veja REVISAO-OPCIONAL.md.
+
+`POST /api/gestao/merge`: edição explícita por projeto, somente PC com a guarda Origin/JSON/X-Office-Acao. Recebe exatamente projeto_id, versao e merge (modo manual/automatico, checks, rotulos_manuais). Automático exige checks; nomes limitados a 100 por lista e 200 caracteres, sem duplicados. Preserva os demais campos, usa o mesmo lock/hash/backup/substituição atômica de executores e rejeita política serializada maior que 128 KiB. Retorna 200, 400/403 ou 409. merge_form.mjs impede envio duplicado e apresenta os nomes como texto. Não executa merge nem habilita auto-merge no GitHub; apenas configura a política do controlador. GET /api/gestao preserva merge como string e acrescenta merge_config para o editor. Mudança de política exige nova conferência dos gates vinculados à versão anterior.
+
+`POST /api/gestao/executores`: edição explícita de CEO, diretor e executores das equipes existentes, somente PC pela guarda Origin/JSON/X-Office-Acao. Recebe projeto_id registrado, versao (hash da política) e executores; retorna 200, 400/403 ou 409 para edição concorrente/desatualizada. politica_painel.py preserva demais campos e copia bytes anteriores para .office/historico-politica antes de substituição atômica da política. Snapshot e hash vêm da mesma leitura. Lock exclusivo protege edições do painel; editores externos podem ignorá-lo, exigindo conciliação. Não inicia consoles, modifica hooks, rotas, cadastro de especialistas ou auto-merge. O formulário executores_form.mjs limpa o modelo ao trocar console e preserva texto em erros. Metadados de edição devem ser excluídos do Git; política e regras continuam versionáveis.
+
+`GET /api/gestao/pr?projeto=ID&numero=N&sha=SHA`: evidências GitHub sob demanda, somente leitura; parâmetros únicos/exatos, 400 para formato de consulta inválido, 200 com ok false quando cobertura/acesso/identidade falham. prs_evidencias.py seleciona o projeto registrado, lê PR antes/depois, checks do SHA exato, statuses e reviews paginados. Mudança de head/política limpa a projeção. Checks de outro SHA, duplicata, coleção incompleta ou formato desconhecido falham sem atribuir sucesso. Names iguais entre Apps/checks/statuses são ambíguos para a política. Mostra eventos de review com commit atual versus antigo, sem reduzir comentários a uma decisão efetiva. Não identifica cloud por login, não publica body/output/URLs auxiliares e não autoriza merge. prs_evidencias.mjs faz consulta ao abrir detalhes, sanitiza por textContent e descarta resposta após troca de projeto/commit ou atualização da lista. Nenhuma chamada em massa ao abrir lista.
+
+regras_branch é projeção adicional: GET repos/{repo}/rules/branches/{branch codificada},
+paginação completa, lido antes/depois dos checks/reviews. Fonte Repository/Organization/Enterprise
+e ruleset_id/tipo são públicos; padrões/textos/actors de regras não são expostos.
+required_status_checks usa context e integration_id opcional para casar App; colisão
+continua ambígua, neutral/skipped não vira sucesso. pull_request projeta aprovações
+exigidas e flags de stale reviews, CODEOWNERS, último push e resolução de threads,
+sem contar aprovação efetiva. Parâmetros adicionais são sinalizados como não avaliados.
+Erro de acesso/formato marca somente regras_branch indisponível, nunca lista vazia;
+mudança de regras/base/ref/sha durante leitura descarta toda a projeção. Base ausente
+não presume regras disponíveis. Consulta vazia não prova ausência de proteção clássica.
+O snapshot não é transação GitHub; bypass/merge queue, associação da revisão cloud
+e gates finais continuam exigindo integração própria.
+Fonte: https://docs.github.com/en/rest/repos/rules#get-rules-for-a-branch.
+
+pendencias_revisao vem de prs_pendencias.py: query GraphQL OfficePendencias fixa,
+variáveis JSON, POST ao graphql via gh; não executa mutation. Valida repo/PR aberto/
+head/base/ref em cada página. Duas coletas completas, até 20 páginas/2.000 threads
+cada, total/cursor/ID/booleanos estritos; mudanças entre coletas invalidam tudo.
+Prazo 60 segundos conferido antes/depois das chamadas (gh timeout próprio 30s).
+reviewDecision null é desconhecida; não equivale a aprovação. Thread isOutdated
+continua pendente se isResolved false. Retorna somente contagens, decisão e
+projeção da proteção clássica: flags, contagem e checks por nome/App.
+branchProtectionRule null no ref válido significa proteção clássica ausente;
+falha de acesso/formato marca somente a seção indisponível. Não expõe IDs de
+threads/regra clássica, bodies/comentários/autores/paths ou dados locais. Não
+atesta clouds independentes, bypass/CODEOWNERS/merge queue ou merge elegível.
+Leitura REST injetada não faz rede GraphQL implicitamente: fornecer também
+chamar_pendencias; caminho de produção consulta ambos. CI cobre parser, paginação,
+erros parciais, decisão/proteção alteradas, identidade e integração do painel.
+Fontes: https://docs.github.com/en/graphql/reference/pulls e
+https://docs.github.com/en/graphql/reference/branches.
+
+`GET /api/gestao`: projeção de CEO, diretor, equipes, merge, local e tarefas das políticas
+dos projetos configurados. Sem prompts, tokens de reserva ou caminhos absolutos; só leitura,
+com a mesma guarda de sessão das demais APIs. Painel `gestao_painel.js`; ver `docs/GESTAO.md`.
+
 | Método | Rota | Parâmetros / corpo | Resposta | Acesso |
 |---|---|---|---|---|
 | GET | `/`, `/index.html` | — | HTML com o `<title>` do config e o importmap (CDN ou `/vendor/three/`) | PC; celular com sessão |
 | GET | `/config` | — | `titulo`, `tema`, `apelidos`, `agentes`, `github` (`repo`, `kanban`, `prs`, `projeto_owner`, `projeto_numero`, `check_revisao`, `times`, `colunas`), `xp` (`ativo`, `niveis`), `gh_disponivel`, `three_local` (`servidor.config_publica`) | idem |
 | GET | `/eventos` | `desde=<id>`, `ultimos=<k>` (0–200) | `{"total": <último id>, "eventos": [...]}` (até 500) | idem |
 | GET | `/eventos` (replay) | `de=<ISO>` (obrigatório), `ate=<ISO>` (exclusivo; sem ele, até agora), `apos=<id>` (página seguinte); ISO = `AAAA-MM-DD` ou `AAAA-MM-DDTHH:MM[:SS]` na hora local do hook | `{"de", "ate", "eventos" (cada um com `id`), "proximo" (id para `apos`, ou null), "maximo"}`, até `MAX_PERIODO = 5000` por página (`banco.eventos_periodo`); 400 com `erro` se a data é inválida (só dígitos ASCII, conferida com `datetime.strptime`; `de=` vazio também), `apos` não numérico ou acima de 2**63-1, ou `ate <= de`; 503 com o banco indisponível. Sem `de`/`ate` a rota responde como antes | idem |
-| GET | `/kanban` | — | `configurado`, `projeto`, `cartoes` (cada um com `tipo` e `item_id`, o id do item no projeto; rascunho com `numero` nulo e `url` do item no projeto, `?pane=issue&itemId=`; pelo GraphQL, a do quadro do projeto), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
+| GET | `/kanban` | `projeto=<id>` (opcional, ID público de projeto registrado) | `configurado`, `projeto`, `cartoes` (cada um com `tipo` e `item_id`, o id do item no projeto; rascunho com `numero` nulo e `url` do item no projeto, `?pane=issue&itemId=`; pelo GraphQL, a do quadro do projeto), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa`; gestão ativa acrescenta `fonte=gestao`, `repo`, `projetos[{id,nome}]`, `projeto_id`, `colunas`, `concluido` | idem |
 | GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado, linhas, arquivos, risco), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
 | GET | `/xp` | — | `placar.json` + `custos` + `uso`; com `xp.ativo` desligado, `{"ativo": false, "agentes": {}}` | idem |
 | GET | `/saude` | — | `ts`, `duplicados` (`fortes`, `fracos`), `circulos`, `parados`, `abertos`; sem PRs, só `ts`, `circulos` e `sem_prs`; com o Kanban lido sem erro, `rascunhos` (`item_id`, `titulo`, `status`, `url`, `comando`); com algum, `repetidos` (`agente`, `assinatura`, `prefixo`, `vezes`, `desde`); sempre `ignorados` (`{chave: {motivo, quando, origem, ua}}`), `pedidos` (últimos 20, com `entregue` e `cancelado`), `resolvidos` (24 h) e `triagem` (`modelo`, `veredictos`, `hoje`, `teto`) (`servidor.saude_get`) | PC; celular com sessão |
@@ -773,12 +1085,20 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 
 | Script | Uso |
 |---|---|
+| `ponte_eventos.py` | Fonte SQLite somente leitura e destino separado da edição nova; `--origem`, `--fonte`, `--destino`, `--provider`, `--ultimos`, `--acompanhar`. Recorte inicial opcional, lotes de 200 e cursor transacional; não migra sessões/custos/reservas e não recabeia hooks. |
+| `agentes_nativos.py` | Perfil derivado do funcionário cloud; `--projeto`, `--funcionario`, `--confirmacao`, `--aplicar`, `--contexto`. Default prévia; aplicar exige hash; contexto exige perfil atual. Formatos Markdown Claude/OpenCode/Gemini e TOML Codex, sem alteração de configs/hooks/permissões. |
+| `console_provider.py` | Launcher adicional de providers; `--provider`, `--config`, `--projeto`, `--mesa`, `--modelo`, `--sandbox`, `--sessao`, `--agente`, `--prompt`, `--prompt-arquivo`, `--banco`, `--detectar`, `--preparar-skills`, `--aplicar`, `--papel`, `--equipe`, `--escopo`, `--funcionario`. Arquivo UTF-8 até 128 mil caracteres, exclusivo com prompt literal, sem truncar. Detalhes em `docs/PROVIDERS.md` e `docs/GESTAO.md`. |
+| `executor_local.py` | Módulo interno, sem CLI própria: adapta `--model` do console e aplica reserva/monitor de recursos ao launcher/despacho. Veja docs/GESTAO.md. |
+| `consumo_providers.py` | Ponte de contadores do plugin: `--opencode` (obrigatório), `--banco` (isolado); stdin JSON até 128 KiB; usa tabela consumo separada. Modelo do plugin informado por messageID; pai run fica no launcher, TUI/filhos no plugin. Ver docs/GESTAO.md. |
+| `gestao_cli.py` | Política por projeto e despacho REST; `--projeto`, `--cartao`, `--equipe`, `--escopo`, `--worktree`, `--base`, `--aceite`, `--executar`, `--funcionario`, `--max-cartoes`, `--apos-cartao`, `--plano`, `--solicitacao`, `--consultar`, `--confirmacao`, `--agentes-conciliados`. Subcomandos estado/planejar/despachar/retomar/revisar/lote/coordenar; lote prepara cartões e worktrees e, com --executar, despacha sequencialmente por padrão ou com paralelismo de 1 a 4 definido no JSON, com relatório local e interrupção da admissão após bloqueio. Coordenar recebe candidatos em --plano e objetivo UTF-8 em --solicitacao: sem flags de ação faz prévia, --consultar consulta CEO/diretor cloud sem despacho e --executar consulta e executa a seleção pelos gates comuns. Planejar é diagnóstico limitado/paginado, sem inferência ou reserva. Despacho verifica dependências nativas/textuais antes da execução e na entrega/revisão; revisão por SHA sem publicar. Estado local em SQLite separado; `docs/GESTAO.md`. |
 | `servidor.py` | `[--porta N] [--sem-navegador] [--rede-local] [--sem-https]` |
-| `instalar.py` | sem argumentos (assistente); `--sem-perguntas --config X.json`; `--desinstalar`; `--settings-usuario CAMINHO`; `--destino PASTA`; `--hook usuario\|projeto\|nenhum`; `--statusline`; `--sem-abrir`; `--sem-venv`; `--sem-revisao`; `--revisao PROJETO` (só a revisão de PR numa instalação existente) |
+| `instalar.py` | sem argumentos (assistente); `--sem-perguntas --config X.json`; `--desinstalar`; `--settings-usuario CAMINHO`; `--destino PASTA`; `--hook usuario\|projeto\|nenhum`; `--statusline`; `--sem-abrir`; `--sem-venv`; `--sem-revisao`; `--revisao PROJETO` (só a revisão de PR numa instalação existente); `--gestao PROJETO`, `--politica JSON`, `--aplicar` (política nova de gestão) |
+| `configurar_gestao.py` | Assistente comum de política por projeto; `--projeto`, `--politica`, `--aplicar`. Prévia sem gravação; não substitui política existente, instala CLIs ou altera GitHub. |
+| `iniciar_projeto.py` | Preparação integrada de nova instalação e política; `--projeto`, `--destino`, `--politica`, `--porta`, `--aplicar`, `--exigir-requisitos`, `--cadastrar-projeto`. Diagnostica requisitos locais, detecta consoles, preserva contas e cria somente arquivos novos do projeto. Repetição preserva config/dados. Cadastro explícito acrescenta outro projeto sem substituir os existentes. |
 | `configuracao.py` | `--porta`; sem argumento imprime a configuração normalizada |
-| `xp.py` | sem argumentos; `--completo`; `--liberar N` \| `--conferido N` \| `--desfazer N` [`--origem T` `--motivo T`]; `--so-placar` |
+| `xp.py` | legado sem argumentos; gestão `--projeto PASTA` [`--versao-politica HASH`]; `--completo`; `--liberar N` \| `--conferido N` \| `--desfazer N` [`--origem T` `--motivo T`]; `--so-placar` |
 | `auditor_xp.py` | sem argumentos; `--seco` |
-| `sugestoes_bot.py` | `[--coletar] [--sem-triagem] [--recoletar]`; `--pendentes [--pr N]`; `--listar [--todas] [--pr N]`; `--tratar ID --acao A [--nota T]`; `--pronto N` |
+| `sugestoes_bot.py` | gestão `--projeto PASTA`; `[--coletar] [--sem-triagem] [--recoletar]`; `--pendentes [--pr N]`; `--listar [--todas] [--pr N]`; `--tratar ID --acao A [--nota T]`; `--pronto N` |
 | `revisor_ia.py` | `--pr N [--forcar] [--seco]`; `--pendentes`; `--local WORKTREE [--base REF]` |
 | `binarios_em_pr.py` | `[--wt WORKTREE] [--base REF] [--repo dono/nome] [--ext .png,.blend] [arquivo ...]` (código 0 sem choque, 1 com choque, 2 erro) |
 | `custo_time.py` | `[--dias 7]` |
@@ -789,6 +1109,8 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 | `saude.py` | `--pendentes` (pedidos do desenvolvedor ainda não entregues, depois os duplicados fortes e círculos não ignorados do `dados/saude.json`, ou `NADA`) |
 | `plugins_projeto.py` | `[--projeto P] [--desligar ids] [--religar ids]` |
 | `boas_praticas.py` | `validar [PROJETO] [--json]` (código 1 se alguma checagem `erro` falha); `corrigir [PROJETO] [--aplicar] [--so id1,id2] [--instalar-deps]` (sem `--aplicar`, só o plano); sem PROJETO, as pastas de `projetos` |
+| `emit_evento.py` | `--evento JSON` (ou o JSON no stdin); `[--banco ARQ]` |
+| `importar_opencode.py` | `[--projeto P] [--aplicar] [--forcar] [--opus ID] [--sonnet ID] [--haiku ID] [--modo M]` |
 | `modelos/briefing_diretor.py` | `[--config config.json] [--dias-parado 14] [--saida arquivo.md]` (padrão `dados/diretor/briefing.md`) |
 | `grafo/grafo.py` (`grafo.py`) | comuns a todos os comandos: `--raiz R`, `--grafo ARQ`; `--versao` |
 | `grafo.py init` | `[--saida ARQ] [--llm] [--ext .py,.ts] [--raizes a,b] [--max-arquivos 40]` (nunca sobrescreve) |
@@ -802,16 +1124,16 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 | `grafo/claude/hooks/grafo_hook.py` (`grafo_hook.py`) | `pre`; `post`; `fim [--bloquear] [--base REF]` (stdin do hook) |
 | `grafo/testes/testar_grafo.py` | sem opções (`python -W error`); `GRAFO_BASE_EXEMPLO=<raiz>` liga a fumaça num projeto seu |
 | `ferramentas/verificar.py` | `[--termos arquivo.txt]` |
-| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `testar_grafo_painel.py`, `testar_praticas.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
+| `ferramentas/build.py`, `testar_instalacao.py`, `testar_alertas.py`, `testar_rede.py`, `testar_estaticos.py`, `testar_saude.py`, `testar_registrar_evento.py`, `testar_eventos.py`, `testar_sugestoes_triagem.py`, `testar_grafo_painel.py`, `testar_praticas.py`, `testar_emit_evento.py`, `testar_importar_opencode.py`, `verificar_docs.py` | sem argumentos; `notas_versao.py vX.Y.Z` |
 | Atalhos | `abrir_escritorio[.bat\|.sh] [celular]`, `reiniciar_escritorio[.bat\|.sh] [celular]` |
 
 ### 5.4 `config.json` — chaves principais
 
-Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.json`; referência em `INSTALACAO.md` §5.
+Valores padrão em `configuracao.PADRAO`; exemplo completo em `config.exemplo.json`; referência em `docs/CLAUDE-COMPATIBILIDADE.md` §5.
 
 | Bloco | Chaves | Padrão |
 |---|---|---|
-| raiz | `porta`, `titulo`, `projetos`, `tema` (`neutro`\|`sao-paulo`), `apelidos` (`brasileiros`\|`cinema`\|`desligado`), `palavras_reuniao` | 8765, "Claude Office 3D", [], neutro, desligado |
+| raiz | `porta`, `titulo`, `projetos`, `tema` (`neutro`\|`sao-paulo`), `apelidos` (`brasileiros`\|`cinema`\|`desligado`), `palavras_reuniao` | 8765, "Office Multi-provider", [], neutro, desligado |
 | `agentes[]` | `nome`, `titulo`, `funcao`, `cor`, `apelido_br`, `apelido_cinema`, `cargo`, `mesa`, `lider`, `auxiliar`, `sala`, `outros_nomes`, `rotulo_issue`, `time_kanban` | time genérico de 4 |
 | `github` | `repo`, `projeto_owner`, `projeto_numero`, `check_revisao`, `publicar_status`, `bots_revisao`, `campo_time`, `campo_prioridade`, `times`, `colunas` | vazio (tudo desligado; `publicar_status` false) |
 | `xp` | `ativo`, `desde`, `pesos`, `niveis`, `padroes_teste`, `padroes_avaliacao`, `amostra_1_em`, `atribuicao` | desligado |
@@ -834,6 +1156,11 @@ na CA; desligado, essa faixa é recusada (`rede.ip_permitido`).
 |---|---|---|
 | `OFFICE_CONFIG` | `configuracao.py` (todos os scripts que carregam o config) | caminho de outro `config.json` (padrão: `config.json` da pasta do escritório) |
 | `OFFICE_AGENTE` | `registrar_evento.quem` | força o nome do agente da sessão (a identificação mais confiável) |
+| `OFFICE_EMIT` | `opencode/office.js` | caminho do `emit_evento.py` (sem ela o plugin não faz nada) |
+| `OFFICE_PROJETOS` | `opencode/office.js` | só emite dentro destas pastas, separadas por vírgula (padrão: todas) |
+| `OFFICE_PYTHON` | `opencode/office.js` | Python que roda o emit (padrão: `python`) |
+| `OFFICE_FONTE` | `opencode/office.js` | valor de `fonte` do evento (padrão: `opencode`) |
+| `OFFICE_BANCO` | `opencode/office.js` | só testes: SQLite temporário no lugar do escritório |
 | `OFFICE_ALERTA_T`, `OFFICE_ALERTA_C` | script PowerShell de `alertas.toast_windows` | título e corpo do toast do Windows, passados por ambiente (já saneados) para não montar código com o texto |
 | `PYTHONUTF8=1` | definida pelo `servidor.py` (ao rodar `xp.py`), `sugestoes_bot.triar` e `revisor_ia.revisar_com_claude` nos subprocessos | saída em UTF-8 no Windows |
 
@@ -931,7 +1258,7 @@ flowchart TD
 Os botões chamam `POST /api/xp/...`; o servidor valida que o PR está na lista certa, roda
 `xp.py <flag> N --so-placar --origem "escritório (pc|conferir)"` com uma trava (uma ação por vez, 409 se ocupado) e
 devolve o placar novo (`servidor.acao_xp`). `--so-placar` recalcula do cache (`estado.json`) sem ler o Kanban; só chama
-o GitHub uma vez (`listar_prs`) se o `estado["lista"]` ainda não existir. O `xp.py` em si não é agendado pelo servidor: o `INSTALACAO.md` §8 manda rodar à mão ou agendar (cron,
+o GitHub uma vez (`listar_prs`) se o `estado["lista"]` ainda não existir. O `xp.py` em si não é agendado pelo servidor: o `docs/CLAUDE-COMPATIBILIDADE.md` §8 manda rodar à mão ou agendar (cron,
 Agendador de Tarefas).
 
 ### 6.5 Custo e acumulado
@@ -991,7 +1318,7 @@ desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escal
 
 ### 7.1 Exposição de rede
 
-- **Padrão**: só `127.0.0.1:porta` (`servidor.HOST`; `INSTALACAO.md` §15).
+- **Padrão**: só `127.0.0.1:porta` (`servidor.HOST`; `docs/CLAUDE-COMPATIBILIDADE.md` §15).
 - **Rede local (opcional)**: `--rede-local` ou `"rede_local": true`. Com HTTPS: HTTP só em `127.0.0.1:porta`, HTTPS
   (TLS 1.2 no mínimo — `tls.contexto`, `minimum_version`) em `0.0.0.0:porta+1`, e `0.0.0.0:porta+2` só com o certificado público da CA
   (`servidor.abrir_servidores`). Sem como gerar certificado, ou com `--sem-https`, cai para HTTP em `0.0.0.0:porta`
@@ -1043,14 +1370,14 @@ desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escal
   comentário e `time_do_pr` — `sugestoes_bot._resumo_para_triagem`), o diff/contexto do revisor e do auditor e o contexto da
   triagem da saúde (`saude_triagem.contexto`: nomes de branch, números e títulos de PR, agente, arquivo, contagens e o último
   comando repetido, cada um numa linha e cortado) para o modelo via `claude -p`; comentários do revisor e issues do auditor publicados no GitHub.
-- A triagem roda a partir da pasta do escritório, fora dos projetos, então nada entra no feed (`INSTALACAO.md` §11).
+- A triagem roda a partir da pasta do escritório, fora dos projetos, então nada entra no feed (`docs/CLAUDE-COMPATIBILIDADE.md` §11).
 
 ### 7.5 Segredos e vazamento
 
 - `ferramentas/verificar.py` varre o repositório por e-mails, caminhos de usuário, tokens do GitHub, chaves de API, IDs
   do GitHub Projects e chaves privadas, com lista extra de termos fora do repositório (`--termos`), e roda no CI.
-- `ferramentas/build.py` só empacota arquivos versionados (`git ls-files`), sem `.github/` e `ferramentas/`.
-- Quem tem acesso ao PC ou à conta tem acesso a tudo (`INSTALACAO.md` §9, "Riscos e limites").
+- `ferramentas/build.py` empacota a lista explícita `instalar.PACOTE`, incluindo módulos novos ainda não rastreados. `git ls-files` confere se todo arquivo versionado foi classificado; `.github/`, `ferramentas/` e `.gitattributes` ficam fora. Dados, config pessoal, bancos, credenciais, backups e vendor baixado são rejeitados mesmo se listados. Caminhos fora da raiz, itens ausentes/duplicados e falhas de integridade impedem gerar o ZIP. O índice Git não é alterado.
+- Quem tem acesso ao PC ou à conta tem acesso a tudo (`docs/CLAUDE-COMPATIBILIDADE.md` §9, "Riscos e limites").
 
 ---
 
@@ -1068,7 +1395,7 @@ desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escal
 | Sugestões | por coleta: comentários (1 chamada por página, até `MAX_PAGINAS`) + 1 de PRs abertos (ambas com ETag) + 1 de reviews por PR aberto; rate limit só registra e tenta na próxima rodada |
 | Cota do GitHub | 5000 pontos/h GraphQL e 5000 REST para a conta inteira; vigia a cada 5 min; alerta abaixo de 20% (`cota.py`) |
 | Tamanho dos dados | evento: resumo 90, texto 2000, detalhe 400 caracteres; sugestão até 1200; fila de alertas 200; cota 2016 linhas; push até 12 inscrições |
-| Custo de tokens | triagem ≈ US$ 0,014 por lote de 5 itens; revisor ≈ US$ 0,18 por revisão de 35–40 mil caracteres de diff (`INSTALACAO.md` §11, `CHANGELOG.md` 1.4.0); auditor: modelo barato primeiro, o segundo só no suspeito; custo do auditor por PR fica em `auditoria_ia.custo_usd` |
+| Estimativas históricas do fluxo compatível (não preços atuais ou cobrança comum) | triagem ≈ US$ 0,014 por lote de 5 itens; revisor ≈ US$ 0,18 por revisão de 35–40 mil caracteres de diff (`docs/CLAUDE-COMPATIBILIDADE.md` §11, `CHANGELOG.md` 1.4.0); auditor: modelo barato primeiro, o segundo só no suspeito; custo do auditor por PR fica em `auditoria_ia.custo_usd` |
 | Push | até 20 por hora (`limite_push_hora`); inscrições 404/410 apagadas |
 | Concorrência | SQLite em WAL; trava de arquivo na caixa de sugestões; uma ação de XP por vez; uma coleta por vez (`_sug_trava`) |
 
@@ -1080,17 +1407,17 @@ desenvolvedor", opcionalmente só dos `agentes_pergunta` (`eh_pergunta`); `escal
 
 Python 3.9+ (o instalador recusa versões menores), Claude Code, navegador com WebGL; opcionais: `gh` autenticado (com
 escopo `project` para o Kanban), `cryptography` ou `openssl` (HTTPS e Web Push), internet na primeira carga do
-three.js ou cópia em `vendor/` (`INSTALACAO.md` §2, `instalar.py`).
+three.js ou cópia em `vendor/` (`docs/CLAUDE-COMPATIBILIDADE.md` §2, `instalar.py`).
 
 ### 9.2 Instalar e desinstalar
 
 - Assistente em 7 passos: checagens (`claude --version`, `gh auth status`), destino, pastas de projeto, agentes (time
   genérico, importar `.claude/agents/*.md` ou digitar), GitHub, aparência/servidor/XP/celular/three.js offline, hook e
-  statusline (`INSTALACAO.md` §3; `instalar.assistente`). Nada é gravado até a confirmação final.
+  statusline (`docs/CLAUDE-COMPATIBILIDADE.md` §3; `instalar.assistente`). Nada é gravado até a confirmação final.
 - Silencioso: `python instalar.py --sem-perguntas --config X.json` com bloco opcional `instalacao`.
 - Hooks acrescentados sem apagar os existentes e sem duplicar, com backup `settings.json.bak-AAAAMMDD-HHMMSS`.
 - `--desinstalar` remove só os hooks que chamam o `registrar_evento.py` desta pasta (usuário e projetos do config) e a
-  statusline só se for a do escritório (`INSTALACAO.md` §14).
+  statusline só se for a do escritório (`docs/CLAUDE-COMPATIBILIDADE.md` §14).
 - Ao ligar o celular, o instalador mostra o comando `New-NetFirewallRule` pronto, sem executá-lo (`CHANGELOG.md` 1.1.0).
 
 ### 9.3 Operação
@@ -1103,13 +1430,13 @@ three.js ou cópia em `vendor/` (`INSTALACAO.md` §2, `instalar.py`).
   depois de atualizar, por causa das migrações (`CHANGELOG.md` 1.10.0).
 - Tarefas periódicas fora do servidor: `xp.py` (agendar), `vigia_lider.py` (na ferramenta Monitor do líder).
 - Diagnóstico do hook: `echo {...} | python registrar_evento.py` e `python -c "import banco; print(banco.ler_eventos(ultimos=1))"`
-  (`INSTALACAO.md` §13).
+  (`docs/CLAUDE-COMPATIBILIDADE.md` §13).
 
 ### 9.4 Release e CI (`.github/workflows/`)
 
 | Workflow | Gatilho | Passos |
 |---|---|---|
-| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_estaticos.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_eventos.py`; `ferramentas/testar_sugestoes_triagem.py`; `grafo/testes/testar_grafo.py`; `ferramentas/testar_grafo_painel.py`; `ferramentas/build.py` |
+| `ci.yml` | push em `main` e pull request | Python 3.12 e Node 20; `pip install cryptography`; `ferramentas/verificar.py`; `ferramentas/verificar_docs.py`; `ferramentas/testar_instalacao.py`; `ferramentas/testar_alertas.py`; `ferramentas/testar_rede.py`; `ferramentas/testar_estaticos.py`; `ferramentas/testar_saude.py`; `ferramentas/testar_registrar_evento.py`; `ferramentas/testar_emit_evento.py`; `ferramentas/testar_importar_opencode.py`; `ferramentas/testar_eventos.py`; `ferramentas/testar_sugestoes_triagem.py`; `grafo/testes/testar_grafo.py`; `ferramentas/testar_grafo_painel.py`; `ferramentas/build.py` |
 | `release.yml` | tag `v*` | `ferramentas/build.py`; `ferramentas/notas_versao.py <tag> > NOTAS.md` (falha se a tag não bater com `VERSION`); `gh release create` com `dist/*.zip` e `dist/*.sha256` |
 
 O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/build.py`).
@@ -1132,6 +1459,8 @@ O pacote é `dist/claude-office-3d-v<VERSION>.zip` com `.sha256` (`ferramentas/b
 | `grafo/testes/testar_grafo.py` | `grafo.py` num repositório git temporário (Python/C++/TS falsos, grafo com aresta não declarada, ciclo real, camada violada, órfão e caminho inexistente): leitor YAML próprio x PyYAML, precedência de dono, `init` (não sobrescreve), `validate` (também `--base` e sem PyYAML), `owner`/`suggest`, `slice` (orçamento), `impact --diff`, `find`, `drift`, `index` e `sync-rules` determinísticos; hooks (JSON válido, uma vez por sessão, bloqueio, entrada quebrada) e instalador (sem duplicar, desinstalar, `--copiar`); fumaça num projeto seu só com `GRAFO_BASE_EXEMPLO` | CI e local, com `python -W error` (precisa de git) |
 | `ferramentas/testar_grafo_painel.py` | `grafo_painel.py` num repositório git temporário com a ref `origin/main`: `caminho_seguro`, o que vai para a base (cobertura e caminhos citados; pasta não citada fica fora), binário/grande vazios, `index.json`/`estado.json`, validate com camada violada e ciclo real, drift, mesmo commit não refaz / `forcar` refaz / commit novo atualiza, falhas mantêm o último index, sem grafo (`sem_grafo`, `como_criar`, também depois de reiniciar), `grafo.ativo` false, sem projeto, ref inválida, `grafo.arquivo` e `grafo.json` do projeto, `normalizar_grafo`, nomes perigosos na árvore, palavra solta não puxa pasta, leitura concorrente e `GET /grafo` em porta aleatória sem servir a cópia da base | CI e local, com `python -W error` (precisa de git) |
 | `ferramentas/testar_praticas.py` | `boas_praticas.py` em pastas temporárias: detecção de tecnologias e do comando de teste, sem git, repositório git real (`.env` versionado é erro), checagens de Python/Node/outras stacks, `corrigir` (plano não muda nada, aplicar, repetir sem mudar, backup do settings, nunca sobrescreve; só o `git` continua erro), `.venv` real, `.gitignore` CRLF/LF, caminhos do Python do venv por sistema, CLI (códigos 0/1/2, `OFFICE_CONFIG`), revisão de PR (`revisao-pr` com cada forma de revisão, `com_revisor`, `criar_revisor` sem sobrescrever, seção "Fluxo de PR" do líder ou do `CLAUDE.md` sem lider.md, revisor casado por palavra, `instalar.py --revisao` com diff, backup, repetição sem mudança e saída 2), ignore global do usuário fora da conta, comando do hook com "_", `.venv` quebrado não recriado sem confirmação, `GET /api/versao` e `GET /api/praticas` em porta aleatória (cache, celular sem caminhos no projeto, no detalhe e no erro, validação lenta responde `calculando` sem abrir segunda thread); settings do usuário sempre temporário | CI e local, com `python -W error` (precisa de git) |
+| `ferramentas/testar_emit_evento.py` | `emit_evento.py` num banco temporário (`--banco`): normalização (fonte, padrões, tetos), rejeições (sem tipo, tipo fora, sem agente, fonte fora, `ok` texto) com código 2, `--evento` e stdin gravando sem saída, JSON quebrado/stdin vazio com 2, banco quebrado caindo na fila com 0 | CI e local, com `python -W error` |
+| `ferramentas/testar_importar_opencode.py` | `importar_opencode.py` num projeto falso: plano sem escrever, conversão (mode, model por flag, tools → permission, `Monitor` → task, `effort` e skills no prompt, maxTurns → steps), `opencode.json` com instructions e cópia do plugin, segunda aplicação sem reescrever, projeto sem `.claude` com 2 | CI e local, com `python -W error` |
 | `ferramentas/verificar_docs.py` | este documento contra o código (seção 13) | CI e local |
 | `ferramentas/build.py` | roda a verificação e monta o zip | CI e release |
 
@@ -1145,7 +1474,7 @@ restante de `rede.py` (além do filtro de origem e das rotas do painel Saúde) n
 
 | Decisão | Motivo | Alternativa descartada | Fonte |
 |---|---|---|---|
-| Só biblioteca padrão do Python (`cryptography` opcional) | instalar sem `pip install` | dependências obrigatórias | `README.md`, `INSTALACAO.md` §2 |
+| Só biblioteca padrão do Python (`cryptography` opcional) | instalar sem `pip install` | dependências obrigatórias | `README.md`, `docs/CLAUDE-COMPATIBILIDADE.md` §2 |
 | Eventos em SQLite (`evento`) | consulta por id; sem reler arquivo a cada 2 s | `dados/eventos.jsonl` separado aos 4 MB | `CHANGELOG.md` 1.10.0, `banco.py` |
 | Decisões do XP e vereditos no banco, com origem e motivo | saber quem decidiu e por quê | listas JSON só com números | `CHANGELOG.md` 1.10.0 |
 | Acumulado de custo em SQLite | só cresce mesmo com a janela andando e transcritos apagados | recalcular só da janela | `CHANGELOG.md` 1.9.0 |
@@ -1160,16 +1489,16 @@ restante de `rede.py` (além do filtro de origem e das rotas do painel Saúde) n
 | `revisor_ia.py --local` antes do PR | achado resolvido antes não vira rodada de PR | só revisar no PR | `CHANGELOG.md` 1.7.0 |
 | Auditor com dois modelos (barato, depois o segundo só no suspeito) e sem liberar vermelho | maioria dos amarelos é legítima; alarme falso não deve virar trabalho | conferência 100% humana | `CHANGELOG.md` 1.9.0, `auditor_xp.py` |
 | Três faixas anti-trapaça, amarelo pontua normal | punir só o claramente suspeito; conferência humana do resto | zerar tudo que parece suspeito | `CHANGELOG.md` 1.1.0, `xp.py` |
-| Placar cooperativo, sem medalhas nem pódio | decisão registrada no `CHANGELOG.md` 1.1.0 (o repositório afirma a escolha sem dar o motivo) | ranking competitivo | `CHANGELOG.md` 1.1.0, `INSTALACAO.md` §8, `placar.js` |
+| Placar cooperativo, sem medalhas nem pódio | decisão registrada no `CHANGELOG.md` 1.1.0 (o repositório afirma a escolha sem dar o motivo) | ranking competitivo | `CHANGELOG.md` 1.1.0, `docs/CLAUDE-COMPATIBILIDADE.md` §8, `placar.js` |
 | Custo da sessão aberta estimado pelos tokens | o `cost-state` só é gravado quando a sessão fecha; o dia parecia zerar | ignorar sessões abertas | `CHANGELOG.md` 1.9.0 |
 | Rateio por todas as respostas da sessão | o total inteiro na janela inflava sessões longas | atribuir o total à janela | `CHANGELOG.md` 1.9.0 |
-| CA própria com NameConstraints para IPs privados | HTTPS sem conta e sem poder falsificar sites da internet | HTTP puro ou CA sem restrição | `tls.py`, `INSTALACAO.md` §9 |
-| Firewall nunca alterado pelo escritório | mexer no sistema é decisão do usuário; só mostra o comando | regra criada automaticamente | `INSTALACAO.md` §9, `CHANGELOG.md` 1.1.0 |
+| CA própria com NameConstraints para IPs privados | HTTPS sem conta e sem poder falsificar sites da internet | HTTP puro ou CA sem restrição | `tls.py`, `docs/CLAUDE-COMPATIBILIDADE.md` §9 |
+| Firewall nunca alterado pelo escritório | mexer no sistema é decisão do usuário; só mostra o comando | regra criada automaticamente | `docs/CLAUDE-COMPATIBILIDADE.md` §9, `CHANGELOG.md` 1.1.0 |
 | Push com lista branca de serviços e sem redirecionamento | evitar SSRF por inscrição forjada | aceitar qualquer endpoint | `push.py` (`SERVICOS_PUSH`, `_SemRedirecionar`) |
 | Faixa `100.64.0.0/10` só com `rede_tailscale` | fora do Tailscale essa faixa é o CGNAT da operadora, compartilhado com outros clientes | aceitar sempre (comportamento até a 1.11.0) | `CHANGELOG.md` 1.12.0, `rede.ip_permitido` |
 | Alerta `pr_pronto` com a mesma regra do painel PRs | o alerta saía antes de o painel ficar verde | olhar só a revisão | `CHANGELOG.md` 1.12.0, `alertas.situacao_pr` |
 | SDD conferido contra o código no CI | documento que não acompanha o código engana quem mantém | revisão manual | `CHANGELOG.md` 1.12.0, `ferramentas/verificar_docs.py` |
-| Merge automático opcional por status de commit (`revisor-ia`, `sugestoes`) com `github.publicar_status` desligado por padrão | o GitHub só faz o merge com os checks verdes no commit atual; a pessoa fica com o que muda as regras (`merge-manual`) | merge sempre manual; o escritório fazer o merge | `CHANGELOG.md` 1.19.0, `INSTALACAO.md` §19 |
+| Merge automático opcional por status de commit (`revisor-ia`, `sugestoes`) com `github.publicar_status` desligado por padrão | o GitHub só faz o merge com os checks verdes no commit atual; a pessoa fica com o que muda as regras (`merge-manual`) | merge sempre manual; o escritório fazer o merge | `CHANGELOG.md` 1.19.0, `docs/CLAUDE-COMPATIBILIDADE.md` §19 |
 | Statusline nunca substitui uma existente | não quebrar a configuração do usuário; encadear com `--so-gravar` | sobrescrever | `CHANGELOG.md` 1.11.0, `instalar.instalar_statusline` |
 
 ---
@@ -1180,20 +1509,20 @@ Documentadas no código e nos guias:
 
 - **Uso do plano** só existe em planos de assinatura; com API key, Bedrock ou Vertex não há `rate_limits`. O campo
   ainda não está na documentação pública do Claude Code; se o formato mudar, a statusline só para de gravar. A leitura
-  só acontece com o Claude Code aberto (`INSTALACAO.md` §12, `statusline_uso.py`).
+  só acontece com o Claude Code aberto (`docs/CLAUDE-COMPATIBILIDADE.md` §12, `statusline_uso.py`).
 - **Custo**: só a divisão entre respostas é estimada; a sessão aberta é estimativa calibrada nas fechadas
   (`custo_time.py`). O peso dos plugins é estimativa e limite superior (`plugins_projeto.py`).
 - **Sem HTTPS** (queda para HTTP) o tráfego e o cookie podem ser vistos no mesmo Wi-Fi; impacto limitado pelas
-  permissões, limite de ações e CSRF (`INSTALACAO.md` §9).
+  permissões, limite de ações e CSRF (`docs/CLAUDE-COMPATIBILIDADE.md` §9).
 - **Tailscale**: só com `"rede_tailscale": true` (desligado, a faixa `100.64.0.0/10` é recusada); nomes MagicDNS não
-  entram na CA; usar o IP (`INSTALACAO.md` §9).
-- **iPhone**: push só com o escritório na Tela de Início, iOS 16.4+ (`INSTALACAO.md` §10).
+  entram na CA; usar o IP (`docs/CLAUDE-COMPATIBILIDADE.md` §9).
+- **iPhone**: push só com o escritório na Tela de Início, iOS 16.4+ (`docs/CLAUDE-COMPATIBILIDADE.md` §10).
 - **Revisor-ia** não substitui revisão humana nem um portão de arquitetura; quem faz muitos pushes pequenos paga mais
-  revisões (`INSTALACAO.md` §11).
+  revisões (`docs/CLAUDE-COMPATIBILIDADE.md` §11).
 - **Painel PRs pelo REST**: "fecha #n" vem do texto do PR (`Closes/Fixes/Resolves #n`), não do campo do GitHub
   (`CHANGELOG.md` 1.0.0, `servidor.RE_FECHA`).
-- **Mesas**: até 10 (`MAX_MESAS`); agentes além disso aparecem quando surgirem (`INSTALACAO.md` §5).
-- **XP** depende de rodar `xp.py` (manual ou agendado); sem `gh` ou repositório, só as skills pontuam (`INSTALACAO.md` §8).
+- **Mesas**: até 10 (`MAX_MESAS`); agentes além disso aparecem quando surgirem (`docs/CLAUDE-COMPATIBILIDADE.md` §5).
+- **XP** depende de rodar `xp.py` (manual ou agendado); sem `gh` ou repositório, só as skills pontuam (`docs/CLAUDE-COMPATIBILIDADE.md` §8).
 
 Observadas na leitura do código:
 
@@ -1276,3 +1605,346 @@ nada novo fique sem ser citado; manter a descrição certa continua sendo parte 
 | 1.18.3 | Branch sem PR parado há mais de 2 dias: regra 7 no modelo do líder, linha no modelo do dev e seção nova no briefing do Diretor (`secao_branches_parados`: branch que nunca teve PR, à frente do branch padrão, sem commit há > `PARADO_DIAS`) | `modelos/time/lider.md`, `modelos/time/dev.md`, `modelos/briefing_diretor.py` |
 | 1.18.1 | saúde: cartão rascunho do Kanban em coluna de trabalho (painel, `--pendentes` do líder, comando `gh` de conversão; `item_id` nos cartões do `/kanban`) e comandos repetidos pelo mesmo agente (dica no painel); seção "Cartão rascunho" no modelo do líder; regra `scripts-do-projeto.md` e checagem `scripts-regra` | `saude.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `vigia_lider.py`, `boas_praticas.py`, `instalar.py`, `modelos/time/lider.md`, `modelos/praticas/scripts-do-projeto.md`, `ferramentas/testar_saude.py`, `ferramentas/testar_praticas.py` |
 | 1.18.0 | `.venv` do escritório (hooks, statusline e atalhos com o Python dele; `--sem-venv`); boas práticas do projeto (`boas_praticas.py` validar/corrigir, modelos `praticas/` e `time/`); passo "Projeto: boas práticas" no instalador e bloco `praticas`; seção no painel 🩺 Saúde e `GET /api/praticas`; revisão de PR (líder + revisor): passo do instalador, `--revisao`/`--sem-revisao`, checagem `revisao-pr`; grafo: "id citado" na busca, eventos com caller/callee, `sync-rules` com o caminho real; `GET /api/versao` e "Versão X" no menu ⚙️; correções do servidor (corpo do POST recusado, prazo de 15 s no socket) | `boas_praticas.py`, `instalar.py`, `configuracao.py`, `servidor.py`, `saude_painel.js`, `saude_painel.css`, `modelos/`, atalhos, `ferramentas/testar_praticas.py` |
+| 1.20.0 | escritório com outros harnesses: `emit_evento.py` (evento neutro com `fonte`, `--banco` para testes), plugin do OpenCode (`opencode/office.js` em `.opencode/plugins`: `tool.execute.before/after` → `trabalho`, tool `skill` → ferramenta `Skill` para o `contar-uso`) e `importar_opencode.py` (converte `.claude/agents` em `.opencode/agents`, `instructions` com `CLAUDE.md` e cópia do plugin, confere as `skills/`) | `emit_evento.py`, `importar_opencode.py`, `opencode/`, `instalar.py`, `INSTALACAO.md`, `ferramentas/testar_emit_evento.py`, `ferramentas/testar_importar_opencode.py` |
+
+
+## Providers adicionais
+
+`providers_console.py`, `console_provider.py` e `skills_compartilhados.py`: arquitetura e limites em [PROVIDERS.md](PROVIDERS.md). O hook e os launchers Claude continuam intactos. `emit_evento.py` preserva o campo opcional `sessao`, sem nova tabela.
+
+Ambiente: `OFFICE_PROVIDER` seleciona provider; `OFFICE_STREAM_OWNER` escolhe plugin ou launcher para evitar duplicação; `OFFICE_LINK` e `OFFICE_SOURCE` são argumentos transitórios da criação de junction. `OFFICE_EMIT`, `OFFICE_PYTHON`, `OFFICE_AGENTE`, `OFFICE_PROJETOS`, `OFFICE_BANCO`, `OFFICE_FONTE` seguem o plugin existente.
+
+`codex_observador.py`: observação passiva da TUI em `CODEX_HOME/sessions`; sessão única ou ID explícito, sem alterar o CLI. Testes adicionais de transcritos e de feed HTTP dos três providers. `OFFICE_PROJETO` e `OFFICE_CODEX_MODEL` são opções do launcher dev `iniciar_time_codex.bat`.
+
+Consumo adicional: veja consumo_providers.py e docs/GESTAO.md. Banco separado consumo_providers.db/tabela consumo; a API /api/uso/providers inclui agregados de sete dias, sem IDs de sessão ou caminhos. Não altera as tabelas históricas do Claude. `indicadores_providers.mjs` mostra o resumo observado cloud/local com cobertura por contador e mantém o detalhamento por console/modelo/agente e as cotas por fornecedor separadas. Cache não é somado novamente; tokenizadores distintos impedem interpretar o volume como eficiência. Intervalos de despacho e consumo vinculado a tentativas estão em Gestão; cobrança real permanece indisponível.
+
+Revisão do despacho: tabela entrega separada no banco de tarefas (token privado, SHA, PR, aprovação recalculada, relatório e data). GET /api/gestao expõe só última revisão/PR/SHA. Ver docs/GESTAO.md para controles de entrega e pendência dos checks GitHub.
+
+A projeção de lotes em GET /api/gestao usa os relatórios locais do diretor com
+whitelist de campos, leitura limitada e avisos por inconsistência/cobertura.
+Estados registrados não comprovam processos vivos. Ver docs/GESTAO.md; não
+cria tabelas nem expõe caminhos, prompts ou tokens na resposta pública.
+
+Medições de despacho: tabela independente execucao_tarefa no banco de tarefas,
+com id/token privados, console/modelo configurado/origem/cloud-local, início/fim,
+duração monotônica e código de saída. GET /api/gestao publica última tentativa e
+agregados de sete dias com cobertura e limite de mil tentativas, sem IDs/tokens.
+O vínculo imutável execucao_contexto (token/projeto/cartão) preserva a atribuição
+das tentativas após nova reserva; agregado histórico e atividade da reserva
+atual são separados. O controlador recupera vínculos comprováveis em bancos
+anteriores; tentativas já órfãs são excluídas com aviso, sem inventar projeto.
+Leitura de banco antigo não migra esquema. Sem retorno, intervalo indisponível;
+saída zero não prova aceite, registro não comprova processo vivo nem modelo
+servido. Inclui ferramentas/esperas e exclui revisão. Ver docs/GESTAO.md.
+
+A autoridade das fontes e a distinção entre regras vigentes, configuração e
+relatórios históricos estão em docs/GESTAO.md. README e PROVIDERS apontam para
+essa seção. O catálogo de providers inclui Gemini; auto tenta Claude, Codex,
+OpenCode e Gemini nessa ordem. A opção de merge pertence ao projeto; não é uma
+migração implícita das regras de projetos existentes.
+
+Consumo OpenCode: consumo_providers.Coletor normaliza step_finish V1 do launcher
+JSON por parte/sessão/projeto, idempotente entre retomadas. Não cria nova tabela;
+usa consumo no banco separado. Entrada inclui leitura/escrita de cache, saída
+inclui raciocínio; total nativo preservado ou soma completa, ausência explícita.
+GET /api/uso/providers adiciona provider_modelo/origem_provider_modelo aos grupos
+OpenCode: namespace configurado, sem comprovar backend. Histórico anterior e cost nativo
+não são importados. TUI/filhos observados pelo plugin atualizado usam a ponte --opencode. Contrato e referências da versão validada em docs/GESTAO.md.
+
+
+PRs por projeto: GET /prs aceita projeto=<id> e forcar=1. A projeção de gestão
+prs_gestao.py reutiliza a seleção canônica do Kanban e inclui fonte, projetos,
+projeto_id, repo, merge, prs, limitado, atualizado e erro. Revisão/gates não são
+presumidos; painel desabilita sugestões legadas nesse escopo. A função interna
+prs mantém o contrato/cache legado. Ver docs/GESTAO.md.
+
+### Propriedade da telemetria Claude na versão nova
+
+Falhas no encerramento gerenciado: um envelope Claude principal `result` com
+`is_error: true` transforma exit zero em código 1; códigos nativos não zero são
+preservados. O despacho registra a medição e deixa a reserva bloqueada, sem mover
+para revisão. Exceções de vínculo/persistência propagam para o controle após
+terminate/wait do processo lançado (kill/wait se o prazo de cinco segundos vencer).
+Não enumera descendentes cloud; falta de confirmação exige conciliação. Testes
+usam processo real em espera para verificar encerramento e um despacho completo
+com Git/Kanban simulados para conferir que a revisão não é chamada em falha.
+
+OFFICE_CLAUDE_STREAM_HOOK identifica o caminho absoluto do hook desta instalação; OFFICE_CLAUDE_STREAM_SESSION contém o ID da sessão gerenciada. O launcher define ambos apenas no processo Claude com stream e os remove ao abrir a TUI. Uma sessão nova recebe UUID via --session-id; resume mantém o ID solicitado. registrar_evento.py filtra somente PreToolUse/PostToolUse/PostToolUseFailure/Stop da sessão principal correspondente. agent_id, teammate_name, agent_name ou agent_transcript_path preservam eventos filhos; Agent/Task/SendMessage preservam relações e comunicação. Caminho de outra instalação, ID diferente ou variável ausente mantém o comportamento anterior. Nenhum hook de proteção é removido ou desativado. Configurações legadas devem ser revisadas na migração. O teste usa processos e SQLite reais em pasta temporária, com CLI/hook lifecycle sintéticos; não comprova uma sessão cloud real.
+
+### Revisor Claude da nova linha
+
+revisores_console.py usa safe-mode em vez de bare para manter autenticação normal, com tools vazio, MCP estrito, sem slash commands e sem persistência de sessão. Exige flags disponíveis, stream-json/verbose, init com tools vazio, sessão principal consistente e result is_error false único. Erro, ferramenta, conclusão ausente ou resultado divergente bloqueia aprovação. Políticas administrativas gerenciadas continuam aplicáveis. Não reduz isolamento para aceitar CLI antigo. O CLI 2.1.296 nesta máquina confirmou login claude.ai, zero ferramentas e zero MCP; o teste de diff sintético terminou com erro 429/credit e não aprovou revisão. Isso não comprova uma inferência aceita nem identidade cloud efetiva de todos os revisores.
+
+### Revisor Gemini e diagnósticos do contrato comum
+
+revisores_console.resposta_gemini exige init com sessão/modelo, uma conclusão
+success sem erro e mensagens textuais válidas; ferramenta/erro/evento desconhecido,
+outra sessão, conclusão duplicada/ausente e eventos após o fim bloqueiam.
+Settings temporários negam MCP/extensions/skills/hooks, isolam context.fileName,
+diretórios e overrides de prompt; security.folderTrust.enabled false se aplica
+somente à pasta temporária vazia desta consulta, sem mudar confiança global ou
+o launcher. A política Admin deny para todas as ferramentas permanece obrigatória.
+FalhaRevisor contém exit code e motivo enumerado, sem stderr/paths/credenciais.
+revisao_cruzada conserva esse diagnóstico no relatório e conferir rejeita qualquer
+registro com erro/falha_console ou aprovado diferente de true. Uso sem stats é
+desconhecido. Provas e limitações nativas atuais ficam em docs/GESTAO.md, seção
+de revisão isolada. Testes: testar_revisores_console.py e testar_revisao_cruzada.py.
+Fontes: https://geminicli.com/docs/reference/configuration/ e
+https://geminicli.com/docs/cli/headless/.
+
+### Pressão de CPU e papéis locais
+
+A política local.cpu_uso_max_pct aceita inteiro de 1 a 100, com padrão 75. recursos_local.py mede duas amostras separadas por 250 ms: GetSystemTimes/GetActiveProcessorCount no Windows e /proc/stat no Linux. Falha, contador inconsistente ou uso acima do teto bloqueia reserva antes da inferência e aciona o watchdog da execução local. Windows com mais de 64 processadores permanece bloqueado até haver medição entre grupos; sistemas sem suporte não presumem CPU livre. RAM e processos pesados continuam sendo conferidos. A rota CEO/diretor local exige local ativo e Team local, evitando escapar da restrição do perfil simples; os demais gates permanecem.
+
+memoria_local.py consulta GET /api/ps somente no loopback, sem proxy/redirect,
+com timeout de 3 segundos e resposta limitada a 256 KiB/128 modelos. Soma size
+de todos os residentes, com size_vram contido em size, sem expor nomes/digests
+e sem descontar novamente da RAM livre. Ausência ou inconsistência bloqueia.
+local.ollama_memoria_max_gb limita o total em GiB (padrão 4; inteiro 1..1024).
+nvidia-smi fornece índice, memória total/livre e uso, sem mutação. Todas as GPUs
+NVIDIA medidas devem respeitar local.vram_livre_min_gb (padrão 2; inteiro 1..1024)
+e local.gpu_uso_max_pct (padrão 75; inteiro 1..100); N/A/falha bloqueiam.
+Sem nvidia-smi só se admite zero VRAM residente reportada pelo Ollama: uso posterior
+sem medição interrompe na próxima amostra. AMD/Intel/Apple/memória unificada,
+estimativa de alocação futura/contexto e liberação de residentes permanecem
+pendentes. Nenhum modelo é carregado/descarregado por essas consultas; watchdog
+encerra somente o console local. Testes: ferramentas/testar_memoria_local.py.
+Fontes: https://docs.ollama.com/api/ps e https://docs.nvidia.com/deploy/nvidia-smi/index.html.
+
+Fontes: [GetSystemTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getsystemtimes) e [Linux /proc](https://docs.kernel.org/filesystems/proc.html). O teste nativo nesta máquina leu CPU/RAM/processos, sem carregar modelo; valida apenas a amostra, não inferência ou uso futuro.
+
+### Equivalente teórico de API por modelo
+
+consumo_providers.Registro.resumo consulta precos_tokens.py dentro da conexão SQLite somente leitura. O catálogo opcional precos_tokens.json fica junto de consumo_providers.db em dados/. Sem catálogo, preço não é presumido. Catálogo inválido suspende apenas o cálculo; tokens permanecem. Nenhuma cobrança real ou conversão de cota de assinatura é feita. Cada grupo recebe equivalente_api_usd (decimal em texto) e com_preco, sem total financeiro global. Apenas Codex/Gemini com modelo informado, fonte normalizada reconhecida e entrada/cache/saída completos recebem cálculo. Modelos apenas configurados, local, Claude sem ledger incremental e OpenCode sem escrita de cache normalizada permanecem sem preço.
+
+O catálogo versão 1 contém tarifas por provider/modelo exatos, desde inclusivo e ate exclusivo (datas UTC), fonte HTTPS e preços decimais em texto por milhão de tokens. Intervalos sobrepostos são rejeitados. Cada amostra usa sua data; editar catálogo recalcula a comparação histórica, sem alterar contadores. A fórmula é ((entrada - cache) * tarifa_entrada + cache * tarifa_cache + saída * tarifa_saída) / 1.000.000. Não inclui ferramentas, multimodalidade, impostos, descontos ou serviços adicionais; não serve como fatura. A fonte declarada é fornecida pelo operador, sem verificação automática.
+
+### Inicialização integrada e separação de edições
+
+iniciar_projeto.py prepara nova pasta de aplicativo e política do projeto. Prévia sanitizada não publica campos arbitrários do config existente. Sem --aplicar, só lê; com aplicação, revalida a prévia antes de copiar. A primeira instalação exige destino vazio e sem sobreposição com o projeto; usa configurar_gestao para criar somente arquivos novos. Instalar aplica com hook nenhum, statusline false, venv false, revisão legada false e sem abrir servidor. Consoles são detectados no PATH sem execução ou autenticação. Config/dados de instalação existente registrada são preservados; outro projeto exige --cadastrar-projeto. O cadastro preserva campos arbitrários do config e projetos anteriores; hash dos bytes identifica mudanças desde a prévia. Lock cadastro.edicao.lock, backup exato em dados/historico-config, fsync e substituição atômica protegem a gravação, com nova conferência do hash imediatamente antes. Porta diferente ou arquivos do manifesto ausentes/fora do destino bloqueiam. Se a política nova foi gravada mas o cadastro falhou, ela permanece preparada; refazer a prévia permite reutilizar os arquivos sem sobrescrever. Não há rollback global entre configuração do aplicativo e arquivos do projeto. Não resolve divergências em documentos nativos existentes nem instala pré-requisitos. Falha parcial não tem rollback global; exige conferir arquivos e refazer a prévia.
+
+EDICAO.json contém edicao office-multi-provider e formato inteiro 1. instalar.validar_edicao é chamado antes de cópia/aplicação/revisão/desinstalação. Marcador ausente em pasta com arquivos do pacote/config, marcador inválido ou VERSION fora de 2.x bloqueiam a operação. Marcador não comprova integridade do conteúdo. Build e título de release usam Office Multi-provider; glob de release publica somente office-multi-provider, evitando incluir artefatos antigos que ficaram em dist. Nenhuma release foi publicada nesta implementação.
+
+### Compatibilidade dos skills explicitamente selecionados
+
+Coordenação CEO/diretor: coordenacao.py seleciona um subconjunto dos candidatos
+de lote fornecidos pelo operador. gestao_cli.py coordenar recebe --plano,
+--solicitacao, --consultar e --executar. Prévia não infere; consultar chama os
+papéis cloud em contextos isolados pelo adapter de revisores_console.chamar com
+normalizador específico, preservando normalização padrão de revisão. Schema
+cartoes/motivo/bloqueios rejeita extras, IDs externos/duplicados/booleanos. Diretor
+não amplia seleção do CEO. Reconsulta identidade da política, pacotes, prioridades
+e Git após cada modelo; executar_lote recebe esperado e recusa divergência antes
+de iniciar. Limites documentais/prompt falham sem truncar. Bloqueio interrompe sem
+despacho; interrupção do lote retorna erro CLI. Não cria issues nem modifica merge.
+Contexto ausente é identificado; não certifica conteúdo dos documentos.
+coordenacao_registro.py grava tabela coordenacao em coordenacao.db próprio por
+projeto (não banco legado), com transições por BEGIN IMMEDIATE, UUID, repo, timestamp
+e JSON validado. Guarda contexto_sha256 sem prompt/body/path; decisões completas
+são locais. Modelo/executor é configurado, sem atestação de identidade cloud.
+Projeção somente leitura limita a dez recibos por repo/projeto; retorna
+coordenacoes em GET /api/gestao sem motivo, texto de bloqueios, hash ou caminhos.
+Arquivo fora da instalação, dados inválidos/grandes e erro SQLite ficam
+indisponíveis. GET não cria banco nem consulta modelos. gestao_painel.js usa
+coordenacoes_painel.mjs com textContent; estados de consulta/despacho registrados
+não provam processos vivos. Incerto exige conciliação, sem retomada automática.
+POST /api/gestao/coordenar (PC/CSRF) chama coordenacao_painel.api_consultar: projeto_id,
+versao, solicitacao e plano explícito; sem campo executar. 202 informa pedido_id;
+400 inválido, 403 permissão/origem, 409 versão/consulta em andamento/conciliação.
+Worker daemon chama coordenar consultar=True com versao_politica esperada,
+reconferida antes de cada consulta; ao_recibo persiste vínculo antes de inferir,
+e erros preservam o recibo associado. Nenhum despacho por esta rota. Tabela pedido
+fica no banco próprio pedidos_coordenacao.db; guarda id/repo/estado/timestamp/recibo,
+sem prompt/path. Slot local e estado persistente impedem repetição; thread perdida
+no reinício torna projeção incerta, sem retomada automática. GET /api/gestao inclui
+pedidos_coordenacao (dez recentes), só metadados. coordenacao_form.mjs usa textContent
+e bloqueia envios simultâneos; formulário avisa consumo cloud e exige candidatos.
+Pedidos incertos oferecem prévia/confirmar conciliação descrita em 5.1; encerra
+somente acompanhamento quando há evidência final, sem liberar trabalho incerto.
+gestao_painel.lotes aceita identidade explícita para conferir o lote vinculado
+sem depender da janela de dez relatórios recentes. A leitura continua limitada,
+validada e sem criar arquivos/bancos.
+consumo_coordenacao.ColetorIsolado liga consultas nativas aos agentes CEO/Diretor
+no consumo_providers.db existente. revisores_console.rodar recebe ao_saida opcional,
+observa stdout válido antes de rejeitar returncode; chamar recebe ao_evento sem
+mudar seu normalizador padrão. Ajuda/debug config não contam. Falha de consumo
+não altera resultado. Timeout/saída grande ou sem contadores reconhecidos não são
+transformados em zero. Codex/Gemini/OpenCode reutilizam normalização/dedup existentes.
+Claude usa --session-id UUID novo quando observado, exige init sem ferramentas
+da mesma sessão e lê modelUsage final por modelo informado; soma entrada/cache
+leitura/criação, guarda leitura em cache e outputTokens final. Não soma usage
+aggregate/assistant placeholders. Replay não duplica e snapshot menor/erro zerado
+não rebaixam. Fonte claude.result/modelUsage.sessao-nova, sem custo monetário e sem
+modificar launcher Claude/team/resume. Placar identifica cobertura dessas consultas.
+OpenCode de CEO/diretor exige modelo cloud explícito e recusa namespaces locais
+conhecidos; backend personalizado não atestado. Despacho pelo painel e conciliação
+assistida de pedidos de coordenação já seguem os contratos descritos na seção 5.1.
+Cobrança real, retomada de agentes e liberação de reservas/worktrees incertos
+continuam pendentes; conciliar o acompanhamento não autoriza essas ações.
+
+skills_execucao.EvidenciaClaude verifica Skill no init, chamada com nome exato e
+tool_result sem erro por tool_use_id na sessão principal, seguido de result sem
+erro. Não aceita filho/outra sessão como evidência. O launcher recebe skills_nativas
+e ao_skills; seleção exige Claude cloud/stream. Despacho exige evidência mesmo se
+executor retorna zero. Controle.registrar_skills grava skills_verificadas no pacote
+da reserva, confere sessão/nomes/estado e rejeita substituição divergente. Não altera
+schema nem contratos do SQLite legado. conferir_worktree confere SKILL.md nativo
+do checkout pelo hash antes da reserva e antes da entrega; fonte ausente/divergente
+bloqueia. Não verifica todos os assets nem cada efeito interno de hooks. Evidência
+ausente bloqueia entrega, sem reverter efeitos já executados. Probe nativo Claude
+2.1.296 recebeu erro de limite/crédito 429 antes da ativação; prova cloud positiva
+permanece pendente.
+
+compatibilidade_skills.py faz diagnóstico conservador, sem executar YAML/comandos. Detecta chaves de runtime apenas no frontmatter e injeção/substituição Claude no corpo; duplicatas/formato fora do subconjunto são problemas. Não é parser YAML completo nem validador de todos os valores. Catálogo distingue fonte nativa .claude/skills de fonte personalizada. Nome/description/corpo comum são referenciados, sem cópia; não certifica dependências, assets ou acesso nativo. Claude cloud delega controles conhecidos ao próprio runtime na fonte nativa. Outros providers/local requerem mapeamento dos recursos extras e falham antes de reservar tarefa/cadastrar especialista quando uma skill explícita não for compatível. conferir_cartao reavalia uso além do hash. Preparação de links não cria links novos de skills com runtime pendente e preserva links existentes; não garante proibição da descoberta implícita nativa. preparar_codex permanece alias compatível de preparar_compartilhados. Formulário mostra/desabilita incompatibilidades e backend revalida. Catálogo do projeto de validação tem 53 skills que passaram neste subconjunto; isso não comprova execução de todos os workflows. Gemini 0.59 list não confirmou a skill temporária por link nem pasta regular; código instalado condiciona skills de workspace à confiança na pasta. Não foi alterada confiança/autenticação para forçar o teste.
+
+OpenCode em papéis operacionais (CEO/diretor/equipes/especialistas) permite
+fornecedor não informado, omitindo cloud vazio nos formulários; identidade
+cloud_executor continua obrigatória nos gates de revisão/separação do autor.
+Revisão isolada valida sessão/mensagem/partes, uma etapa e stop, sem ferramentas
+ou eventos após conclusão. Provas nativas Space Bunny Free em 10/10/2026:
+consulta, revisão P1 sintética e coordenação CEO/diretor na fixture, sem despacho
+ou escrita GitHub. Não atestam backend, TUI/Team, skills completas ou custo real.
+Fluxo e limites canônicos em docs/GESTAO.md; exemplo atualizado em docs/PROVIDERS.md.
+
+
+### Conclusão dos novos consoles e prova da skill compartilhada
+
+O executor comum valida o encerramento do fluxo principal de Codex, OpenCode
+e Gemini por `retorno_console.py`. Exit code zero sem sessão e conclusão
+bem-sucedida, erro nativo ou fluxo truncado retorna erro ao controlador, que
+bloqueia a tarefa antes de revisão/entrega. Eventos desconhecidos não comprovam
+sucesso. Falha recuperável de uma ferramenta pode ser seguida por conclusão
+válida; no OpenCode, etapas `tool-calls` precisam de uma etapa final `stop`.
+O contrato Claude e a TUI sem prompt permanecem nos caminhos existentes.
+Essa validação não aprova código nem comprova conclusão de processos filhos.
+
+Uma prova nativa em projeto Git temporário executou OpenCode Space Bunny Free
+pelo despacho comum: ativou uma skill com nome/description/corpo compatível
+com Claude, acessada por link compartilhado, e leu seu arquivo auxiliar.
+Registrou sessão e 11.592 tokens em três etapas. A fonte da skill permaneceu
+inalterada. Kanban foi simulado; sem PR, a reserva ficou bloqueada, sem revisão
+ou merge. A prova usou permissões restritas e configuração somente do processo
+filho; não alterou conta, projeto de validação ou instalações anteriores.
+Não comprova paridade integral de skills/permissões/teams nem identidade da cloud.
+
+
+### Retomada explícita de cartão bloqueado
+
+`gestao_cli.py retomar` faz prévia sem inferência e, com `--executar`, reutiliza
+a reserva e a sessão nativa, acrescentando tentativa ao histórico. Exige o mesmo
+executor cloud, política, fontes, skills, cadastro, worktree e branch, checkout
+limpo e cartão ainda em andamento com instruções/equipe/prioridade preservadas.
+Todas as tentativas anteriores precisam ter retorno e o processo principal da
+última deve ter encerramento registrado. Uma nova reserva inclui o contexto de
+execução; reservas anteriores sem esse vínculo não são migradas por suposição.
+
+```powershell
+python gestao_cli.py --projeto D:/projetos/meu-app retomar --cartao 42 --worktree D:/worktrees/card-42
+python gestao_cli.py --projeto D:/projetos/meu-app retomar --cartao 42 --worktree D:/worktrees/card-42 --confirmacao HASH_DA_PREVIA --agentes-conciliados --executar
+```
+
+O hash confere a reserva, última tentativa/atividade e branch/HEAD da prévia.
+Mudança exige nova prévia. `--agentes-conciliados` declara a conferência manual
+dos agentes/ferramentas no console: encerramento do pai não prova filhos.
+O claim da reserva é transacional; a ocupação Git compartilhada impede dupla
+execução. Trava antiga não é roubada; ausência de PID/prazo não libera trabalho.
+Falha da prévia não deixa nova trava, pois ainda não houve lançamento.
+O quadro não volta ao Backlog nem recebe novo PATCH de andamento. Revisão e
+entrega passam pelos mesmos gates; sem PR ou com falha, permanece bloqueado.
+Retomada local, recuperação de quedas sem retorno, conciliação automática dos
+filhos permanecem pendentes; a retomada explícita também está disponível no painel Gestão. Testes usam Git,
+SQLite e subprocessos reais com streams sintéticos dos quatro consoles; não
+comprovam retomada cloud autenticada.
+
+
+### Retomada pelo painel Gestão
+
+Cartões bloqueados oferecem "Conferir retomada" no PC. Prévia consulta os
+mesmos gates da CLI; sessão/worktree são resolvidos da reserva no servidor.
+O formulário não recebe paths nem permite trocar sessão/modelo. Após declarar
+a conferência dos agentes/ferramentas anteriores, "Retomar sessão" envia o hash
+e agenda o worker. Fechando o formulário, Gestão acompanha pedidos e tarefas.
+Reserva, sessão e histórico são preservados; sem PR continua bloqueado.
+
+retomada_painel.py implementa POST /api/gestao/retomar, restrito ao PC e ao CSRF
+existente. Ledger separado pedidos_retomada.db por projeto/repo/cartão impede
+pedido duplicado pendente; ocupação compartilhada e claim da reserva continuam
+no controlador. Não copia stdout, erros nativos, paths ou IDs de sessão para
+o resumo do pedido. `recebida`/`executando` só são mostrados assim enquanto
+o handle local está vivo; sem handle, ficam incertos na projeção, sem mudar
+o banco na leitura. Erro/interrupção preserva incerto, sem retry automático.
+
+Pedidos incertos ainda exigem inspeção/conciliação no PC e impedem novo pedido
+do mesmo cartão. Recuperação de quedas sem retorno, liberação segura de travas,
+retomada local e recuperação de pedidos sem vínculo continuam pendentes. A conciliação de retorno vinculado está descrita abaixo. Isso não é
+prova de encerramento de filhos nem validação cloud autenticada. Testes cobrem
+API/worker real com Git/SQLite/subprocessos e Kanban/modelos sintéticos, HTTP
+com CSRF, módulo do formulário e integração real do painel em VM JavaScript.
+
+
+### Conciliação do acompanhamento da retomada
+
+O pedido passa a guardar em retomada_contexto um vínculo privado e imutável
+com reserva/tentativa. O callback ao_execucao de gestao_cli.retomar é chamado depois de registrar a tentativa e antes de iniciar o launcher. Falha ao
+vincular impede o lançamento. Não deduz vínculos de pedidos históricos.
+
+Pedidos incertos oferecem "Conferir retorno da retomada" no PC. Prévia confere
+a tentativa vinculada, última na mesma reserva, retorno/duração registrados,
+processo principal encerrado e tarefa bloqueada ou em revisão. Outra reserva,
+nova tentativa, vínculo ausente, handle vivo ou retorno pendente impedem a
+conciliação. Confirmação exige hash atual e reavalia os registros/política.
+Apenas pedido/sha de conciliação mudam; não libera trava/reserva, reinicia
+console, altera GitHub ou aprova cartão por exit zero.
+
+O banco de tarefas é lido em transação mantida até o commit do ledger, para
+impedir que outro escritor mude a evidência durante a aplicação. Esse gate
+exige journal delete/truncate/persist; WAL ou outro modo não comprovam essa
+trava entre os dois bancos e são recusados, sem mudar o modo/configuração.
+Encerramento de filhos, quedas sem retorno, liberação de ocupação antiga e
+recuperação de pedidos sem vínculo continuam pendentes.
+
+### Consumo por projeto no painel Gestão
+
+GET /api/gestao acrescenta consumo a cada projeto: escopo projeto, janela móvel de sete dias, grupos por console/modelo/origem/agente, cobertura e equivalente teórico de API quando disponível. Registro.resumo aceita projeto_hash opcional; identidade_projeto conserva exatamente o SHA-256 do caminho resolvido usado pelos coletores existentes. filtro_periodo valida identidade e fornece o mesmo WHERE parametrizado para tokens e precos_tokens.aplicar. Nenhuma identidade privada de projeto/sessão é devolvida. Registros sem vínculo compatível ficam fora do resumo do projeto; nenhuma atribuição histórica é inferida. Leitura não cria banco/tabela nem migra histórico. Falha do ledger é isolada no campo consumo, sem ocultar o resto da gestão.
+
+Gestão usa linhasVisaoGeral/linhasConsumo do módulo de indicadores, inseridas como texto. O Placar preserva o resumo global, agora identificado como consumo do escritório; inclui registros de projetos removidos da configuração. Cotas permanecem por conta/fornecedor, sem rateio por projeto. Tarifas continuam opcionais, por validade e modelo informado; nunca são fatura ou custo de assinatura. Claude/team sem cobertura incremental ampla, OpenCode sem preço normalizado e tokens de execuções não observadas permanecem limitações. Testar_consumo_projeto.py cobre duas identidades com mesmo grupo, isolamento de preço, período, ausências/histórico, identidade inválida, leitura imutável, ledger inválido e GET HTTP real.
+
+### Entrada de processos encerrada antecipadamente
+
+console_provider.pipe_entrada tolera EPIPE/EINVAL ao escrever ou fechar stdin, inclusive no finally, como subprocess.Popen.communicate. No Windows, um filho que encerra/fecha entrada antes do flush pode produzir EINVAL. O launcher continua coletando stdout e código nativo; retorno incompleto/erro mantém os gates existentes e não aprova tarefa. Outros erros de I/O continuam sendo propagados. Testar_pipe_console.py força o processo real a terminar antes do envio, cobrindo Codex/Claude/OpenCode, código nativo não zero, stream sem conclusão/resultado com erro e fechamento das handles; distingue EINVAL/EPIPE de EIO. Não adiciona bypass, retry ou fallback de provider.
+
+### Conclusão principal do Claude novo
+
+Retorno aceita Claude no mesmo contrato comum dos consoles. Em stream, exige system/init com session_id válido e result da mesma sessão, subtype success e is_error exatamente false. Resultado sem init, só resultado filho, sessão trocada, erro ou processo zero sem resultado final não prova conclusão. Código nativo não zero continua preservado. Envelopes parent_tool_use_id de filhos válidos são ignorados pelo gate do pai; hooks/team preservam seu acompanhamento independente. Novo assistant/user/stream_event principal depois de result abre trabalho pendente e exige outro result; informações system desconhecidas não encerram nem abrem turno. Erro principal permanece impeditivo mesmo se houver resultado posterior. Resultado não atesta processos filhos, revisão ou merge.
+
+O launcher aplica esse contrato apenas ao fluxo estruturado; TUI e fallback de transcrito Claude sem eventos JSON mantêm a lógica anterior. Nenhum bare/bypass/isolamento extra é adicionado ao launcher normal. Fixtures foram corrigidas para emitir o subtype documentado. Testes de retornos, Claude padronizado, skills, pipe e retomada cobrem pai/filho/sessão/background/erro e processo real. Retomada com sucesso somente do filho retorna 1, conserva a reserva bloqueada e nem consulta entrega, mesmo com código nativo zero.
+
+Contrato oficial consultado: https://code.claude.com/docs/en/headless e exemplo de init/result success em https://platform.claude.com/cookbook/claude-agent-sdk-07-hosting-the-agent. O tratamento conservador de stream sem conclusão é política do escritório, não declaração de que o Claude nativo sempre falha nesse cenário.
+
+### Consumo Claude no launcher
+
+Consumo Claude: Coletor aceita sessao_claude_nova ou sessao_claude_retomada, alternativas, somente para provider/rotulo Claude cloud. SnapshotClaude continua compartilhado com consultas isoladas (tools=[] obrigatório), cujo contrato/fonte não muda. Launcher passa UUID novo ou ID explícito da retomada apenas em stream cloud. Registro.cumulativo_claude guarda saldo_claude por projeto/sessão/modelo com os quatro contadores brutos. BEGIN IMMEDIATE protege baseline e incremento no mesmo commit, sem rebaixar saldo ou duplicar concorrência/replay. Sessão nova sem saldo conta desde zero; retomada sem saldo grava só baseline inicial, com lacuna explicitada na UI. Uma chave por execução/modelo acumula somente seus incrementos em consumo, na data da primeira gravação; fonte claude.stream/modelUsage.delta. Não migra/atribui saldos antigos nem importa TUI/local. Não muda rotas, flags CLI, gate de entrega ou faturamento; resumo não expõe saldo/identidades privadas.
+
+### Entrada OpenCode e fontes comuns
+
+console_provider.executar inclui OpenCode cloud na preparação de contexto compartilhado. Para run com prompt (cloud ou local), envia entrada UTF-8 por pipe e substitui apenas o último argumento, que era o prompt, por orientação curta. Provider.comando permanece compatível; flags de modelo/sessão/agente e TUI sem prompt não mudam. Perfil local não recebe catálogo cloud adicional. O envio usa pipe_entrada e gates de conclusão existentes, sem retry/fallback/permissões adicionais. Testar_providers tem prova com Popen real e console sintético: tarefa Unicode acima de 40 mil caracteres chega por stdin, referências comuns presentes, argv curto, flags preservadas e nenhum opencode.json criado.
+
+skills_compartilhados.REGRAS_PASTA é a orientação comum de leitura por escopo usada em wrappers novos e contexto compartilhado quando .claude/rules existe. contexto recusa pasta de regras resolvida fora do projeto ou objeto que não seja diretório; não percorre regras nem lê corpos/globs. configurar_gestao gera importação @./ da fonte principal para CLAUDE.md e GEMINI.md novos apenas no subconjunto de caminhos simples; preserva entradas existentes. Este mecanismo é referência/descoberta, não emulação de InstructionsLoaded, matching nativo, hooks ou carregamento condicional. Launcher cloud injeta contexto nos quatro providers por stdin, inclusive OpenCode run. OpenCode também mantém entrada/configuração nativas. Paridade de carga efetiva requer prova específica de cada runtime.
+
+configurar_gestao.preparar não encerra ao encontrar política idêntica: continua a conferir fontes/entradas ausentes, com existente=True e arquivos contendo somente criações. aplicar revalida o plano e usa criação exclusiva; política existente nunca é reserializada. iniciar_projeto reutiliza esse contrato para reparação após cadastro/instalação parcial. Não há rollback global; após falha parcial, nova prévia preserva os arquivos já escritos. Arquivos existentes não são reconciliados semanticamente.
+
+### Inventário documental por projeto
+
+fontes_documentais.resumo lê a política validada e até 128 KiB de regras/produto/arquitetura e wrappers CLAUDE.md/AGENTS.md/GEMINI.md. Retorna metadados documentacao em GET /api/gestao, incluindo em projeto inativo; semântica não verificada. Ausente/tipo/UTF-8/limite/link fora ou arquivo simbólico são distinguidos sem devolver corpo ou destino absoluto. Consoles necessários derivam de papéis/equipes/rotas e revisores ativos. Cita_regras é somente menção literal com limites de token; fonte_regras indica identidade de arquivo. Não cria arquivos, chama modelos/GitHub ou aplica instruções. O painel insere tudo como texto; leitura declarada não prova carregamento nativo.
+
+Consumo gerenciado: `console_provider.executar(..., projeto_consumo=None)` mantém o destino/cwd separado da identidade de contabilização. `gestao_cli` fornece a raiz validada em despachos e retomadas; `executor_local` encaminha a mesma identidade. Default continua sendo o cwd. Coletores stream e fábrica de rollouts recebem a identidade; o observador mantém o cwd para selecionar sessões. Plugin OpenCode usa `OFFICE_CONSUMO_PROJETO` somente na ponte de consumo, preservando o filtro `OFFICE_PROJETOS`. Contratos/flags nativos e schema dos registros não mudam. Histórico anterior não é reatribuído.
+
+Observação de comunicação: `ao_evento` opcional é encaminhado pelo executor local/controlador ao launcher. Só eventos normalizados originados de stream/rollouts invocam o callback; eventos sintéticos não o invocam. `Acompanhamento.evento` acumula metadados sem corpos em memória; `registrar` serializa e persiste o agregado em `atividade_eventos` na mesma transação do sinal, sob vínculo de tentativa/controlador. A projeção aceita banco antigo sem tabela, valida datas/contagens/tipo e mostra somente a última tentativa da reserva atual. Evento não é heartbeat nem prova de progresso/conclusão; cobertura exclui hooks/plugin externos a esse callback. Queda antes do flush pode perder até um intervalo de eventos.
+
+Perfis de funcionários: agentes_nativos.py gera artefato derivado para descoberta, mantendo cadastro/política como fonte. Descrição/modelo e hash são snapshots; corpo referencia o comando --contexto do aplicativo e a raiz cadastrada. Prévia não escreve. Gravação requer versão e cria somente arquivo ausente por hardlink exclusivo de temporário fsync, com lock em .office/perfis-nativos.lock; não sobrescreve conflitos nem muda configs nativos. Links/junctions são recusados; falta de suporte a hardlink gera erro sem fallback de overwrite. Contexto verifica versão antes/depois da leitura. Geração cloud apenas; não habilita multi-agent nem altera permissões. Formulário agentes_nativos_form.mjs usa texto literal/POST PC com preview/apply separado. Desktop/máquina/caminhos clonados e outros worktrees exigem conferência/regeneração; autoridade da política não substitui as permissões reais do console.
+
+GET /api/gestao inclui perfil_nativo por funcionário, derivado por agentes_nativos.resumo sem escrita/CLI. Projeta somente estado, console e arquivo relativo quando verificável; erros de um perfil viram indisponivel sem ocultar outros membros. Local válido aparece gerenciado. Atual indica igualdade do artefato com as fontes consultadas, não registro/execução; divergente não distingue arquivo personalizado de snapshot desatualizado. A consulta não altera o gate de contexto/criação e pode ficar desatualizada antes da próxima ação. O formulário mostra estado como texto e ainda requer prévia explícita. Template de .office/.gitignore novo exclui perfis-nativos.lock; ignore existente não é regravado.
+
+ponte_eventos.py: --origem, --fonte, --destino, --provider, --ultimos, --acompanhar. CLI explícito ou worker opt-in, fonte SQLite mode=ro/query_only sem migradores, destino identificado da edição nova e separado. Usa tabela ponte_eventos (origem PK, caminho, arquivo_id UNIQUE, provider, ancora_id, ancora_sha, cursor) no SQLite do destino. Cursor/inserções na tabela evento são uma transação BEGIN IMMEDIATE; fonte é snapshot de leitura com WAL, sequência/âncora/identidade conferidas. Até 200 linhas por lote/recorte inicial e 64 KiB de texto por linha, normalização pelos limites existentes; descartes contados. Origem/ID originais em origem_escritorio; IDs locais próprios preservam /eventos/replay. Sem --ultimos inicializa no último ID sem copiar histórico; acompanhar repete a cada dois segundos. Falha não avança cursor, não troca fonte nem apaga histórico. Não importa custos, sessões/reservas/cotas nem comprova escopo do projeto. Servidor inicia worker somente com dados/ponte_eventos.json opt-in válido; instalador não habilita fontes.
+
+Configuração privada da ponte: ativo booleano e fontes (até quatro objetos com origem única, fonte absoluta e provider), arquivo até 16 KiB sem links/junctions. Hash conferido a cada ciclo; alteração/remoção interrompe sem adotar novo conteúdo. Fontes com falha param individualmente; outras continuam. GET /api/gestao inclui ponte_eventos com estado e contadores/última consulta por origem, sem caminhos ou corpos. Gestão renderiza texto literal, distinguindo desligada/não iniciada/acompanhando/parcial/interrompida/configuração alterada ou inválida/encerrada; não infere agente ativo. servidor.main inicia no ciclo do serviço e chama parar no finally. Status é por instalação, não atribui eventos a projetos/tarefas e não comprova conclusão.

@@ -600,6 +600,7 @@ def testar_revisao_cli():
         gravar(proj, "README.md", "x\n")
         gravar(proj, ".claude/agents/lider.md", "---\nname: lider\n---\nlíder antigo\n")
         cfg = gravar(app, "config.json", json.dumps(dict(SEM_REVISOR, porta=8770, projetos=[str(proj)])))
+        gravar(app, "EDICAO.json", '{"edicao":"office-multi-provider","formato":1}')
         antes_cfg = cfg.read_bytes()
         cod, out = instalar_cli("--revisao", str(proj), "--destino", str(app), "--sem-perguntas")
         dados = json.loads(cfg.read_text(encoding="utf-8"))
@@ -625,6 +626,7 @@ def testar_revisao_cli():
                "sessão principal faz o papel de líder" in out and "CLAUDE.md" in out and "## Fluxo de PR" in out
                and not (proj2 / "CLAUDE.md").exists(), out[-1200:])
         ruim = gravar(t / "app2", "config.json", "{ quebrado")
+        gravar(t / "app2", "EDICAO.json", '{"edicao":"office-multi-provider","formato":1}')
         cod, out = instalar_cli("--revisao", str(proj), "--destino", str(t / "app2"), "--sem-perguntas")
         checar("--revisao com config.json inválido: sai com 2 e não mexe", cod == 2
                and ruim.read_text(encoding="utf-8") == "{ quebrado" and not list(ruim.parent.glob("*.bak-*")), out)

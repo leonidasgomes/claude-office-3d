@@ -31,6 +31,7 @@ o cookie do QR code (rede.py). O celular lê tudo; com a permissão "conferir" e
 Opções: --porta N (ignora a do config)  --sem-navegador (não abre o navegador)  --rede-local (liga o acesso pelo celular)
 """
 import json
+import sqlite3
 import mimetypes
 import os
 import posixpath
@@ -125,10 +126,11 @@ def gh():
 def config_publica():
     c = cfg()
     g = c["github"]
-    kanban_ok = bool(g["projeto_owner"] and g["projeto_numero"])
+    import kanban_painel
+    kanban_ok = kanban_painel.habilitado(c['projetos']) or bool(g["projeto_owner"] and g["projeto_numero"])
     return {
         "titulo": c["titulo"], "tema": c["tema"], "apelidos": c["apelidos"], "agentes": c["agentes"],
-        "github": {"repo": g["repo"], "kanban": kanban_ok, "prs": bool(g["repo"]),
+        "github": {"repo": g["repo"], "kanban": kanban_ok, "prs": kanban_painel.habilitado(c['projetos']) or bool(g["repo"]),
                    "projeto_owner": g["projeto_owner"], "projeto_numero": g["projeto_numero"],
                    "check_revisao": g["check_revisao"], "times": g["times"], "colunas": g["colunas"]},
         "xp": {"ativo": c["xp"]["ativo"], "niveis": c["xp"]["niveis"]},
@@ -463,13 +465,24 @@ _kanban = Cache(KANBAN_VALIDADE, _ler_kanban, lambda: {"configurado": True, "pro
 _prs = Cache(PRS_VALIDADE, _ler_prs, lambda: {"configurado": True, "repo": "", "prs": [], "atualizado": ""}, "core")
 
 
-def kanban():
+def kanban(projeto=None):
+    import kanban_painel
+    atual = kanban_painel.vista(cfg()['projetos'], projeto)
+    if atual is not None:
+        return atual
     g = cfg()["github"]
     if not (g["projeto_owner"] and g["projeto_numero"]):
         return {"configurado": False, "projeto": "", "cartoes": [], "atualizado": "",
                 "erro": "Kanban não configurado: preencha github.projeto_owner e github.projeto_numero no config.json "
                         "(ou rode o instalar.py de novo)."}
     return _kanban.obter((g["projeto_owner"], g["projeto_numero"], g["campo_time"], g["campo_prioridade"]))
+
+
+def prs_projeto(forcar=False, projeto=None):
+    import prs_gestao
+    atual = prs_gestao.vista(cfg()['projetos'], projeto)
+    if atual is not None: return atual
+    return prs(forcar)
 
 
 def prs(forcar=False):
@@ -504,29 +517,43 @@ def _ler_json(arq, padrao):
 def acao_xp(rota, dados, ident):
     """(código, resposta) da ação de XP dos botões do Placar; recalcula só a partir do cache (xp.py --so-placar)."""
     flag = ACOES_XP[rota]
+    import kanban_painel,xp_projeto
+    base=cfg();ctx=None;arquivo_placar=XP_PLACAR;decisor=banco;argumentos=[]
+    if kanban_painel.habilitado(base['projetos']) or dados.get('projeto_id') is not None:
+        if set(dados)-{'pr','projeto_id','versao','_ua'} or not dados.get('projeto_id'):
+            return 400,{'ok':False,'erro':'Selecione o projeto do Placar'}
+        selecao=kanban_painel.escolher(base['projetos'],dados['projeto_id'],'Placar')
+        if selecao is None or selecao[2]:return 400,{'ok':False,'erro':'Projeto desconhecido ou inválido'}
+        try:
+            ctx=xp_projeto.contexto(selecao[0][0],base)
+            if dados.get('versao')!=ctx['versao']:return 409,{'ok':False,'erro':'Política mudou; atualize o Placar'}
+        except (ValueError,OSError,TypeError):return 400,{'ok':False,'erro':'Política do projeto indisponível'}
+        arquivo_placar=ctx['placar'];decisor=ctx['decisoes']
+        argumentos=['--projeto',str(ctx['raiz']),'--versao-politica',ctx['versao']]
     pr = dados.get("pr")
     if isinstance(pr, bool) or not isinstance(pr, int) or pr <= 0:
         return 400, {"ok": False, "erro": "pr deve ser um inteiro positivo"}
     if not cfg()["xp"]["ativo"]:
         return 400, {"ok": False, "erro": "XP desligado no config.json"}
-    placar = _ler_json(XP_PLACAR, None)
+    try:placar=xp_projeto.ler(ctx) if ctx else _ler_json(arquivo_placar,None)
+    except (ValueError,OSError,TypeError):return 409,{'ok':False,'erro':'Placar do projeto indisponível ou desatualizado'}
     if not isinstance(placar, dict) or not isinstance(placar.get("agentes"), dict):
         return 500, {"ok": False, "erro": "placar de XP indisponível (rode 'python xp.py')"}
     ags = [a for a in placar["agentes"].values() if isinstance(a, dict)]
     abertos = {"--conferido": {x.get("pr") for a in ags for x in a.get("conferir", [])},
                "--liberar": {x.get("pr") for a in ags for x in a.get("auditoria", [])},
-               "--desfazer": banco.decisoes("conferido") | banco.decisoes("liberado")}
+               "--desfazer": decisor.decisoes("conferido") | decisor.decisoes("liberado")}
     if pr not in abertos[flag]:
         return 404, {"ok": False, "erro": f"PR #{pr} não está na lista desta ação"}
     if flag == "--desfazer" and ident.get("permissao") != "pc":   # celular só desfaz o que foi "conferido" (amarelo)
-        if pr in banco.decisoes("liberado") or pr not in banco.decisoes("conferido"):
+        if pr in decisor.decisoes("liberado") or pr not in decisor.decisoes("conferido"):
             return 403, {"ok": False, "erro": "o celular só desfaz PRs marcados como conferidos; liberar/desfazer liberação é só no PC"}
     if not XP_PY.is_file():
         return 500, {"ok": False, "erro": "xp.py não encontrado"}
     if not _xp_trava.acquire(blocking=False):
         return 409, {"ok": False, "erro": "outra ação de XP está em andamento"}
     try:
-        r = subprocess.run([sys.executable, str(XP_PY), flag, str(pr), "--so-placar", "--origem",
+        r = subprocess.run([sys.executable, str(XP_PY), *argumentos, flag, str(pr), "--so-placar", "--origem",
                             f"escritório ({ident.get('permissao') or 'pc'})"], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=180, cwd=str(PASTA), env=dict(os.environ, PYTHONUTF8="1"))
     except (OSError, subprocess.SubprocessError) as e:
@@ -535,7 +562,12 @@ def acao_xp(rota, dados, ident):
         _xp_trava.release()
     if r.returncode != 0:
         return 500, {"ok": False, "erro": ((r.stderr or r.stdout).strip().splitlines() or ["xp.py falhou"])[-1][:300]}
-    novo = _ler_json(XP_PLACAR, None)
+    try:
+        if ctx:
+            from politica_painel import snapshot
+            if snapshot(ctx['raiz'])[1]!=ctx['versao']:return 409,{'ok':False,'erro':'Política mudou durante a ação; confira no PC'}
+        novo=xp_projeto.ler(ctx) if ctx else _ler_json(arquivo_placar,None)
+    except (OSError,ValueError,TypeError):return 409,{'ok':False,'erro':'Placar não foi validado após a ação'}
     if not isinstance(novo, dict):
         return 500, {"ok": False, "erro": "placar não foi regravado"}
     print(f"[xp] {flag} PR #{pr}", flush=True)
@@ -618,6 +650,9 @@ def pronto_laco(parar):
         return
     while not parar.is_set():
         try:
+            import kanban_painel
+            if kanban_painel.habilitado(cfg()['projetos']):
+                parar.wait(PRONTO_A_CADA_S);continue
             c = sugestoes_bot.configuracao()
             if (c["bots"] or c["revisor"]) and c["repo"]:
                 atualizar_pronto(c)
@@ -644,6 +679,21 @@ def sugestoes_laco(parar):
     if parar.wait(25):
         return
     while not parar.is_set():
+        import kanban_painel
+        if kanban_painel.habilitado(cfg()['projetos']):
+            ativos,_=kanban_painel.catalogo(cfg()['projetos'])
+            for raiz,politica,_ in ativos:
+                if not politica['sugestoes']['ativo'] and not politica['auditor']['ativo']:continue
+                try:
+                    if politica['sugestoes']['ativo']:
+                        c=sugestoes_bot.configuracao(raiz)
+                        with _sug_trava:res=sugestoes_bot.coletar(c,triagem=politica['sugestoes']['triagem'])
+                        if res['erro']:print('[sugestoes] Coleta do projeto indisponível; confira no painel',flush=True)
+                    if politica['auditor']['ativo']:
+                        from auditor_projeto import auditar
+                        auditar(raiz,cfg())
+                except (ValueError,OSError,TypeError,RuntimeError,subprocess.SubprocessError,KeyError):print('[sugestoes] Coleta ou auditoria do projeto indisponível',flush=True)
+            parar.wait(cfg()['sugestoes']['intervalo_min']*60);continue
         c = sugestoes_bot.configuracao()
         if c["revisor"] and c["repo"]:
             revisor_rodada()
@@ -671,11 +721,23 @@ def iniciar_sugestoes():
     return parar
 
 
-def sugestoes_get():
+def sugestoes_get(projeto_id=None):
     """GET /api/sugestoes: contagem por PR e prioridade, itens abertos e o estado da última coleta (leitura de arquivo local)."""
     try:
+        import kanban_painel
+        selecao=kanban_painel.escolher(cfg()['projetos'],projeto_id,'sugestões')
+        if selecao is not None:
+            escolhido,projetos,erro=selecao
+            r={'ok':True,'fonte':'gestao','projetos':projetos,'projeto_id':'','politica_versao':'',
+               'ativo':False,'por_pr':{},'itens':[],'pronto':{},'erro':erro}
+            if erro:return 200,r
+            c=sugestoes_bot.configuracao(escolhido[0]);r.update(projeto_id=c['projeto_id'],politica_versao=c['politica_versao'],repo=c['repo'])
+            if c['ativo']:r.update(sugestoes_bot.resumo(c))
+            return 200,r
         r = sugestoes_bot.resumo()
     except Exception as e:
+        if projeto_id is not None or kanban_painel.habilitado(cfg()['projetos']):
+            return 200,{'ok':True,'fonte':'gestao','ativo':True,'por_pr':{},'itens':[],'pronto':{},'erro':'Caixa/política indisponível; confira no PC'}
         return 200, {"ok": True, "ativo": False, "por_pr": {}, "itens": [], "erro": str(e)[:200]}
     aviso = aviso_limite("rate limit") if r.get("limite_ate") and r["limite_ate"] > time.time() else ""
     return 200, dict(r, ok=True, limite=aviso, pronto=PRONTO)
@@ -688,17 +750,30 @@ def sugestoes_tratar(dados, ident):
         return 400, {"ok": False, "erro": "id inválido"}
     if acao not in ACOES_SUGESTAO or not isinstance(nota, str):
         return 400, {"ok": False, "erro": "acao deve ser " + ", ".join(ACOES_SUGESTAO)}
-    c = sugestoes_bot.configuracao()
+    import kanban_painel
+    base=cfg();projeto_id=dados.get('projeto_id')
+    if kanban_painel.habilitado(base['projetos']) or projeto_id is not None:
+        if not projeto_id or set(dados)-{'id','acao','nota','projeto_id','versao','_ua'}:
+            return 400,{'ok':False,'erro':'Selecione o projeto das sugestões'}
+        selecao=kanban_painel.escolher(base['projetos'],projeto_id,'sugestões')
+        if selecao is None or selecao[2]:return 400,{'ok':False,'erro':'Projeto desconhecido ou inválido'}
+        try:
+            c=sugestoes_bot.configuracao(selecao[0][0])
+            if not c['ativo']:return 400,{'ok':False,'erro':'Sugestões desligadas neste projeto'}
+            if dados.get('versao')!=c['politica_versao']:return 409,{'ok':False,'erro':'Política mudou; atualize o painel'}
+        except (ValueError,OSError,TypeError):return 400,{'ok':False,'erro':'Política indisponível'}
+    else:c=sugestoes_bot.configuracao()
     try:
         ok, msg = sugestoes_bot.tratar(c, id_, acao, nota)
     except TimeoutError:
         return 409, {"ok": False, "erro": "caixa de sugestões ocupada; tente de novo"}
+    except ValueError:return 409,{'ok':False,'erro':'Política mudou; confira o projeto antes de tratar'}
     if not ok:
         return 404, {"ok": False, "erro": msg}
     item = next((x for x in sugestoes_bot.ler_caixa(c) if str(x["id"]) == str(id_).strip()), None)
     dados["pr"] = item.get("pr") if item else None   # vai para o histórico de ações (dados/acoes.jsonl)
     print(f"[sugestoes] {msg}", flush=True)
-    return 200, {"ok": True, "mensagem": msg, "sugestoes": sugestoes_get()[1]}
+    return 200, {"ok": True, "mensagem": msg, "sugestoes": sugestoes_get(projeto_id)[1]}
 
 
 SAUDE_VALIDADE = 300   # s entre cálculos (branches locais + últimos eventos + PRs em cache)
@@ -709,6 +784,9 @@ _saude_trava = threading.Lock()
 def sugestoes_para_alertas():
     """Fonte "sugestoes" do detector (e regra de "pronto" da saúde): o resumo da caixa + o PRONTO da thread de validações."""
     try:
+        import kanban_painel
+        if kanban_painel.habilitado(cfg()['projetos']):
+            return {'ativo':True,'pronto_carregado':False,'erro':'Sugestões e alertas exigem identidade do projeto; não usar o resumo global'}
         return dict(sugestoes_bot.resumo(), pronto=dict(PRONTO), pronto_carregado=PRONTO_CARREGADO.is_set())
     except Exception as e:
         # caixa ilegível com bots/revisor ligados: o detector pula os PRs nesta rodada em vez de cair no "só a
@@ -757,7 +835,8 @@ def saude_atual():
         cartoes = None   # Kanban não configurado ou com erro: sem "rascunhos" (nenhum rascunho conta como resolvido)
         try:
             k = kanban()
-            if k.get("configurado") and not k.get("erro") and isinstance(k.get("cartoes"), list):
+            if k.get("configurado") and not k.get("erro") and isinstance(k.get("cartoes"), list) and (
+                    k.get('fonte') != 'gestao' or k.get('repo') == cfg()['github']['repo']):
                 cartoes = k["cartoes"]
         except Exception:
             pass
@@ -1013,6 +1092,8 @@ def criar_alertas(obj_rede):
               "sugestoes": sugestoes_para_alertas, "cota": VIGIA.resumo,
               # itens ignorados no painel Saúde, falsos positivos da triagem e itens novos esperando a triagem não alertam
               "saude": _saude_para_alertas}
+    from alertas_projetos import fontes as fontes_projetos
+    fontes['projetos']=lambda:fontes_projetos(cfg())
     # "sugestoes" leva o PRONTO da thread de validações: o alerta pr_pronto usa a mesma regra do painel PRs (prs.js);
     # antes da 1ª rodada do PRONTO (pronto_carregado False) o detector não mexe no estado dos PRs
     ALERTAS = alertas.Alertas(PASTA / "dados", fontes, cfg()["alertas"], TITULO, obj_rede)
@@ -1079,6 +1160,39 @@ SUF_BLOQUEADOS = (".py", ".bat", ".sh", ".json", ".md", ".txt")   # nunca servid
 class Handler(rede.HandlerSeguro):
     def api_post(self, rota, dados, ident):
         dados.pop("_detalhe", None)   # só o servidor preenche (vai para o histórico de ações)
+        if rota == '/api/gestao/revisao':
+            import politica_painel
+            return politica_painel.api_revisao(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/merge':
+            import politica_painel
+            return politica_painel.api_merge(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/retomada/conciliar':
+            import retomada_painel
+            return retomada_painel.api_conciliar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/retomar':
+            import retomada_painel
+            return retomada_painel.api(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/modelos':
+            import modelos_opencode
+            return modelos_opencode.api({k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/coordenacao/conciliar':
+            import coordenacao_painel
+            return coordenacao_painel.api_conciliar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/coordenacao/executar':
+            import coordenacao_painel
+            return coordenacao_painel.api_executar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/coordenar':
+            import coordenacao_painel
+            return coordenacao_painel.api_consultar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/executores':
+            import politica_painel
+            return politica_painel.api_atualizar(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == "/api/gestao/funcionarios":
+            import funcionarios
+            return funcionarios.api_cadastrar(cfg()["projetos"], dados, ident)
+        if rota == '/api/gestao/funcionarios/perfil':
+            import agentes_nativos
+            return agentes_nativos.api(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
         if rota in ACOES_SAUDE:
             return ACOES_SAUDE[rota](dados, ident)
         if rota.startswith("/api/push/"):
@@ -1088,8 +1202,28 @@ class Handler(rede.HandlerSeguro):
         return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
 
     def api_get(self, rota, qs, ident):
+        if rota == "/api/gestao/pr":
+            import prs_evidencias
+            if set(qs)!={'projeto','numero','sha'} or any(len(v)!=1 for v in qs.values()):
+                return 400, {'ok':False,'erro':'Informe projeto, número e SHA únicos'}
+            numero=qs['numero'][0]
+            if not re.fullmatch('[0-9]{1,10}',numero):
+                return 400, {'ok':False,'erro':'Número de PR inválido'}
+            return 200, prs_evidencias.ler(cfg()['projetos'],qs['projeto'][0],int(numero),qs['sha'][0])
+        if rota == "/api/uso/providers":
+            import uso_providers
+            from consumo_providers import Registro
+            try:
+                from funcionarios import rotular_consumo
+                consumo = rotular_consumo(cfg()['projetos'],Registro(banco.ARQ.parent / 'consumo_providers.db').resumo())
+            except (OSError, sqlite3.Error):
+                consumo = {'grupos': [], 'erro': 'Histórico de consumo indisponível'}
+            return 200, {"providers": [uso_providers.limites_codex()], "consumo": consumo}
+        if rota == "/api/gestao":
+            import gestao_painel,ponte_eventos
+            return 200, {**gestao_painel.resumo(cfg()["projetos"]),'ponte_eventos':ponte_eventos.estado()}
         if rota == "/api/sugestoes":
-            return sugestoes_get()
+            return sugestoes_get((qs.get('projeto') or [None])[0])
         if rota == "/api/praticas":
             return praticas_get(ident)
         if rota == "/api/versao":
@@ -1142,10 +1276,14 @@ class Handler(rede.HandlerSeguro):
             total, eventos = ler_eventos(desde, ultimos)
             return self.responder({"total": total, "eventos": eventos})
         if url.path == "/kanban":
-            return self.responder(com_cota(kanban()))
+            return self.responder(com_cota(kanban((qs.get('projeto') or [None])[0])))
         if url.path == "/prs":
-            return self.responder(com_cota(prs("forcar" in qs)))
+            return self.responder(com_cota(prs_projeto("forcar" in qs, (qs.get('projeto') or [None])[0])))
         if url.path == "/xp":
+            import xp_projeto
+            try:escopo=xp_projeto.vista(cfg()['projetos'],cfg(),(qs.get('projeto') or [None])[0])
+            except (OSError,ValueError,TypeError):escopo={'fonte':'gestao','agentes':{},'erro':'Política do projeto indisponível'}
+            if escopo is not None:return self.responder(escopo)
             if not cfg()["xp"]["ativo"]:
                 return self.responder({"ativo": False, "agentes": {}})
             try:
@@ -1259,10 +1397,12 @@ def main():
     threading.Thread(target=grafo_painel.laco, args=(parar_grafo, opcoes_grafo), daemon=True, name="grafo").start()
     print(f"Cota do GitHub: vigia a cada {cota.INTERVALO // 60} min (dados/github_cota.jsonl)")
     cfg_sug = sugestoes_bot.configuracao()
-    print("Sugestões dos bots de revisão: " + (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
+    import kanban_painel
+    gestao_ativa=kanban_painel.habilitado(cfg()['projetos'])
+    print("Sugestões dos bots de revisão: " + ("por projeto, conforme sugestões/bots explícitos; triagem opcional pelo diretor, sem publicação global" if gestao_ativa else (f"coleta a cada {cfg_sug['intervalo_min']} min ({', '.join(cfg_sug['bots'])}; "
           + ("triagem " + cfg_sug["modelo"] if cfg_sug["modelo"] else "sem triagem") + ")" if cfg_sug["bots"] and cfg_sug["repo"]
-          else "desligadas (github.bots_revisao vazio no config.json)"))
-    if cfg_sug["revisor"]:
+          else "desligadas (github.bots_revisao vazio no config.json)")))
+    if cfg_sug["revisor"] and not gestao_ativa:
         print("Revisor de código próprio (revisor_ia.py): ligado — revisa cada commit novo de PR antes da coleta"
               + ("" if cfg_sug["repo"] else " (SEM github.repo: não vai rodar)"))
     push_ok, push_motivo = alertas_obj.push.disponivel()
@@ -1273,6 +1413,8 @@ def main():
         print("Aviso: config.json não encontrado — usando a configuração padrão. Rode 'python instalar.py'.")
     if navegador:
         threading.Timer(0.8, lambda: webbrowser.open(endereco)).start()
+    import ponte_eventos
+    acompanhamento_ponte=ponte_eventos.iniciar(PASTA)
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
@@ -1282,6 +1424,7 @@ def main():
         parar_sugestoes.set()
         parar_cota.set()
         parar_grafo.set()
+        acompanhamento_ponte.parar()
         servidor.server_close()
         for s in extras:
             s.shutdown()

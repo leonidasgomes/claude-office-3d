@@ -36,14 +36,13 @@ Tecnologias encontradas no projeto: {{stacks}}.
 2. Você cria o **revisor** numa vida nova para cada PR e manda só o número: "revise o PR #<n>".
 3. O revisor roda os testes e publica a revisão no próprio PR com `gh pr review <n> --comment` (1ª linha `[revisor]`),
    com os achados P0/P1/P2 e arquivo:linha.
-4. Você decide: P0 ou P1 → o PR volta ao autor (vida nova, com os achados); sem P0/P1 → aprovado: avise o desenvolvedor
-   que o PR #<n> está pronto e que o merge é dele. Você nunca faz merge.
-   Se o projeto usar merge automático (INSTALACAO.md §19 do escritório), o GitHub faz o merge sozinho quando os checks
-   obrigatórios ficam verdes no commit atual (`revisor-ia`, `sugestoes` e os do CI do projeto). Aí você não avisa PR a PR:
+4. Você decide: P0 ou P1 → o PR volta ao autor (vida nova, com os achados); sem P0/P1 → aprovado.
+   Consulte a política de merge nas regras oficiais do projeto (fonte indicada por `.office/projeto.json`, quando
+   houver; CLAUDE.md no fluxo legado). Você nunca faz merge. No modo manual, avise o desenvolvedor que o PR está
+   pronto. No modo automático, o GitHub executa pelos checks e exceções definidos pelo projeto; acompanhe bloqueios
+   sem reproduzir aqui outra lista de checks. Rótulo de merge manual exige o desenvolvedor.
    PR aprovado e parado há mais de 1 h sem merge → veja qual check falta e destrave pelo caminho certo (o autor corrige;
-   falso positivo do `revisor-ia` respondido no PR → `revisor_ia.py --pr <n> --forcar`). Ninguém faz merge nem publica
-   status à mão. PR que muda as regras do processo (`.github/`, `CLAUDE.md`, hooks, settings, validadores) leva o rótulo
-   `merge-manual`: esse continua sendo do desenvolvedor; avise-o.
+   falso positivo do `revisor-ia` respondido no PR → `revisor_ia.py --pr <n> --forcar`). Ninguém publica status à mão.
 5. Commit novo de correção no PR → revisão nova, com um revisor novo.
 6. **Fila: no máximo 3 PRs abertos por colega.** Com 3, ele não recebe tarefa nova: primeiro resolve os dele (revisão,
    conflito com a base, sugestões). Exceção só para urgência ou com o OK do desenvolvedor. PRs empilhados viram

@@ -1,8 +1,10 @@
 // Claude Office 3D — pull requests abertos do repositório configurado, prontos para você aprovar e fazer o merge.
-// O escritório só mostra e leva ao GitHub: o merge é sempre seu.
+// O painel só mostra e leva ao GitHub; a política do projeto define seu modo de merge.
 // "Aprovado" = status check github.check_revisao com SUCCESS (ou, sem check configurado, review APPROVED).
 import { CONFIG, agenteConfig, LIDER, temServidor } from './config.js';
 import { dica } from './dica.js';
+import { seletorProjetos } from './kanban_projetos.mjs';
+import { detalhesEvidencias } from './prs_evidencias.mjs';
 
 const ATUALIZAR_MS = 60000;
 const GH = CONFIG.github;
@@ -11,6 +13,14 @@ const REVISOR = GH.check_revisao ? `a revisão (${GH.check_revisao})` : 'a revis
 const $ = (id) => document.getElementById(id);
 const painel = $('prs'), lista = $('prsLista'), info = $('prsInfo'), conta = $('prsConta');
 let dados = null;
+let requisicao = 0;
+const seletor = seletorProjetos(info, () => {
+  dados = {prs:[],repo:'',atualizado:'',erro:'Carregando o projeto selecionado…'};
+  sugestoes = {itens:[],por_pr:{}}; desenhar(); publicar(); carregar();
+}, {endpoint:'/prs', nome:'Projeto dos PRs'});
+window.addEventListener('office-projeto-alerta',e=>{
+  if(e.detail?.painel==='prs')seletor.selecionar(e.detail.projeto);
+});
 let sugestoes = { itens: [], por_pr: {} };   // GET /api/sugestoes: sugestões abertas dos bots de revisão, por PR
 let sessao = null;                           // GET /api/sessao: só o PC (permissao 'pc') vê os botões de tratar
 const sugAbertas = new Set();                // PRs com a lista de sugestões expandida (sobrevive ao redesenho)
@@ -36,6 +46,11 @@ function agenteDoPr(pr) {
 
 // Situação do PR para você: pronto, bloqueado ou aguardando
 function situacao(pr) {
+  if (dados?.fonte === 'gestao') {
+    const pendentes=(sugestoes.seguram_merge||{})[String(pr.numero)]||0;
+    const texto=pr.rascunho?'📝 rascunho — ainda em trabalho':'⏳ '+(pr.validacao||'Validação do projeto ainda não registrada');
+    return {classe:'espera',rotulo:texto+(pendentes?` · ${pendentes} sugestão(ões) pendente(s)`:'')};
+  }
   if (pr.rascunho) return { classe: 'espera', rotulo: '📝 rascunho — ainda em trabalho' };
   if (pr.conflito) return { classe: 'bloqueado', rotulo: '⚠️ conflito com a base — precisa de rebase/merge da base' };
   const g = String(pr.revisao || '').toUpperCase();
@@ -69,17 +84,22 @@ async function pegarSessao() {
 }
 
 async function tratar(item, acao, botao) {
+  const escopo=dados,versao=sugestoes.politica_versao;
   const s = await pegarSessao();
   const cab = { 'Content-Type': 'application/json', 'X-Office-Acao': '1' };
   if (s && s.csrf) cab['X-Office-Csrf'] = s.csrf;
   botao.disabled = true;
   try {
-    const r = await fetch('/api/sugestoes/tratar', { method: 'POST', headers: cab, body: JSON.stringify({ id: item.id, acao }) });
+    const payload={id:item.id,acao};if(escopo?.fonte==='gestao'){payload.projeto_id=escopo.projeto_id;payload.versao=versao;}
+    if(dados!==escopo)return;
+    const r = await fetch('/api/sugestoes/tratar', { method: 'POST', headers: cab, body: JSON.stringify(payload) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.erro || 'falhou (' + r.status + ')');
+    if(dados!==escopo)return;
     if (j.sugestoes) sugestoes = j.sugestoes;
     desenhar(); publicar();
   } catch (e) {
+    if(dados!==escopo)return;
     botao.disabled = false;
     botao.title = 'não deu: ' + e.message;
     info.textContent = '⚠️ não consegui tratar a sugestão (' + e.message + ')';
@@ -168,6 +188,11 @@ function desenhar() {
     arquivos.href = pr.url + '/files'; arquivos.target = '_blank'; arquivos.rel = 'noopener';
     acoes.append(abrir, arquivos);
     li.append(topo, el('div', 'situacao', s.rotulo), meta, acoes);
+    if (dados.fonte === 'gestao') {
+      const projeto = dados.projeto_id, versao = requisicao;
+      li.append(detalhesEvidencias(projeto, pr, () => versao === requisicao &&
+        dados?.projeto_id === projeto && dados?.prs?.some(p => p.numero === pr.numero && p.sha === pr.sha)));
+    }
     const sg = (sugestoes.itens || []).filter((x) => x.pr === pr.numero);
     if (sg.length) li.append(blocoSugestoes(pr.numero, sg));
     lista.append(li);
@@ -175,29 +200,39 @@ function desenhar() {
   info.textContent = (dados.erro && prs.length
     ? `⚠️ não consegui atualizar (${dados.erro})`
     : `${dados.repo} · ${prs.length} aberto(s), ${prontos} pronto(s) · atualizado às ${dados.atualizado}`)
+    + (dados.limitado ? ' · Exibição limitada a 1.000 PRs' : '')
     + (dados.limite ? ` · ⏳ ${dados.limite}` : '')
     + (dados.cota ? ` · ${dados.cota_baixa ? '⚠️ ' : ''}${dados.cota}` : '')
     + (sugestoes.erro ? ` · 🤖 coleta de sugestões: ${sugestoes.erro}` : '');
 }
 
 async function carregar(forcar = false) {
+  const pedido = ++requisicao;
   if (!temServidor) {
     dados = { configurado: false, prs: [], erro: 'sem servidor: abra o escritório pelo abrir_escritorio (.bat ou .sh) para ver os PRs.' };
     return desenhar();
   }
   try {
-    const r = await fetch('/prs' + (forcar ? '?forcar=1' : ''), { cache: 'no-store' });
-    dados = await r.json();
+    const r = await fetch(seletor.url() + (forcar ? (seletor.url().includes('?') ? '&' : '?') + 'forcar=1' : ''), { cache: 'no-store' });
+    const recebido = await r.json();
+    if (pedido !== requisicao) return;
+    dados = recebido; seletor.receber(dados);
   } catch (e) {
+    if (pedido !== requisicao) return;
     dados = dados || { prs: [], repo: '', atualizado: '' };
     dados.erro = 'servidor do escritório fora do ar (abra pelo abrir_escritorio)';
   }
+  if (dados.fonte === 'gestao' && !dados.projeto_id) {sugestoes={itens:[],por_pr:{}};desenhar();publicar();return;}
+  if(dados.fonte==='gestao')sugestoes={ativo:true,itens:[],por_pr:{},pronto:{},erro:'Caixa do projeto ainda não conferida'};
   try {   // sugestões dos bots: leitura local do servidor (não chama o GitHub)
     await pegarSessao();
-    const rs = await fetch('/api/sugestoes', { cache: 'no-store' });
+    const url=dados.fonte==='gestao'?'/api/sugestoes?projeto='+encodeURIComponent(dados.projeto_id):'/api/sugestoes';
+    const rs = await fetch(url, { cache: 'no-store' });
     const js = await rs.json();
-    if (js && js.ok) sugestoes = js;
+    if (pedido !== requisicao) return;
+    if (js && js.ok && (dados.fonte!=='gestao' || (js.projeto_id===dados.projeto_id && js.repo===dados.repo))) sugestoes = js;
   } catch (e) { /* mantém as últimas */ }
+  if (pedido !== requisicao) return;
   desenhar();
   publicar();
 }
@@ -206,7 +241,7 @@ let publicado = '';
 function publicar() {
   if (!dados || !Array.isArray(dados.prs)) return;
   const prs = dados.prs.map((pr) => ({ numero: pr.numero, titulo: String(pr.titulo || ''), classe: situacao(pr).classe, risco: pr.risco || null }));
-  const detail = { prs, atualizado: dados.atualizado || '', erro: dados.erro || '' };
+  const detail = { prs, fonte: dados.fonte || 'legado', repo: dados.repo || '', projeto_id: dados.projeto_id || '', atualizado: dados.atualizado || '', erro: dados.erro || '' };
   const chave = JSON.stringify(detail);
   if (chave === publicado) return;
   publicado = chave;
