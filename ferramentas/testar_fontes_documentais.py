@@ -15,6 +15,17 @@ class Fontes(unittest.TestCase):
         self.raiz=Path(self.tmp.name)
     def escrever(self,nome,texto):
         p=self.raiz/nome;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(texto,encoding='utf-8')
+    def test_revisor_suspenso_nao_marca_wrapper_como_usado(self):
+        cfg={'ativo':True,'ceo':{'console':'codex'},'diretor':{'console':'codex'},
+             'revisao':{'ativo':True,'revisores':[
+                 {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
+                 {'nome':'QA Gemini','executor':{'console':'gemini'},'ativo':False}]}}
+        r=resumo(self.raiz,cfg)
+        por_nome={w['arquivo']:w for w in r['instrucoes_consoles']}
+        self.assertFalse(por_nome['GEMINI.md']['necessario'])
+        self.assertFalse(por_nome['CLAUDE.md']['necessario'])
+        self.assertTrue(por_nome['CLAUDE.md']['fonte_regras'])
+        self.assertTrue(por_nome['AGENTS.md']['necessario'])
     def test_ausentes_e_projeto_inativo_sem_escrita(self):
         d=resumo(self.raiz,{})
         self.assertEqual([f['estado'] for f in d['fontes']],['ausente']*3)

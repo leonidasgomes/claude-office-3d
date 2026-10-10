@@ -24,7 +24,7 @@ def resumo(projeto,cfg):
         except OSError:estado='ilegivel'
         fontes.append({'papel':papel,'caminho':relativo,'estado':estado})
     rotas=[cfg['ceo'],cfg['diretor']]+[e['executor'] for e in cfg['equipes']]+list(cfg['rotas'].values())
-    if cfg['revisao']['ativo']:rotas += [r['executor'] for r in cfg['revisao']['revisores']]
+    if cfg['revisao']['ativo']:rotas += [r['executor'] for r in cfg['revisao']['revisores'] if r.get('ativo',True)]
     usados={e['console'] for e in rotas} if cfg['ativo'] else set()
     regra=cfg['fontes']['regras'].replace('\\','/')
     for nome,consoles in [('CLAUDE.md',['claude']),('AGENTS.md',['codex','opencode']),('GEMINI.md',['gemini'])]:

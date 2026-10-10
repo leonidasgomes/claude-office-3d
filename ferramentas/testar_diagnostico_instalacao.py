@@ -29,6 +29,15 @@ class Diagnostico(unittest.TestCase):
           {'nome':'R2','executor':{'console':'gemini','cloud':'google'}}]}
         r=self.verificar(cfg,{'git','gh','codex','gemini','opencode'})
         self.assertEqual(r['faltam'],['claude'])
+    def test_revisor_suspenso_nao_obriga_instalar_seu_console(self):
+        cfg=self.politica();cfg['diretor']={'console':'codex'}
+        cfg['revisao']={'ativo':True,'revisores':[
+            {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
+            {'nome':'QA Gemini','executor':{'console':'gemini'},'ativo':False}]}
+        r=self.verificar(cfg,{'git','gh','codex','opencode'})
+        self.assertTrue(r['requisitos_locais_disponiveis'])
+        for nome in ('claude','gemini'):
+            self.assertFalse(next(i for i in r['itens'] if i['nome']==nome)['obrigatorio'])
     def test_local_so_exige_ollama_quando_rota_local_escolhida(self):
         cfg=self.politica();cfg['local']={'ativo':True}
         cfg['rotas']={'simples':{'console':'codex','execucao':'local','modelo':'pequeno'}}

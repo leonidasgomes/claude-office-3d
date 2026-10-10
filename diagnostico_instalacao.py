@@ -42,7 +42,7 @@ def verificar(politica,porta=8765):
     for nome in ('git','gh'):
         adicionar(nome,shutil.which(nome) is not None,cfg['ativo'],'Executável no PATH; versão, login e acesso ao repo não verificados')
     rotas=[cfg['ceo'],cfg['diretor']]+[e['executor'] for e in cfg['equipes']]+list(cfg['rotas'].values())
-    if cfg['revisao']['ativo']:rotas+=[r['executor'] for r in cfg['revisao']['revisores']]
+    if cfg['revisao']['ativo']:rotas+=[r['executor'] for r in cfg['revisao']['revisores'] if r.get('ativo',True)]
     usados={e['console'] for e in rotas} if cfg['ativo'] else set()
     for nome in PROVIDERS:
         caminho=shutil.which(nome);ok=False;motivo='Executável ausente no PATH'
