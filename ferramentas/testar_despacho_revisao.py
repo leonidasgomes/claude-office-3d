@@ -53,6 +53,18 @@ class DespachoRevisao(unittest.TestCase):
         return revisar(self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','Deve passar','regras',
                        lambda *_:{'veredito':'aprovado' if aprovado else 'reprovado','achados':[]})
 
+    def test_despacho_transmite_sandbox_configurado_ao_executor(self):
+        self.cfg['equipes'][0]['executor']={'console':'codex','modelo':'modelo','sandbox':'workspace-write'}
+        self.cfg['revisao']['revisores']=[{'nome':'QA1','executor':{'console':'claude'}},
+                                        {'nome':'QA2','executor':{'console':'gemini'}}]
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        recebidos=[]
+        def rodar(*args,**kwargs):
+            recebidos.append(kwargs.get('sandbox'))
+            return 0
+        self.executar(lambda *a,**kw:self.relatorio(),rodar=rodar)
+        self.assertEqual(recebidos,['workspace-write'])
+
     def test_erro_novos_consoles_com_exit_zero_bloqueia_kanban_e_revisao(self):
         import console_provider,contextlib,io
         self.cfg['revisao']['ativo']=False

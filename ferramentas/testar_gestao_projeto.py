@@ -12,6 +12,19 @@ from gestao_projeto import carregar, validar, decidir_merge, contexto, fontes_re
 
 
 class Politica(unittest.TestCase):
+    def test_sandbox_opcional_codex_sem_alterar_padrao_ou_revisores(self):
+        self.assertNotIn('sandbox',validar({})['ceo'])
+        for papel in ('ceo','diretor'):
+            self.assertEqual(validar({papel:{'console':'codex','sandbox':'workspace-write'}})[papel]['sandbox'],'workspace-write')
+        for executor in ({'console':'claude','sandbox':'read-only'},
+                         {'console':'codex','execucao':'local','sandbox':'workspace-write'},
+                         {'console':'codex','sandbox':'danger-full-access'}):
+            with self.subTest(executor=executor),self.assertRaises(ValueError):validar({'ceo':executor})
+        dados={'revisao':{'revisores':[{'nome':'QA','executor':{'console':'codex','sandbox':'workspace-write'}}]}}
+        with self.assertRaises(ValueError):validar(dados)
+        dados['revisao']['revisores'][0]['executor']['sandbox']='read-only'
+        self.assertEqual(validar(dados)['revisao']['revisores'][0]['executor']['sandbox'],'read-only')
+
     def test_cpu_configuravel_sem_desativar_medicao(self):
         self.assertEqual(validar({})['local']['cpu_uso_max_pct'],75)
         self.assertEqual(validar({'local':{'cpu_uso_max_pct':60}})['local']['cpu_uso_max_pct'],60)

@@ -29,6 +29,15 @@ O padrão é Claude. Precedência: `--provider`, `OFFICE_PROVIDER`, `provider` d
 nunca muda silenciosamente de conta/backend. Não há fallback após uma execução começar.
 Nenhum comando acrescenta flags para ignorar permissões ou aprovações.
 
+Codex aceita `--sandbox read-only` ou `--sandbox workspace-write` no launcher.
+Sem essa opção, conserva o padrão nativo. No modo gestão, selecione o campo
+`sandbox` do executor na política `.office/projeto.json` ou no formulário do
+CEO/diretor/equipes. Um argumento explícito deve coincidir com essa política.
+`workspace-write` permite ao Codex editar a workspace da tarefa; as aprovações e
+regras nativas continuam valendo. Outros consoles não aceitam esse campo e
+revisores Codex continuam isolados em `read-only`. Nenhuma opção altera a
+configuração global do CLI.
+
 ## Executar
 
 Execute na pasta `office-multi-provider`; abra o servidor pelo launcher atual.

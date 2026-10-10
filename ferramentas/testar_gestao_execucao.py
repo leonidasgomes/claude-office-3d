@@ -19,6 +19,29 @@ from recursos_local import reservar, verificar
 
 
 class GestaoExecucao(unittest.TestCase):
+    def test_sandbox_politica_propagado_e_argumento_divergente_bloqueado(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);(raiz/'.office').mkdir()
+            (raiz/'.office/projeto.json').write_text(json.dumps({'ativo':True,
+                'ceo':{'console':'codex','sandbox':'workspace-write'}}),encoding='utf-8')
+            with patch('console_provider.selecionar',return_value=(PROVIDERS['codex'],'codex')), \
+                 patch('console_provider.executar',return_value=0) as rodar:
+                self.assertEqual(console_provider.main(['--projeto',tmp,'--papel','ceo']),0)
+                self.assertEqual(rodar.call_args.kwargs['sandbox'],'workspace-write')
+                rodar.reset_mock()
+                self.assertEqual(console_provider.main(['--projeto',tmp,'--papel','ceo','--sandbox','read-only']),2)
+                rodar.assert_not_called()
+
+    def test_cli_windows_codificacao_utf8_sem_depender_do_terminal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);(raiz/'.office').mkdir()
+            (raiz/'.office/projeto.json').write_text(json.dumps({'equipes':[
+                {'nome':'QA ≥ 2','especialidade':'ação','executor':{'console':'codex'}}]}),encoding='utf-8')
+            r=subprocess.run([sys.executable,str(Path(console_provider.__file__).with_name('gestao_cli.py')),
+                '--projeto',tmp,'estado'],env={**os.environ,'PYTHONIOENCODING':'ascii'},capture_output=True)
+            self.assertEqual(r.returncode,0,r.stderr.decode('utf-8'))
+            self.assertIn('QA ≥ 2',r.stdout.decode('utf-8'))
+
     def test_painel_nao_expoe_prompt_token_ou_caminhos(self):
         import gestao_cli
         from gestao_painel import resumo

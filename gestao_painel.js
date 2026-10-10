@@ -33,7 +33,7 @@ let projetoAlerta = '';
 function linha(tag, texto, pai = corpo) {
   const e = document.createElement(tag); e.textContent = texto; pai.append(e); return e;
 }
-const executor = (e) => `${e.console} · ${e.modelo || 'padrão do console'} · ${e.execucao || 'cloud'}`;
+const executor = (e) => `${e.console} · ${e.modelo || 'padrão do console'} · ${e.execucao || 'cloud'}${e.sandbox ? ' · sandbox '+e.sandbox : ''}`;
 async function carregar() {
   if (!painel.open || document.hidden || carregando) return;
   if (corpo.querySelector('details[open]')) return; // preserva preenchimento durante atualização automática

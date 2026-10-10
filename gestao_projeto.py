@@ -44,7 +44,7 @@ def _mesclar(base, dados, prefixo=""):
     resultado = copy.deepcopy(base)
     for chave, valor in dados.items():
         nome = f"{prefixo}.{chave}" if prefixo else chave
-        if chave == "cloud" and prefixo in ("ceo", "diretor"):
+        if chave in ("cloud", "sandbox") and prefixo in ("ceo", "diretor"):
             resultado[chave] = copy.deepcopy(valor)
             continue
         if chave not in base:
@@ -57,7 +57,7 @@ def _mesclar(base, dados, prefixo=""):
 
 def _executor(valor, nome):
     _objeto(valor, nome)
-    permitidas = {"console", "modelo", "execucao", "cloud"}
+    permitidas = {"console", "modelo", "execucao", "cloud", "sandbox"}
     if nome == "ceo":
         permitidas.add("autonomia")
     if set(valor) - permitidas:
@@ -70,6 +70,12 @@ def _executor(valor, nome):
         raise ValueError(f"{nome}: execução deve ser cloud ou local")
     if "cloud" in valor and (not isinstance(valor["cloud"], str) or not valor["cloud"].strip()):
         raise ValueError(f"{nome}: cloud deve identificar o fornecedor real do modelo")
+    if 'sandbox' in valor:
+        if (valor['console']!='codex' or valor.get('execucao','cloud')!='cloud'
+            or valor['sandbox'] not in ('read-only','workspace-write')):
+            raise ValueError(f'{nome}: sandbox exige Codex cloud e read-only ou workspace-write')
+        if nome.startswith('revisor ') and valor['sandbox']!='read-only':
+            raise ValueError('Revisores Codex exigem sandbox read-only')
 
 
 def validar(dados):

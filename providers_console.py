@@ -43,7 +43,9 @@ class Provider:
     nome: str
     capacidades: Capacidades
 
-    def comando(self, exe, projeto, prompt=None, modelo=None, sessao=None, agente=None):
+    def comando(self, exe, projeto, prompt=None, modelo=None, sessao=None, agente=None, sandbox=None):
+        if sandbox is not None and (self.nome!='codex' or sandbox not in ('read-only','workspace-write')):
+            raise ValueError('Sandbox explícito exige Codex e read-only ou workspace-write')
         if self.nome == "gemini":
             if agente:
                 raise ValueError("Gemini: selecione o papel pelas instruções de gestão, não por --agente.")
@@ -71,8 +73,12 @@ class Provider:
             if agente:
                 raise ValueError("Codex não carrega .claude/agents; use instruções no prompt.")
             args = comando_nativo(exe, self.nome)
+            if prompt is None and sandbox is not None:
+                args += ['--sandbox',sandbox]
             if prompt is not None:
                 args += ["exec"]
+                if sandbox is not None:
+                    args += ['--sandbox',sandbox]
                 if sessao:
                     args += ["resume", sessao]
                 args += ["--json"]

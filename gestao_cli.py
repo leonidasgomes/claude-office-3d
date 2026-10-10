@@ -426,7 +426,8 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                                projeto_consumo=projeto,tentativa_consumo=medicao,
                                ao_sessao=lambda ident:controle.vincular_sessao(token,provider.nome,ident),
                                ao_processo=atividade.vincular,ao_evento=atividade.evento,
-                               **({'sessao':retomada['sessao']} if retomada else {}),**parametros_skills)
+                               **({'sessao':retomada['sessao']} if retomada else {}),
+                               **({'sandbox':pacote['executor']['sandbox']} if 'sandbox' in pacote['executor'] else {}),**parametros_skills)
                 if nativas and not controle.skills(token).get('valida'):
                     if codigo==0: codigo=1
         controle.terminar_execucao(medicao,codigo,time.monotonic()-inicio_execucao)
@@ -569,6 +570,8 @@ def retomar(projeto,numero,worktree,confirmacao,banco=None,kanban=None,rodar=exe
 
 
 def main(argv=None):
+    for fluxo in (sys.stdout,sys.stderr):
+        if hasattr(fluxo,'reconfigure'):fluxo.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--projeto", required=True, type=Path)
     sub = p.add_subparsers(dest="acao", required=True)

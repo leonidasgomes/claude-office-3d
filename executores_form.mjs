@@ -9,7 +9,7 @@ export function formularioExecutores(projeto, atualizar) {
   }
   function escolha(pai,titulo,opcoes,valor) {
     const el=document.createElement('select');
-    for(const v of opcoes) {const o=document.createElement('option');o.value=v;o.textContent=v;el.append(o);}
+    for(const v of opcoes) {const o=document.createElement('option');o.value=v;o.textContent=v||'Padrão nativo';el.append(o);}
     el.value=valor;return campo(pai,titulo,el);
   }
   function editor(nome,e,papel=false) {
@@ -40,10 +40,15 @@ export function formularioExecutores(projeto, atualizar) {
       }catch(e){mensagem.textContent=`Consulta indisponível: ${e.message}`;}
       finally{consultar.disabled=false;}
     });
-    console.addEventListener('change',()=>{modelo.value='';cloud.value='';});
+    const sandbox=escolha(fs,'Sandbox Codex',['','read-only','workspace-write'],e.sandbox||'');
+    const dicaSandbox=document.createElement('p');dicaSandbox.textContent='Vazio preserva a configuração do Codex. read-only permite leitura; workspace-write permite escrita na workspace. Políticas e aprovações nativas continuam em vigor; revisão isolada continua somente leitura.';fs.append(dicaSandbox);
+    const exibirSandbox=()=>{const ativo=console.value==='codex'&&execucao.value==='cloud';sandbox.disabled=!ativo;sandbox.hidden=!ativo;dicaSandbox.hidden=!ativo;};
+    exibirSandbox();execucao.addEventListener('change',exibirSandbox);
+    console.addEventListener('change',()=>{modelo.value='';cloud.value='';sandbox.value='';exibirSandbox();});
     return ()=>{
       const r={console:console.value,modelo:modelo.value.trim(),execucao:execucao.value};
       if(r.console==='opencode'&&r.execucao==='cloud'&&cloud.value.trim()) r.cloud=cloud.value.trim();
+      if(r.console==='codex'&&r.execucao==='cloud'&&sandbox.value)r.sandbox=sandbox.value;
       return r;
     };
   }

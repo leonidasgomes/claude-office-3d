@@ -40,13 +40,13 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
         prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
-    args = provider.comando(exe, projeto, prompt, modelo, sessao, agente)
+    args = provider.comando(exe, projeto, prompt, modelo, sessao, agente, **({'sandbox':sandbox} if sandbox is not None else {}))
     entrada = None
     if provider.nome == "codex" and prompt is not None:
         # Catálogo extenso não cabe na linha de comando do Windows. O CLI lê '-'.
@@ -227,12 +227,15 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
 
 
 def main(argv=None):
+    for fluxo in (sys.stdout,sys.stderr):
+        if hasattr(fluxo,'reconfigure'):fluxo.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--provider", choices=["claude", "codex", "gpt", "opencode", "gemini", "auto"])
     p.add_argument("--config", type=Path, help="JSON separado do config do escritório")
     p.add_argument("--projeto", type=Path)
     p.add_argument("--mesa")
     p.add_argument("--modelo")
+    p.add_argument('--sandbox',choices=['read-only','workspace-write'],help='Codex: escolha explícita; omitido preserva o padrão nativo')
     p.add_argument("--sessao", help="retomar ID nativo, sem migrar entre providers")
     p.add_argument("--agente", help="nome nativo Claude/OpenCode")
     p.add_argument("--funcionario", help="ID do especialista cadastrado neste projeto")
@@ -263,6 +266,7 @@ def main(argv=None):
         gestao = args.papel or args.equipe or args.escopo or args.funcionario
         contexto_gestao = ""
         modelo = args.modelo or config.get("modelo")
+        sandbox=args.sandbox or config.get('sandbox')
         if gestao:
             import gestao_projeto
             politica = gestao_projeto.carregar(projeto)
@@ -284,6 +288,9 @@ def main(argv=None):
                 raise ValueError("--modelo diverge da política selecionada")
             provider, exe = selecionar(rota["console"])
             modelo = rota.get("modelo") or None
+            if args.sandbox and args.sandbox!=rota.get('sandbox'):
+                raise ValueError('--sandbox diverge da política selecionada')
+            sandbox=rota.get('sandbox')
             if not args.funcionario:
                 contexto_gestao = gestao_projeto.contexto(projeto, politica, args.papel, args.equipe)
         else:
@@ -310,7 +317,8 @@ def main(argv=None):
             skills_nativas=[r['nome'] for r in resolver(projeto,funcionario['skills'],politica,provider.nome)
                            if r.get('ativacao_nativa')=='Skill']
         return executar(provider, exe, projeto, args.mesa or (funcionarios.nome_eventos(funcionario) if args.funcionario else None) or args.equipe or args.papel or config.get("mesa") or "Dev", prompt,
-                        modelo, args.sessao, args.agente, args.banco,skills_nativas=skills_nativas)
+                        modelo, args.sessao, args.agente, args.banco,skills_nativas=skills_nativas,
+                        **({'sandbox':sandbox} if sandbox is not None else {}))
     except (OSError, ValueError) as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 2

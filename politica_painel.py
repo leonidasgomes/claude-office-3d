@@ -35,7 +35,7 @@ def atualizar(projeto,versao,alteracoes):
     novo=copy.deepcopy(cfg)
     for papel in ('ceo','diretor'):
         e=alteracoes[papel]
-        if not isinstance(e,dict) or set(e)-{'console','modelo','execucao','cloud'}:
+        if not isinstance(e,dict) or set(e)-{'console','modelo','execucao','cloud','sandbox'}:
             raise ValueError('Executor de papel inválido')
         if e.get('execucao','cloud')!='cloud': raise ValueError('CEO e diretor devem usar cloud no painel')
         novo[papel]={**e,**({'autonomia':'limites_aprovados'} if papel=='ceo' else {})}

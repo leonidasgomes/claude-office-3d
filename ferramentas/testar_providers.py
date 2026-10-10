@@ -20,6 +20,18 @@ import emit_evento
 
 
 class TestProviders(unittest.TestCase):
+    def test_sandbox_codex_explicitamente_selecionado_sem_bypass(self):
+        with patch('providers_console.comando_nativo',side_effect=lambda *_:['codex']):
+            p=PROVIDERS['codex']
+            self.assertEqual(p.comando('codex','.',prompt='tarefa'),['codex','exec','--json','tarefa'])
+            self.assertEqual(p.comando('codex','.',prompt='tarefa',sessao='id',sandbox='workspace-write'),
+                             ['codex','exec','--sandbox','workspace-write','resume','id','--json','tarefa'])
+            self.assertEqual(p.comando('codex','.',sessao='id',sandbox='read-only'),
+                             ['codex','--sandbox','read-only','resume','id'])
+            for nome,valor in (('claude','workspace-write'),('opencode','read-only'),('codex','danger-full-access')):
+                with self.subTest(nome=nome,valor=valor),self.assertRaises(ValueError):
+                    PROVIDERS[nome].comando(nome,'.',sandbox=valor)
+
     def test_opencode_recebe_contexto_e_tarefa_extensa_por_stdin(self):
         with tempfile.TemporaryDirectory() as tmp:
             raiz=Path(tmp);(raiz/'CLAUDE.md').write_text('Regra compartilhada',encoding='utf-8')
