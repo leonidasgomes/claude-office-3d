@@ -37,7 +37,7 @@ def resumo(projeto):
     if not p.exists():return {'estado':'desligado'}
     r=json.loads(p.read_text(encoding='utf-8'))
     publico={k:r.get(k) for k in ('id','estado','inicio','limite','continuo','pausa_configuravel','atualizado','objetivo',
-                                'cartoes','motivo','proxima_acao','resultados','prs_abertos')}
+                                'cartoes','motivo','proxima_acao','resultados','prs_abertos','encaminhamentos_prs')}
     publico['conclusoes']=[{k:c.get(k) for k in ('cartao','pr','estado','motivo','acao')}
                           for c in r.get('conclusoes',[])]
     publico['prs_pendentes']=[{k:p.get(k) for k in ('cartao','equipe','pr','estado','motivo')}
@@ -502,8 +502,12 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if len(set(numeros))!=len(numeros):raise ValueError('Fila de PRs duplicada; confira paginação')
             registro['prs_abertos']=len(numeros)
             if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
+                from fila_prs import planejar
+                fila=planejar(projeto,cfg,prs,docs,pasta_dados(projeto),k,
+                    ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
+                registro['encaminhamentos_prs']=fila['encaminhamentos']
                 salvar('aguardando',cartoes=[],motivo='Limite de PRs abertos do projeto; priorizar revisão e recuperação',
-                       proxima_acao='conferir PRs e Alertas; conciliar reservas antigas antes de recuperar pela equipe')
+                       proxima_acao='conferir encaminhamentos do diretor; validar revisão/etapa vinculada sem retomar reserva antiga')
                 esperar();continue
             fonte={'campos':quadro['campos'],'itens':quadro['itens'],
                    'prs':[(pr['number'],pr.get('updated_at'),pr.get('head',{}).get('sha')) for pr in prs]}

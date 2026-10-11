@@ -1850,6 +1850,15 @@ reduz gates. PRs históricos e externos não são adotados nem retomados por ess
 fila, mas também impedem acumular novas entregas: exigem conciliação explícita.
 Alterar o limite exige ciclo pausado.
 
+Ao atingir a fila, o diretor classifica cada PR no commit atual: revisar provas,
+corrigir o PR, propor etapa vinculada ou aguardar. O pacote contém corpos dos
+PRs/cartões e diagnósticos do mesmo commit. O recibo em dados/fila_prs guarda
+a classificação por hash do contexto; sem mudanças, não há nova inferência.
+Consulta interrompida exige conferir o recibo, sem repetição automática.
+A classificação é preparação: não aprova merge, não muda o aceite do pai,
+não cria cartão nem retoma reserva histórica. Etapas vinculadas ainda exigem
+vínculo formal, validação de recursos e despacho próprio pelo controlador.
+
 `memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
 referências estruturadas a entregas com conclusão registrada por merge, do
 mesmo projeto, objetivo e hash do GDD, com ao menos um gate registrado e todos
