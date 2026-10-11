@@ -2106,3 +2106,14 @@ antigo sem hash, arquivo inválido ou commit diferente não fornece proposta.
 prs.js apresenta somente preparação na aba PRs existente, como texto seguro;
 não altera aprovação, status, gates, recursos ou despacho. Testes incluem
 isolamento de política/commit e descarte da proposta de outro head.
+
+fila_prs.preparar_fila permite no máximo uma preparação leve independente na
+fila cheia quando criar_subtarefas está ativo e o diretor classifica uma etapa
+de PR parcial. Confere pai canônico, prioridade, sub-issues e retornos/atividade
+do autor por SQLite somente leitura. Consulta e criação têm intentos duráveis;
+mudança de head, cartão ou política impede reaproveitamento. Usa subtarefa com
+origem_pr registrada e escopo de investigação; só o número comprovado entra
+na seleção. Não libera reservas nem dispensa metas/revisão/checks. A aprovação
+normal do diretor precede worktrees e lote, com escopo planejamento; recurso
+pesado e criação em cascata ficam fora da passagem. Testes: testar_fila_prs e
+testar_ciclo_gdd, incluindo seleção do filho com bancada ocupada.

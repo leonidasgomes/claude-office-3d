@@ -382,7 +382,7 @@ não comprovação automática de desempenho. Fontes, Kanban e instruções do u
     return chamar(rota,prompt,normalizador=lambda s:validar_decisao(s,cartoes,cfg),ao_evento=coletor.consumir)
 
 
-def subtarefa(projeto,cfg,k,cartao,d):
+def subtarefa(projeto,cfg,k,cartao,d,origem_pr=None):
     """Intento persistido antes do POST; falha remota incerta não gera retry."""
     if not cfg['ciclo']['criar_subtarefas']:return None
     s=d['subtarefa']
@@ -393,16 +393,20 @@ def subtarefa(projeto,cfg,k,cartao,d):
     recibo=pasta/(str(pai)+'.json')
     if recibo.exists():
         anterior=json.loads(recibo.read_text(encoding='utf-8'))
+        if origem_pr is not None and anterior.get('origem_pr')!=origem_pr:return None
         if anterior['estado']=='criado':return anterior['numero']
         raise ValueError('Criação de subtarefa incerta; concilie '+str(recibo))
     relacionados=k._paginas(f"repos/{cfg['kanban']['repo']}/issues/{pai}/sub_issues")
     # Qualquer sub-issue aberta exige análise antes de adicionar outra.
     if any(i.get('state')=='open' for i in relacionados):return None
-    registro={'estado':'criando','pai':pai,'proposta':s};atomico(recibo,registro)
+    registro={'estado':'criando','pai':pai,'proposta':s}
+    if origem_pr is not None:registro['origem_pr']=origem_pr
+    atomico(recibo,registro)
     corpo=(f'Parte de #{pai}. <!-- {marca} -->\n\n**Objetivo:** {s["objetivo"]}\n\n'
            f'**Aceite:** {s["aceite"]}\n\n**Escopo:** Planejamento/investigação deste bloqueio; não implementar o pai.\n\n'
            f'**Skills:** {s["skills"]}\n\n**Dependências:** nenhuma\n\n'
            f'**Objetivo GDD:** {cartao.get("objetivo_gdd") or "classificação a confirmar"}\n')
+    if origem_pr is not None:corpo+=f'\n**PR de origem:** #{origem_pr}. Preparação independente; não retomar ou implementar o cartão-pai.\n'
     repo=cfg['kanban']['repo'];issue=k.chamar(f'repos/{repo}/issues','POST',{'title':s['titulo'],'body':corpo})
     registro.update(numero=issue['number'],issue_id=issue['id']);atomico(recibo,registro)
     k.chamar(f'repos/{repo}/issues/{pai}/sub_issues','POST',{'sub_issue_id':issue['id']})
@@ -501,15 +505,24 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 numeros.append(pr['number'])
             if len(set(numeros))!=len(numeros):raise ValueError('Fila de PRs duplicada; confira paginação')
             registro['prs_abertos']=len(numeros)
+            preparacoes_fila=set()
             if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
                 from fila_prs import planejar,versao_politica
                 fila=planejar(projeto,cfg,prs,docs,pasta_dados(projeto),k,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
                 registro['encaminhamentos_prs']=fila['encaminhamentos']
                 registro['fila_politica']=versao_politica(cfg)
-                salvar('aguardando',cartoes=[],motivo='Limite de PRs abertos do projeto; priorizar revisão e recuperação',
-                       proxima_acao='conferir encaminhamentos do diretor; validar revisão/etapa vinculada sem retomar reserva antiga')
-                esperar();continue
+                from fila_prs import preparar_fila
+                novo=preparar_fila(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,subtarefa,
+                    ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='avaliar preparação independente vinculada ao PR'))
+                if novo:
+                    preparacoes_fila.add(novo['numero'])
+                    cartoes=k.cartoes(ao_vivo=True)
+                if not novo or not any(c['numero'] in preparacoes_fila and c['numero'] not in vistos
+                    and c['status']==cfg['kanban']['backlog'] for c in cartoes):
+                    salvar('aguardando',cartoes=[],motivo='Limite de PRs abertos do projeto; priorizar revisão e recuperação',
+                           proxima_acao='conferir preparação vinculada e PRs; não retomar reserva antiga')
+                    esperar();continue
             fonte={'campos':quadro['campos'],'itens':quadro['itens'],
                    'prs':[(pr['number'],pr.get('updated_at'),pr.get('head',{}).get('sha')) for pr in prs]}
             fonte['evidencias']=evidencias(projeto)
@@ -527,7 +540,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 salvar('aguardando',motivo='Nenhuma mudança no quadro/PRs',proxima_acao='consultar novamente sem inferência')
                 esperar();continue
             ultima=assinatura;escolhidos=[];mudou=False;desbloqueios=0;preparacoes_avaliadas=set()
-            fila=ordenar([c for c in cartoes if c['status']==cfg['kanban']['backlog'] and c['numero'] not in vistos],cfg,mapa)
+            fila=ordenar([c for c in cartoes if c['status']==cfg['kanban']['backlog'] and c['numero'] not in vistos
+                         and (not preparacoes_fila or c['numero'] in preparacoes_fila)],cfg,mapa)
             for inicio in range(0,len(fila),20):
                 if not disponivel():break
                 grupo=candidatos(projeto,cfg,k,fila[inicio:inicio+20],mapa)
@@ -544,7 +558,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 for d in decisoes:
                     if not disponivel():break
                     c=next(c for c in grupo if c['numero']==d['cartao'])
-                    if d['acao']=='desbloquear' and d['subtarefa'] is not None and desbloqueios<cfg['ciclo']['max_cartoes']:
+                    if not preparacoes_fila and d['acao']=='desbloquear' and d['subtarefa'] is not None and desbloqueios<cfg['ciclo']['max_cartoes']:
                         salvar('investigando',motivo=d['motivo'],proxima_acao='organizar subtarefa real')
                         novo=subtarefa(projeto,cfg,k,c,d);mudou=mudou or novo is not None
                         if novo is not None:
@@ -556,6 +570,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                             if len(escolhidos)>=cfg['ciclo']['max_cartoes']:break
                     if (d['acao']=='executar' and c['preparavel'] and (c['objetivo_gdd'] is not None
                         or '**Objetivo GDD:**' in (c['issue'].get('body') or ''))
+                        and (not preparacoes_fila or (d['recurso']=='leve' and c.get('pacote',{}).get('escopo')==
+                             'Planejamento/investigação deste bloqueio; não implementar o pai.'))
                         and not (ocupada and d['recurso']!='leve')):
                         if c['numero'] not in {i['numero'] for i,_ in escolhidos}:escolhidos.append((c,d))
                         if len(escolhidos)>=cfg['ciclo']['max_cartoes']:break
@@ -575,6 +591,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 if len(itens)!=1 or itens[0]['cartao']!=c['numero']:raise ValueError('Worktree não corresponde ao cartão selecionado')
                 item=itens[0]
                 planejamento=c.get('pacote',{}).get('escopo')=='Planejamento/investigação deste bloqueio; não implementar o pai.'
+                if planejamento:item={**item,'escopo':'planejamento'}
                 salvar('preparando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
                        proxima_acao='validar e registrar o despacho da equipe')
                 def execucao_registrada(numero,token,medicao):
@@ -598,7 +615,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     salvar('investigando',motivo=bloqueado.get('motivo') or 'Equipe encerrou sem entrega aprovada',
                            proxima_acao='avaliar preparação vinculada; não retomar a reserva')
                     # Somente retorno confirmado deste despacho. Reservas antigas/erros incertos ficam fora.
-                    if (bloqueado.get('codigo')==0 and cfg['ciclo']['criar_subtarefas']
+                    if (not preparacoes_fila and bloqueado.get('codigo')==0 and cfg['ciclo']['criar_subtarefas']
                         and desbloqueios<cfg['ciclo']['max_cartoes'] and disponivel()):
                         atual={**c,'preparavel':False,'bloqueio':registro['motivo'],
                                'retorno_atual_confirmado':True,'retorno':bloqueado}

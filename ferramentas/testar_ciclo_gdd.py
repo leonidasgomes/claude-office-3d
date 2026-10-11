@@ -20,7 +20,7 @@ class Ciclo(unittest.TestCase):
             self.assertEqual(c.resumo(self.p)['estado'],'aguardando')
             self.assertEqual(c.resumo(self.p)['prs_abertos'],2)
             c.solicitar_pausa(self.p,ident);tempo[0]+=seg
-        with patch.object(c,'Kanban',return_value=k),patch('fila_prs.planejar',return_value={'encaminhamentos':[]}) as encaminhar:
+        with patch.object(c,'Kanban',return_value=k),patch('fila_prs.preparar_fila',return_value=None),patch('fila_prs.planejar',return_value={'encaminhamentos':[]}) as encaminhar:
             c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta,criar=criar,lote=lote)
         consulta.assert_not_called();criar.assert_not_called();lote.assert_not_called()
         encaminhar.assert_called_once()
@@ -78,6 +78,34 @@ class Ciclo(unittest.TestCase):
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo):
             c.rodar(self.p,ident,consulta=lambda *a:[self.decisao(1,'executar')],
                 criar=lambda p,d:{'plano':{'cartoes':[{'cartao':1,'worktree':'novo'}]}},lote=lote)
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
+
+    def test_fila_cheia_despacha_so_preparacao_vinculada_leve(self):
+        ident='a'*32;self.cfg['ciclo']['max_prs_pendentes']=1
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':None,'resultados':[],'pausa_configuravel':True})
+        itens=[self.item(1),self.item(9)];k=Mock();k.quadro.return_value={'campos':[],'itens':itens}
+        k.cartoes.return_value=itens;k._paginas.return_value=[{'number':3,'state':'open'}]
+        def candidatos(p,cfg,k,grupo,mapa):
+            self.assertEqual([i['numero'] for i in grupo],[9])
+            return [{**i,'preparavel':True,'objetivo_gdd':None,
+                'pacote':{'escopo':'Planejamento/investigação deste bloqueio; não implementar o pai.'},'issue':{'body':
+                '**Objetivo GDD:** classificação a confirmar\n\n**Escopo:** Planejamento/investigação deste bloqueio; não implementar o pai.'}} for i in grupo]
+        def lote(p,plano,ao_execucao=None):
+            self.assertEqual(plano['cartoes'][0]['cartao'],9)
+            self.assertEqual(plano['cartoes'][0]['escopo'],'planejamento')
+            self.assertEqual(c.resumo(p)['estado'],'preparando')
+            ao_execucao(9,'token','tentativa');self.assertEqual(c.resumo(p)['estado'],'investigando')
+            c.solicitar_pausa(p,ident)
+            return {'resultados':[{'cartao':9,'estado':'revisao','codigo':0}]}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=True),\
+             patch.object(c,'candidatos',side_effect=candidatos),\
+             patch('fila_prs.planejar',return_value={'encaminhamentos':[]}),\
+             patch('fila_prs.preparar_fila',return_value={'numero':9,'pai':self.item(1),'pr':3}),\
+             patch('conclusao_tarefas.confirmar_sessao',return_value=[]),\
+             patch('conclusao_tarefas.pendencias_sessao',return_value=[]):
+            c.rodar(self.p,ident,consulta=lambda *a:[self.decisao(9,'executar')],
+                criar=lambda p,d:{'plano':{'cartoes':[{'cartao':9,'worktree':'novo'}]}},lote=lote)
         self.assertEqual(c.resumo(self.p)['estado'],'pausado')
 
     def test_falha_validacao_nao_anuncia_implementacao(self):
