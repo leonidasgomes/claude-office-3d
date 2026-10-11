@@ -92,7 +92,7 @@ class Transcrito:
                     resultado.update(ok=codigo == 0, codigo=codigo)
             self.evento(ferramenta=ferramenta, resumo=resumo, **resultado)
 
-    def ler(self, caminho):
+    def ler(self, caminho, somente_consumo=False):
         try:
             if caminho.stat().st_size < self.posicao:
                 self.posicao, self.resto = 0, b""
@@ -108,6 +108,8 @@ class Transcrito:
                     registro = json.loads(linha)
                     if self.registros_lidos <= self.historico_ate:
                         self.medir(registro, base=True)
+                    elif somente_consumo:
+                        self.medir(registro)
                     else:
                         self.consumir(registro)
                 except (ValueError, TypeError, AttributeError):
@@ -157,11 +159,12 @@ def base_consumo(transcrito, caminho, ate):
 class Observador:
     """Seleciona sessão exata no resume; sessão nova somente se a descoberta for única."""
     def __init__(self, projeto, mesa, emitir, sessao=None, home=None, avisar=lambda s: None,
-                 observar_principal=True, criar_consumo=None):
+                 observar_principal=True, criar_consumo=None, medir_principal=False):
         self.projeto = Path(projeto).resolve()
         self.home = Path(home or os.environ.get("CODEX_HOME") or Path.home() / ".codex")
         self.sessao, self.avisar = sessao, avisar
         self.observar_principal = observar_principal
+        self.medir_principal = medir_principal
         self.criar_consumo = criar_consumo
         self.anteriores = set(self.arquivos())
         self.caminho = None
@@ -180,7 +183,7 @@ class Observador:
     def anexar(self, caminho, historico=True):
         self.caminho = caminho
         self.transcrito.sessao = str(metadados(caminho).get("id") or "")
-        if self.criar_consumo and self.observar_principal:
+        if self.criar_consumo and (self.observar_principal or self.medir_principal):
             self.transcrito.consumo = self.criar_consumo(self.transcrito.mesa, self.transcrito.sessao, historico)
         if not historico:
             self.transcrito.posicao = caminho.stat().st_size
@@ -209,8 +212,8 @@ class Observador:
                 self.avisar("Sessões Codex simultâneas: informe --sessao para observar uma identidade exata.")
                 self.avisou = True
         if self.caminho is not None:
-            if self.observar_principal:
-                self.transcrito.ler(self.caminho)
+            if self.observar_principal or self.medir_principal:
+                self.transcrito.ler(self.caminho, somente_consumo=not self.observar_principal)
             self.ler_descendentes()
 
     def ler_descendentes(self):

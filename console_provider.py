@@ -122,11 +122,12 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
     eventos = Eventos(provider.nome, mesa)
     from consumo_providers import Coletor, ColetorRollout
     import banco as banco_modulo
+    codex_incremental = provider.nome=='codex' and stream and limites_meta is not None and not sessao
     coletor = Coletor((Path(banco) if banco else banco_modulo.ARQ).parent / 'consumo_providers.db',
                      provider.nome, projeto_medicao, mesa, modelo, rotulo=provider.nome+'_local' if politica_local else None,
                      sessao_claude_nova=ident if provider.nome=='claude' and stream and not sessao and not politica_local else None,
                      sessao_claude_retomada=sessao if provider.nome=='claude' and stream and sessao and not politica_local else None,
-                     tentativa=tentativa_consumo)
+                     tentativa=tentativa_consumo,codex_incremental=codex_incremental)
 
     def emitir(ev,nativo=False):
         from funcionarios import id_projeto
@@ -158,6 +159,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         observador = Observador(projeto, mesa, lambda ev:emitir(ev,True), sessao,
                                 avisar=lambda s: print(s, file=sys.stderr, flush=True),
                                 observar_principal=not stream,
+                                medir_principal=codex_incremental,
                                 criar_consumo=lambda nome, ident, novo: ColetorRollout(
                                     coletor.registro.arquivo, projeto_medicao, nome, ident, novo,
                                     rotulo=provider.nome+'_local' if politica_local else provider.nome,tentativa=tentativa_consumo))

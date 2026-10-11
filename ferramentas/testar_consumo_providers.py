@@ -15,6 +15,22 @@ from consumo_providers import Coletor, ColetorRollout, Registro
 
 
 class Consumo(unittest.TestCase):
+    def test_snapshot_final_codex_e_rollout_compartilham_saldo_sem_duplicar(self):
+        from metas_cartao import tokens_observados
+        with tempfile.TemporaryDirectory() as tmp:
+            db=Path(tmp)/'uso.db';ident='a'*32
+            c=Coletor(db,'codex',tmp,'Dev',codex_incremental=True,tentativa=ident)
+            r=ColetorRollout(db,tmp,'Dev','s1',True,tentativa=ident)
+            c.consumir({'type':'thread.started','thread_id':'s1'})
+            def amostra(n):return {'type':'event_msg','payload':{'type':'token_count','info':{'total_token_usage':{
+                'input_tokens':n,'cached_input_tokens':n//2,'output_tokens':20,'total_tokens':n+20}}}}
+            r.consumir(amostra(100))
+            self.assertEqual(tokens_observados(db,tmp,ident),(120,'observado'))
+            c.consumir({'type':'turn.completed','usage':{'input_tokens':200,'cached_input_tokens':100,'output_tokens':20}})
+            r.consumir(amostra(100));r.consumir(amostra(200))
+            self.assertEqual(tokens_observados(db,tmp,ident),(220,'observado'))
+            self.assertEqual(sum(g['total'] for g in Registro(db).resumo()['grupos']),220)
+
     def test_projeto_consumo_inexistente_rejeita_antes_de_iniciar(self):
         from console_provider import executar
         from providers_console import PROVIDERS
