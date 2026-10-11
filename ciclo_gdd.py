@@ -636,6 +636,13 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     registro.setdefault('correcoes_encaminhadas',[]).append(correcao)
                     atomico(p,registro)
                     continue
+                from conferencias_prs import encaminhar as conferir_pr
+                conferencia=conferir_pr(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,
+                    ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[],
+                        proxima_acao=e['equipe']+' conferindo PR #'+str(e['pr'])+'; autor não retomado'))
+                if conferencia:
+                    registro.setdefault('conferencias_equipes',[]).append(conferencia)
+                    atomico(p,registro);continue
                 if bloqueio_entregas:
                     salvar('aguardando',cartoes=[],motivo='Limite de PRs pendentes desta sessão; fila conferida',
                            proxima_acao='encaminhamentos do diretor em PRs e Alertas; aguardar gates/merge')

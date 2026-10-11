@@ -2180,6 +2180,19 @@ worker nesse contexto. Revalidação após decisão continua obrigatória e estr
 fornecer diretórios aos executores. Projeto, estrutura e caminhos inválidos
 continuam erros. Testes: `testar_recursos_host` e `testar_fila_prs`.
 
+`conferencias_prs.py` executa a conferência residual de PR existente: diretor
+encaminha `revisar`, CEO decide e o executor da equipe cadastrada usa
+`revisores_console.chamar` sem ferramentas, com consumo registrado. Não cria
+reserva, worktree, entrega ou status de gate. Confere autor encerrado, diff
+completo (arquivos e linhas), cartão/aceite, política e fontes antes e depois
+da inferência. Publica somente comentário com marcador por identidade e head;
+recibo em `conferencias_prs` preserva decisão, parecer e publicador comprovado.
+Publicação incerta só recupera comentário idêntico do mesmo usuário; não repete
+POST nem consulta. `fila_prs.planejar` inclui pareceres/esperas atuais no contexto
+e cache. `ciclo_gdd` encaminha depois de gates/correções e antes de esperar pelo
+teto de PRs. Testes: `testar_conferencias_prs` (delegação, deduplicação, corrida,
+evidências incompletas, publicação incerta, autoria, ausência de aprovação).
+
 `finalizacao_publicada` conserva token, tentativa, PR e registro completo da
 conciliação de uma publicação confirmada antes do limite do autor. Uma revisão
 nova, encaminhada pelo diretor e aceita pelo CEO, pode registrar a entrega em
