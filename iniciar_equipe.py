@@ -59,8 +59,22 @@ def main(argv=None):
         if not cfg['ativo'] or cfg['ceo']['console']!='codex' or cfg['ceo'].get('execucao','cloud')!='cloud':
             raise ValueError('Início de equipe exige projeto ativo e CEO Codex cloud')
         prompt=tarefa(projeto,office,args.base,args.max_cartoes)
+        ciclo=cfg.get('ciclo',{})
+        if ciclo.get('ativo'):
+            if ciclo['base']!=args.base:raise ValueError('Base do launcher diverge da política do ciclo')
+            prompt=('O controlador host coordena automaticamente as equipes pelo GDD e Kanban. '
+                    'Não crie outro lote, não retome reservas e não duplique tarefas. '
+                    'Consulte o estado em dados/gestao e no painel de gestão; explique bloqueios ao usuário. '
+                    'O usuário pode conversar com você enquanto as equipes trabalham. Projeto: '+str(projeto))
         if args.verificar:
             print(prompt);return 0
+        if ciclo.get('ativo'):
+            import subprocess
+            pedido=office/'dados'/'iniciar-ciclo.json';pedido.parent.mkdir(exist_ok=True)
+            pedido.write_text('{}',encoding='utf-8')
+            r=subprocess.run([sys.executable,str(office/'controlador_local.py'),'--projeto',str(projeto),
+                              '--acao','ciclo','--arquivo',str(pedido)],timeout=30)
+            if r.returncode:raise ValueError('Controlador não iniciou ciclo; confira recibos antes de repetir')
         provider,exe=selecionar('codex')
         worktrees=office.parent/'worktrees'
         worktrees.mkdir(exist_ok=True)

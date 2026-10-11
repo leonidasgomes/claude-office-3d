@@ -46,9 +46,15 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
         prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
-    if diretorios_escrita and (prompt_inicial is None or sandbox!='workspace-write'):
-        raise ValueError('Diretórios adicionais exigem início interativo Codex workspace-write')
+    if diretorios_escrita and (provider.nome!='codex' or sandbox!='workspace-write' or sessao
+                              or (prompt_inicial is None and prompt is None)):
+        raise ValueError('Diretórios adicionais exigem Codex novo workspace-write')
     args = provider.comando(exe, projeto, prompt, modelo, sessao, agente, **({'sandbox':sandbox} if sandbox is not None else {}))
+    if diretorios_escrita and prompt is not None:
+        for diretorio in diretorios_escrita:
+            pasta=Path(diretorio).resolve()
+            if not pasta.is_dir():raise ValueError('Diretório de escrita não existe')
+            args[-1:-1]=['--add-dir',str(pasta)]
     if prompt_inicial is not None:
         if provider.nome != 'codex' or prompt is not None or sessao or politica_local:
             raise ValueError('Prompt inicial exige Codex interativo novo, sem execução estruturada/local')

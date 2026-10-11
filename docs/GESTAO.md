@@ -1,5 +1,44 @@
 # Usar os controles de Gestão
 
+## Trabalho automático pelo GDD
+
+A política `ciclo` em `.office/projeto.json` habilita explicitamente a coordenação:
+`ativo`, `duracao_min` (120), `max_cartoes` (2), `intervalo_seg` (300),
+`base` (`origin/branch` do projeto) e `criar_subtarefas` (opcional).
+O padrão público é desligado. Configure `kanban.prioridades` na ordem desejada;
+por exemplo P0/P1/P2/P3. O GDD define o objetivo, o Kanban o estado vivo,
+e a passagem de turno fornece contexto histórico.
+
+O atalho com `iniciar_equipe.py` inicia o ciclo pelo host e abre um console de
+acompanhamento. O CEO não duplica o lote que o host está conduzindo. A área
+Trabalho e indicadores mostra estado, objetivo, cartões, causa e próxima ação.
+Após duas horas, nenhuma tarefa nova começa; o despacho em curso termina.
+Sem mudança no quadro, PRs, fontes, reservas ou disponibilidade da bancada,
+a espera de cinco minutos não chama IA.
+
+O diretor recebe fontes com hash, candidatos completos e inventário de evidências.
+Recebe também as reservas, sem presumir que uma sessão antiga continua ativa.
+Dependências Markdown aceitam `Dependências` e o nome legado `Depende`;
+referências ambíguas bloqueiam a preparação e precisam ser esclarecidas.
+Decide executar, desbloquear ou aguardar. Uma investigação pode virar sub-issue
+com aceite próprio, sem alterar o aceite do pai. A criação grava intenção antes
+de escrever no GitHub: falhas parciais exigem conciliação e não são repetidas.
+Reservas antigas e cartões em andamento não são retomados automaticamente.
+Criações Git usam `GIT_LFS_SKIP_SMUDGE=1`; conteúdo binário necessário exige
+preparação da equipe, sem download automático para um cartão de documentação.
+Um recibo parcial permanece bloqueado até conciliação explícita. Se for
+comprovado que não houve despacho nem reserva e os processos próprios acabaram,
+o operador pode registrar `cancelado_antes_despacho` com a justificativa em
+`conciliacao`, preservando o branch/worktree parcial. O próximo início cria
+outro destino; não reaproveita nem limpa o anterior.
+
+O controlador aceita `--acao ciclo --arquivo` com `{}` e `--projeto` canônico.
+Para publicação limitada, `--acao publicar` recebe cartão, worktree, título e
+corpo do PR. Exige recibo de criação, branch próprio e reserva em execução;
+preserva hooks, recusa alterações de regras/política e não executa merge.
+Falha após commit/push fica no recibo, sem repetir publicação automaticamente.
+Claude legado continua com suas sessões e instruções específicas.
+
 Abra **⚙️ → Gestão das equipes** e escolha uma das áreas do seu projeto:
 
 - **CEO e diretor:** console/modelo da liderança, revisão opcional e merge.
