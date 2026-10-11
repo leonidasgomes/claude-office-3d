@@ -72,6 +72,8 @@ class Lotes(unittest.TestCase):
         self.assertIn('registro versionado em documentação',prompt)
         self.assertIn('Closes #42',prompt)
         self.assertIn('Não implemente o cartão-pai',prompt)
+        self.assertIn('**Dependências:** e **Objetivo GDD:**',prompt)
+        self.assertIn('não deixe uma dependência bloqueante somente em prosa',prompt)
 
     def git(self, pasta, *args):
         return subprocess.run(['git','-C',str(pasta),*args],capture_output=True,text=True,
