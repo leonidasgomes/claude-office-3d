@@ -605,6 +605,15 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             reconciliar_reprovacoes_gestao(projeto,cfg,prs)
             preparacoes_fila=set()
             if bloqueio_entregas or (cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']):
+                from conferencias_prs import fila_prontas,encaminhar as conferir_pronto
+                prontas=fila_prontas(pasta_dados(projeto),cfg,prs,docs)
+                if prontas['encaminhamentos']:
+                    conferencia=conferir_pronto(projeto,cfg,prs,prontas,docs,pasta_dados(projeto),k,
+                        ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[],
+                            proxima_acao=e['equipe']+' conferindo PR #'+str(e['pr'])+'; CEO já autorizou'))
+                    if conferencia:
+                        registro.setdefault('conferencias_equipes',[]).append(conferencia)
+                        atomico(p,registro);continue
                 from fila_prs import planejar,versao_politica
                 fila=planejar(projeto,cfg,prs,docs,pasta_dados(projeto),k,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))

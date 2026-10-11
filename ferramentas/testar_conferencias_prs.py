@@ -15,7 +15,8 @@ class Conferencias(unittest.TestCase):
             'ceo':{'console':'codex'},'equipes':[{'nome':'Dev','especialidade':'Código','executor':{'console':'codex','modelo':'teste'}}]})
         self.pr={'number':3,'state':'open','draft':True,'title':'Conferir política','body':'Parte de #1','changed_files':1,
             'head':{'sha':'a'*40,'ref':'work/pr'},'base':{'sha':'b'*40,'ref':'main','repo':{'full_name':'o/r'}}}
-        self.d={'pr':3,'head':'a'*40,'equipe':'Dev','acao':'revisar','objetivo':'Conferir bloqueio','aceite':'parecer verificável'}
+        self.d={'pr':3,'head':'a'*40,'equipe':'Dev','acao':'revisar','objetivo':'Conferir bloqueio','aceite':'parecer verificável',
+                'motivo':'Conferência necessária','evidencias_faltantes':'Resultado do gate'}
         self.docs=[{'tipo':'produto','caminho':'PRODUTO.md','sha256':'c'*64,'conteudo':'Objetivo e aceite'}]
         self.fs=[{'filename':'codigo.py','status':'modified','additions':1,'deletions':1,'patch':'@@ -1 +1 @@\n-velho\n+novo'}]
         self.rel={'resumo':'A alteração exige conferir a regra citada.','evidencias':['codigo.py: mudança observada no diff'],
@@ -161,6 +162,29 @@ class Conferencias(unittest.TestCase):
         self.assertEqual(self.consultar.call_count,1);self.assertEqual(self.consultar.call_args.args[2],'conferencia:Dev')
         self.assertEqual(len(self.posts),1)
         self.assertEqual(len(list((f.parent/'historico').glob('*.json'))),1)
+
+    def test_pronto_preserva_escopo_e_recupera_arquivo_do_ciclo_antigo(self):
+        self.executar();f=self.recibo();r=json.loads(f.read_text(encoding='utf-8'))
+        r['estado']='pronto';r.pop('parecer');r.pop('comentario');r.pop('corpo');r.pop('publicador')
+        f.write_text(json.dumps(r),encoding='utf-8')
+        self.assertEqual(c.fila_prontas(self.p,self.cfg,[self.pr],self.docs)['encaminhamentos'],[self.d])
+        self.assertFalse(c.contexto(self.p,[self.pr],self.cfg)[0]['publicado_comprovado'])
+        r.pop('encaminhamento');r['conciliacao_inicializacao']={'ciclo':'a'*32}
+        f.write_text(json.dumps(r),encoding='utf-8');pasta=self.p/'ciclos';pasta.mkdir()
+        bruto=json.dumps({'id':'a'*32,'encaminhamentos_prs':[self.d]}).encode('utf-8')
+        arq=pasta/(hashlib.sha256(bruto).hexdigest()+'.json');arq.write_bytes(bruto)
+        self.assertEqual(c.fila_prontas(self.p,self.cfg,[self.pr],self.docs)['encaminhamentos'],[self.d])
+        arq.write_bytes(bruto+b' ')
+        with self.assertRaisesRegex(ValueError,'hash'):c.fila_prontas(self.p,self.cfg,[self.pr],self.docs)
+
+    def test_pronto_outro_head_politica_ou_sem_ceo_nao_e_despachavel(self):
+        self.executar();f=self.recibo();r=json.loads(f.read_text(encoding='utf-8'));r['estado']='pronto'
+        f.write_text(json.dumps(r),encoding='utf-8')
+        self.pr['head']['sha']='f'*40
+        # Head novo não deve enviar escopo antigo ao validador da fila.
+        self.assertEqual(c.fila_prontas(self.p,self.cfg,[self.pr],self.docs)['encaminhamentos'],[])
+        self.pr['head']['sha']='a'*40;r['ceo']['acao']='aguardar';f.write_text(json.dumps(r),encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'CEO'):c.fila_prontas(self.p,self.cfg,[self.pr],self.docs)
 
     def test_nao_concilia_erro_de_modelo_ou_publicacao(self):
         self.executar();f=self.recibo();estado=self.p/'ciclo.json'
