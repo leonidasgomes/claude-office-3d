@@ -198,7 +198,9 @@ class DespachoRevisao(unittest.TestCase):
         self.assertEqual((r['codigo'],r['estado']),(0,'revisao'))
         self.assertEqual(chamadas,[])
         self.assertEqual(self.moves,['Em andamento','Em revisão'])
-        c=Controle(self.db);self.assertIsNone(c.revisao(r['token']))
+        c=Controle(self.db);entrega=c.revisao(r['token'])
+        self.assertEqual((entrega['pr'],entrega['sha'],entrega['aprovado']),(12,self.sha,0))
+        self.assertEqual(entrega['relatorio'],{'revisao':'dispensada_pela_politica'})
         from contextlib import closing
         with closing(c._abrir()) as db:
             self.assertEqual(db.execute('SELECT resultado FROM execucao_resultado').fetchone()[0],'revisao_desativada')

@@ -15,6 +15,90 @@ from gestao_cli import instrucoes_cartao, pasta_dados
 SHA=re.compile(r'[0-9a-f]{40}\Z')
 
 
+def iniciar_acompanhamento_retomada(projeto,reserva,confirmacao,banco=None):
+    """Intento após a confirmação manual; não seleciona ou retoma reservas."""
+    import uuid
+    cfg=carregar(projeto);ident=uuid.uuid4().hex
+    if not re.fullmatch('[0-9a-f]{64}',confirmacao):raise ValueError('Confirmação inválida')
+    with closing(sqlite3.connect(banco or pasta_dados(projeto)/'tarefas.db')) as db,db:
+        row=db.execute('SELECT estado,pacote FROM reserva WHERE projeto=? AND cartao=? AND token=?',
+            (cfg['kanban']['repo'],reserva['cartao'],reserva['token'])).fetchone()
+        if not row or row[0]!='bloqueado' or json.loads(row[1])!=reserva['pacote']:
+            raise ValueError('Reserva mudou antes do acompanhamento')
+        anteriores=[r[0] for r in db.execute('SELECT id FROM execucao_tarefa WHERE token=?',(reserva['token'],))]
+        db.execute('CREATE TABLE IF NOT EXISTS acompanhamento_retomada ('
+            'id TEXT PRIMARY KEY,repo TEXT NOT NULL,cartao INTEGER NOT NULL,token TEXT NOT NULL,'
+            'confirmacao TEXT NOT NULL,anteriores TEXT NOT NULL,estado TEXT NOT NULL,'
+            'tentativa TEXT,pr INTEGER,sha TEXT)')
+        db.execute('INSERT INTO acompanhamento_retomada VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL)',
+            (ident,cfg['kanban']['repo'],int(reserva['cartao']),reserva['token'],confirmacao,
+             json.dumps(anteriores),'iniciado'))
+    return ident
+
+
+def registrar_acompanhamento_retomada(projeto,ident,resultado,banco=None):
+    """Só retorno real com entrega validada permite acompanhar o merge."""
+    with closing(sqlite3.connect(banco or pasta_dados(projeto)/'tarefas.db')) as db,db:
+        db.row_factory=sqlite3.Row
+        r=db.execute('SELECT * FROM acompanhamento_retomada WHERE id=?',(ident,)).fetchone()
+        if not r or r['estado']!='iniciado':raise ValueError('Acompanhamento incerto ou já registrado')
+        if resultado.get('token')!=r['token']:raise ValueError('Retorno de outra reserva')
+        if resultado.get('estado')!='revisao' or type(resultado.get('codigo')) is not int or resultado['codigo']!=0:
+            db.execute("UPDATE acompanhamento_retomada SET estado='bloqueado' WHERE id=?",(ident,));return
+        anteriores=json.loads(r['anteriores'])
+        ts=[t for t in db.execute('SELECT e.id,e.fim,e.codigo,x.tipo,x.resultado,a.estado AS atividade FROM execucao_tarefa e '
+            'JOIN execucao_resultado x ON x.execucao=e.id LEFT JOIN atividade_execucao a ON a.execucao=e.id '
+            'WHERE e.token=? ORDER BY e.inicio,e.id',(r['token'],))
+            if t['id'] not in anteriores]
+        entrega=db.execute('SELECT e.pr,e.sha,r.estado FROM entrega e JOIN reserva r ON r.token=e.token '
+            'WHERE r.projeto=? AND r.cartao=? AND r.token=?',(r['repo'],str(r['cartao']),r['token'])).fetchone()
+        if (not ts or ts[0]['tipo']!='retomada' or any(t['fim'] is None or type(t['codigo']) is not int or t['atividade']!='encerrado' for t in ts)
+            or ts[-1]['codigo']!=0 or ts[-1]['resultado'] not in ('revisao_aprovada','revisao_desativada')
+            or not entrega or entrega['estado']!='revisao' or type(entrega['pr']) is not int
+            or entrega['pr']<1 or not SHA.fullmatch(entrega['sha'])):
+            raise ValueError('Retomada sem tentativa/entrega confirmada; confira o diário')
+        db.execute("UPDATE acompanhamento_retomada SET estado='confirmado',tentativa=?,pr=?,sha=? WHERE id=?",
+            (ts[-1]['id'],entrega['pr'],entrega['sha'],ident))
+
+
+def incorporar_retomadas_confirmadas(projeto,registro):
+    """O ciclo observa retomadas manuais novas; jamais adota reservas históricas."""
+    cfg=carregar(projeto);arq=pasta_dados(projeto)/'tarefas.db'
+    if not arq.is_file():return
+    novos=[]
+    with closing(sqlite3.connect(arq.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        db.row_factory=sqlite3.Row
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='acompanhamento_retomada'").fetchone():return
+        rows=db.execute("SELECT a.* FROM acompanhamento_retomada a JOIN reserva r ON r.token=a.token "
+            "AND r.projeto=a.repo AND r.cartao=CAST(a.cartao AS TEXT) JOIN entrega d ON d.token=r.token "
+            "JOIN execucao_tarefa e ON e.id=a.tentativa AND e.token=r.token "
+            "JOIN execucao_resultado x ON x.execucao=e.id "
+            "JOIN atividade_execucao v ON v.execucao=e.id AND v.estado='encerrado' "
+            "WHERE a.repo=? AND a.estado='confirmado' AND r.estado='revisao' AND d.pr=a.pr AND d.sha=a.sha "
+            "AND e.fim IS NOT NULL AND e.codigo=0 AND x.resultado IN ('revisao_aprovada','revisao_desativada') "
+            "AND NOT EXISTS (SELECT 1 FROM execucao_tarefa n WHERE n.token=r.token AND "
+            "(n.fim IS NULL OR n.inicio>e.inicio OR (n.inicio=e.inicio AND n.id>e.id))) LIMIT 1001",(cfg['kanban']['repo'],)).fetchall()
+        if len(rows)>1000:raise ValueError('Retomadas demais; confira acompanhamento')
+        for r in rows:
+            if r['id'] in registro.get('retomadas_incorporadas',[]):continue
+            existente=[v for v in registro.get('vinculos_conclusao',[]) if v.get('cartao')==r['cartao'] or v.get('token')==r['token']]
+            if existente:
+                if existente!=[{'cartao':r['cartao'],'token':r['token']}]:raise ValueError('Vínculo de retomada divergente')
+            if any(n['cartao']==r['cartao'] or n['token']==r['token'] for n in novos):
+                raise ValueError('Retomadas confirmadas duplicadas; confira diário')
+            novos.append(dict(r))
+    for r in novos:
+        if not any(v['token']==r['token'] for v in registro.get('vinculos_conclusao',[])):
+            registro.setdefault('vinculos_conclusao',[]).append({'cartao':r['cartao'],'token':r['token']})
+            registro.setdefault('resultados',[]).append({'id':r['id'],'origem':'retomada_manual_confirmada',
+                'resultados':[{'cartao':r['cartao'],'estado':'revisao','codigo':0}]})
+        anteriores=[c for c in registro.get('conclusoes',[]) if c.get('token')==r['token'] and c.get('estado')=='bloqueado']
+        if anteriores:
+            registro.setdefault('conclusoes_anteriores',[]).extend(anteriores)
+            registro['conclusoes']=[c for c in registro['conclusoes'] if c not in anteriores]
+        registro.setdefault('retomadas_incorporadas',[]).append(r['id'])
+
+
 def _obrigatorios(k, sha, nomes):
     caminho=f'repos/{k.cfg["repo"]}/commits/{sha}'
     if k.chamar is api:
