@@ -58,6 +58,33 @@ class Metas(unittest.TestCase):
         gravar('parcial',None)
         self.assertEqual(m.tokens_observados(self.ledger,self.raiz,self.ident),(1000,'parcial'))
 
+    def test_classificacao_gdd_so_com_recibo_e_escopo_de_planejamento(self):
+        proposta={'titulo':'Classificar vínculo','equipe':'Dev','objetivo':'Investigar vínculo do pai',
+                  'aceite':'Decisão documentada com fontes','skills':'nenhuma'}
+        issue={'title':proposta['titulo'],'body':
+            'Parte de #99. <!-- office-desbloqueio:99 -->\n\n'
+            '**Objetivo:** '+proposta['objetivo']+'\n\n**Aceite:** '+proposta['aceite']+
+            '\n\n**Escopo:** Planejamento/investigação deste bloqueio; não implementar o pai.'
+            '\n\n**Skills:** nenhuma\n\n**Objetivo GDD:** classificação a confirmar'}
+        cartao={'numero':43,'equipe':'Dev'}
+        pacote={**gc.instrucoes_cartao(issue),'cartao':43,'url':'https://github.com/owner/repo/issues/43',
+                'dependencias':{'bloqueadores':[]}}
+        pasta=self.dados/'desbloqueios';pasta.mkdir(parents=True);arquivo=pasta/'99.json'
+        registro={'estado':'criado','pai':99,'numero':43,'proposta':proposta}
+        with patch('gestao_cli.pasta_dados',return_value=self.dados):
+            with self.assertRaises(ValueError):m.construir(self.raiz,self.cfg,cartao,issue,pacote)
+            arquivo.write_text(json.dumps(registro),encoding='utf-8')
+            meta=m.construir(self.raiz,self.cfg,cartao,issue,pacote)
+            self.assertIsNone(meta['gdd']['numero']);self.assertEqual(meta['gdd']['pai'],99)
+            self.assertIn('Objetivo 1',meta['gdd']['trecho']);self.assertIn('Objetivo 2',meta['gdd']['trecho'])
+            self.assertEqual(meta['limites'],self.meta['limites'])
+            for campo,valor in (('estado','criando'),('numero',44),('pai',98)):
+                arquivo.write_text(json.dumps({**registro,campo:valor}),encoding='utf-8')
+                with self.assertRaises(ValueError):m.construir(self.raiz,self.cfg,cartao,issue,pacote)
+            arquivo.write_text(json.dumps(registro),encoding='utf-8')
+            with self.assertRaises(ValueError):m.construir(self.raiz,self.cfg,cartao,issue,{**pacote,'escopo':'Implementar o pai'})
+            with self.assertRaises(ValueError):m.construir(self.raiz,self.cfg,{**cartao,'equipe':'Outra'},issue,pacote)
+
     def test_tempo_tokens_incerto_e_revisao_sem_conclusao_falsa(self):
         agora=[0];total=[None]
         e=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.ledger,relogio=lambda:agora[0],leitor=lambda *_:(total[0],'sem_amostras'))

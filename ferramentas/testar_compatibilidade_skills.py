@@ -25,6 +25,12 @@ class Skills(unittest.TestCase):
         self.assertEqual([s['nome'] for s in resolver(self.p,nomes)],['teste'])
         with self.assertRaisesRegex(ValueError,'indisponível'):
             resolver(self.p,nomes_cartao('outro.'))
+    def test_ausencia_de_skills_nao_e_nome_de_skill(self):
+        self.escrever()
+        for texto in ('nenhuma',' Nenhuma. ',''):
+            self.assertEqual(nomes_cartao(texto),[])
+        with self.assertRaisesRegex(ValueError,'indisponível'):
+            resolver(self.p,nomes_cartao('teste, nenhuma'))
     def test_nomes_cartao_rejeita_pontuacao_ambigua_e_entradas_invalidas(self):
         for texto in ('teste..','teste. outro','teste., outro',
                       'teste/path.','../teste.','teste && echo.','qualquer nome.',
