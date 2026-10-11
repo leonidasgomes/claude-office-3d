@@ -75,6 +75,22 @@ class Gates(unittest.TestCase):
         chefe=Mock();worker=Mock();self.assertIsNone(self.encaminhar(chefe,worker))
         chefe.assert_not_called();worker.assert_not_called()
         self.assertEqual(self.ctrl.banco.read_bytes(),antes)
+    def test_conciliacao_de_orcamento_exige_ceo_e_preserva_reserva(self):
+        antigos={k:self.cfg['metas'][k] for k in ('tempo_min','tokens')}
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            pacote=json.loads(db.execute('SELECT pacote FROM reserva WHERE token=?',(self.token,)).fetchone()[0])
+            pacote['meta']={'limites':antigos}
+            db.execute('UPDATE reserva SET pacote=? WHERE token=?',(json.dumps(pacote),self.token))
+        self.cfg['metas'].update(tempo_min=240,tokens=10000000)
+        (self.repo/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        before=self.ctrl.banco.read_bytes();e=self.preparar()
+        self.assertEqual(e['conciliacao_orcamento']['limites_originais'],antigos)
+        chefe=Mock(return_value=json.dumps({'acao':'aguardar','motivo':'conferir ambiente'}));worker=Mock()
+        self.assertIsNone(self.encaminhar(chefe,worker));chefe.assert_called_once();worker.assert_not_called()
+        self.assertEqual(before,self.ctrl.banco.read_bytes())
+        self.cfg['merge']['checks'].append('outro-check')
+        with self.assertRaisesRegex(g.ContextoIncompativel,'além'):self.preparar()
+
     def test_publicacao_nao_reinicia_autor_e_nao_repete(self):
         before=self.ctrl.banco.read_bytes();r=self.encaminhar()
         self.assertEqual(r['estado'],'publicado');self.assertFalse(r['inferencia'])

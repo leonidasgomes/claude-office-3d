@@ -2234,3 +2234,12 @@ continuam exigindo conciliação. Medição, implementação e aceite do pai per
 em seus cartões; uma investigação não pode consumir outro orçamento para executar
 o trabalho esgotado. O histórico de preparação permanece visível após mudanças
 de head, com os commits antigo e atual explícitos, sem aprovar o commit atual.
+
+### Conciliação de orçamento para gates
+
+Uma entrega encerrada pode ser apresentada ao CEO para nova execução de gate quando
+o hash da política histórica é reconstruído exatamente substituindo apenas os limites
+de tempo e tokens pelos valores registrados na meta da entrega. Só aumentos são
+aceitos; fontes, revisão, commit, base, script e demais verificações continuam obrigatórios.
+A decisão e a diferença de orçamento ficam no recibo do gate. Essa conciliação não
+retoma o autor, não altera sua reserva e não renova concessões de correção.
