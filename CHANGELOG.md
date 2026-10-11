@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Chefes podem decidir concessões adicionais dentro de um teto explícito por PR; cada rodada comprova a cadeia de reservas e o limite anterior, sem renovação ilimitada ou consumo apagado.
+
 - Publicação do host atualiza título/corpo no PR reservado, inclusive sem alteração de arquivo, preservando SHA e sem commit artificial.
 
 - Continuação delimitada após tempo/tokens: diretor recebe prova do limite e CEO decide completar correções/evidências no mesmo PR, sem repetir autorização humana nem apagar histórico.
