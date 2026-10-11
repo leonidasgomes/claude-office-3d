@@ -895,6 +895,30 @@ def triagem_saude(dados):
         print(f"[saude] triagem: {str(e)[:160]}", flush=True)
 
 
+def saude_projeto(ident=None):
+    """Vista isolada da gestão; não altera alertas/ignorados do legado."""
+    import kanban_painel
+    selecao=kanban_painel.escolher(cfg()['projetos'],ident,'Saúde')
+    if selecao is None:return None
+    escolhido,projetos,erro=selecao
+    base={'fonte':'gestao','projetos':projetos,'projeto_id':'','erro':erro,'ts':round(time.time())}
+    if erro:return base
+    raiz,politica,publico=escolhido;pid=publico['id'];base['projeto_id']=pid
+    eventos=[e for e in banco.ler_eventos(0,3000)[1] if e.get('projeto_id')==pid]
+    quadro=kanban(pid);lista=prs_projeto(projeto=pid)
+    cartoes=quadro.get('cartoes') if not quadro.get('erro') else None
+    dados=saude.resumo(None,[],eventos,time.time(),lambda pr:'',cfg()['alertas']['parado_horas'],cartoes,politica['kanban']['repo'])
+    if not lista.get('erro'):
+        locais=saude.branches_locais(raiz)
+        dados.update(sem_prs=False,duplicados=saude.duplicados(lista.get('prs',[]),locais or [],time.time()))
+        if locais is None:dados['sem_locais']=True
+    dados.update(base,prs=lista,
+        sem_parados=True,sem_prs_motivo=lista.get('erro') or '',
+        kanban_erro=quadro.get('erro',''),ignorados={},pedidos=[],resolvidos=[],
+        aviso='Diagnóstico por projeto: somente eventos vinculados a este projeto. Ações do vigia legado não se aplicam aqui.')
+    return dados
+
+
 def saude_get():
     """GET /saude: saude_atual() + "ignorados" ({chave: {motivo, quando, origem}}), os últimos 20 "pedidos" ao líder (cada um
     com "entregue" e "cancelado"), os "resolvidos" das últimas 24 h e a "triagem" (modelo, veredictos, chamadas de hoje e
@@ -1301,7 +1325,8 @@ class Handler(rede.HandlerSeguro):
             return self.responder(corpo)
         if url.path == "/saude":
             try:
-                return self.responder(saude_get())
+                selecionado=saude_projeto(parse_qs(url.query).get('projeto',[None])[0])
+                return self.responder(selecionado if selecionado is not None else saude_get())
             except Exception as e:
                 return self.responder({"erro": str(e)[:200]})
         if url.path == "/grafo":   # painel 🗺️ Arquitetura: index + drift + validação resumida (thread grafo)

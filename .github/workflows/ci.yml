@@ -28,6 +28,8 @@ jobs:
           python -W error ferramentas/testar_controlador_local.py
           python -W error ferramentas/testar_inicio_equipe.py
           python -W error ferramentas/testar_git_codex.py
+          python -W error ferramentas/testar_saude_projeto.py
+          node ferramentas/testar_saude_projeto.mjs
       - name: Conclusão nativa dos novos providers
         run: |
           python -W error ferramentas/testar_retorno_console.py

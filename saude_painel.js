@@ -8,6 +8,7 @@
 
 import { dica } from './dica.js';
 import { CONFIG, temServidor } from './config.js';
+import { seletorProjetos } from './kanban_projetos.mjs';
 
 const ATUALIZAR_MS = 60000;
 const $ = (id) => document.getElementById(id);
@@ -18,6 +19,9 @@ let formAberto = '';         // "acao|chave" do formulário inline aberto (ignor
 let rascunho = '';           // texto digitado no formulário aberto (sobrevive ao redesenho)
 let msgAcao = '';            // resultado da última ação
 let atrasado = false;        // chegaram dados novos com o formulário aberto: redesenha ao fechá-lo (fecharForm)
+
+const seletor = seletorProjetos(info, () => { dados=null; prs=null; erro=''; carregar(); }, {endpoint:'/saude',nome:'Projeto da Saúde'});
+try { const id=localStorage.getItem('office.projeto_cena'); if(id)seletor.selecionar(id); } catch(e) {}
 
 function el(tag, cls, texto) {
   const e = document.createElement(tag);
@@ -35,7 +39,7 @@ function ha(ts) {
   const min = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
   return min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h ${min % 60} min`;
 }
-const ehPc = () => !!sessao && sessao.permissao === 'pc';
+const ehPc = () => !!sessao && sessao.permissao === 'pc' && dados?.fonte !== 'gestao';
 const repo = () => (prs && typeof prs.repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(prs.repo) ? prs.repo : '');
 const prPorNumero = (n) => ((prs && prs.prs) || []).find((p) => p.numero === n);
 const urlBranch = (b) => (repo() ? `https://github.com/${repo()}/tree/${b.split('/').map(encodeURIComponent).join('/')}` : '');
@@ -90,20 +94,23 @@ async function postar(rota, corpoJson) {
 async function carregar() {
   if (carregando) return;
   carregando = true;
+  const consulta=seletor.url();
   if (!dados) desenhar();
   try {
     await pegarSessao();
-    const [rs, rp, rb] = await Promise.all([fetch('/saude', { cache: 'no-store' }), CONFIG.github.prs ? fetch('/prs', { cache: 'no-store' }).catch(() => null) : null,
+    const [rs, rp, rb] = await Promise.all([fetch(consulta, { cache: 'no-store' }), null,
       fetch('/api/praticas', { cache: 'no-store' }).catch(() => null)]);
     const j = await rs.json();
+    if(consulta!==seletor.url())return;
     if (!rs.ok || !j || typeof j !== 'object') throw new Error('resposta inválida (' + rs.status + ')');
-    dados = j; erro = j.erro ? String(j.erro) : '';
+    dados = j; seletor.receber(j); if(j.fonte==='gestao')prs=j.prs||null; else try { prs=await (await fetch('/prs',{cache:'no-store'})).json(); } catch(e) { prs=null; } erro = j.erro ? String(j.erro) : '';
     if (rp && rp.ok) { try { prs = await rp.json(); } catch (e) { /* mantém o último */ } }
     if (rb && rb.ok) { try { const jb = await rb.json(); if (jb && Array.isArray(jb.projetos)) praticas = jb; } catch (e) { /* mantém o último */ } }
   } catch (e) {
     erro = 'servidor do escritório fora do ar ou sem resposta (' + e.message + ')';
   } finally {
     carregando = false;
+    if(consulta!==seletor.url()){ carregar(); }
   }
   // com o formulário aberto não redesenha embaixo de quem digita: `dados` já é o mais novo e fecharForm() redesenha com ele
   if (formAberto && dados && !erro) { atrasado = true; return; }
@@ -409,7 +416,7 @@ function blocoRisco() {
   sec.append(cab);
   if (!prs) { sec.append(el('p', 'saude-msg', CONFIG.github.prs ? 'Sem a lista de PRs agora.' : 'Sem repositório configurado (github.repo no config.json).')); return sec; }
   if (prs.erro) sec.append(el('p', 'saude-aviso', '⚠️ PRs não atualizados: ' + prs.erro));
-  if (!lista.length) { sec.append(el('p', 'saude-msg', 'Nenhum PR aberto.')); return sec; }
+  if (!lista.length) { sec.append(el('p', 'saude-msg', (prs.prs?.length ? `${prs.prs.length} PR(s) aberto(s). Tamanho e checks ainda não consultados; confira as evidências no painel de PRs.` : 'Nenhum PR aberto.'))); return sec; }
   const n = (nv) => lista.filter((p) => p.risco.nivel === nv).length;
   const falhando = lista.filter((p) => p.risco.falhas).length;
   const resumo = el('div', 'saude-risco-resumo');
@@ -504,8 +511,8 @@ function desenhar() {
   if (dados && !dados.erro) {
     const ign = dados.ignorados && typeof dados.ignorados === 'object' ? dados.ignorados : {};
     const fora = (k) => !(k in ign) && !silenciado(k);
-    if (dados.sem_prs) partes.push(el('p', 'saude-aviso', '⏳ GitHub fora do ar ou escritório recém-iniciado: por enquanto só os círculos. '
-      + 'Duplicados e PRs parados voltam em cerca de 1 minuto.'));
+    if(dados.aviso)partes.push(el('p','saude-msg',dados.aviso));
+    if(dados.sem_prs)partes.push(el('p','saude-aviso',dados.sem_prs_motivo || 'Dados de PRs ou revisões indisponíveis nesta rodada.'));
     const dup = dados.duplicados || { fortes: [], fracos: [] };
     const fortes = (dup.fortes || []).filter((d) => fora(chaveDup(d)));
     const fracos = (dup.fracos || []).filter((d) => fora(chaveDup(d)));
@@ -513,7 +520,7 @@ function desenhar() {
     const par = (dados.parados || []).filter((x) => fora(chaveParado(x)));
     const rasc = (dados.rascunhos || []).filter((r) => fora(chaveRascunho(r)));
     const rep = (dados.repetidos || []).filter((r) => fora(chaveRepetido(r)));
-    if (!dados.sem_prs && !fortes.length && !circ.length && !par.length && !rasc.length) {
+    if (!dados.sem_prs && !dados.sem_parados && !fortes.length && !circ.length && !par.length && !rasc.length) {
       partes.push(el('p', 'saude-bom', '✅ Nada pedindo atenção agora.'));
     }
     if (!dados.sem_prs) {
@@ -526,15 +533,16 @@ function desenhar() {
     }
     partes.push(secao('circ', 'Agentes andando em círculos', 'Nos últimos 45 min o mesmo agente editou o mesmo arquivo 6 vezes ou mais E rodou o '
       + 'mesmo comando 4 vezes ou mais (ciclo editar → rodar → editar): sinal de que trata o sintoma, não a causa.',
-      circ.map(itemCirculo), 'Ninguém andando em círculos. 👍'));
-    if (!dados.sem_prs) {
+      circ.map(itemCirculo), 'Nenhum ciclo detectado nos eventos disponíveis.'));
+    if(dados.sem_parados)partes.push(el('p','saude-msg','PRs parados: avaliação pendente das evidências do commit atual, para não classificar um PR pronto como parado.'));
+    if (!dados.sem_prs && !dados.sem_parados) {
       partes.push(secao('par', 'PRs parados', 'PR aberto (fora rascunho e pronto para o merge, que já tem lembrete) sem atualização há mais '
         + 'de alertas.parado_horas (padrão 24 h, no config.json).', par.map(itemParado), 'Nenhum PR parado. 👍'));
     }
     partes.push(secao('rasc', 'Cartões rascunho em coluna de trabalho', 'Cartão do Kanban que é só rascunho (Draft, sem número de '
       + 'issue) numa coluna de trabalho (Todo, Ready, In Progress, Review...). Sem número não há branch, PR nem "Closes #n": converta '
       + 'em issue antes de despachar. Vai para o vigia do líder; não alerta nem manda push.', rasc.map(itemRascunho),
-    Array.isArray(dados.rascunhos) ? 'Nenhum cartão rascunho em coluna de trabalho. 👍' : 'Kanban não configurado ou fora do ar agora.'));
+    Array.isArray(dados.rascunhos) ? 'Nenhum cartão rascunho em coluna de trabalho. 👍' : (dados.kanban_erro || 'Dados do Kanban indisponíveis nesta rodada.')));
     partes.push(secao('rep', 'Comandos repetidos', 'Dica, não alerta: o mesmo agente rodou 8 vezes ou mais, em 60 min, comandos com '
       + 'o mesmo começo atrás de cd/export/VAR= (ou com $(...)). Um script do projeto ou uma variável de ambiente economiza tokens '
       + 'e erros. O começo aparece sem caminho absoluto; não vai para o líder.', rep.map(itemRepetido), 'Nenhum. 👍', true));
@@ -542,6 +550,7 @@ function desenhar() {
     const atuais = new Set([...(dup.fortes || []), ...(dup.fracos || [])].map(chaveDup)
       .concat((dados.circulos || []).map(chaveCirculo), (dados.parados || []).map(chaveParado),
         (dados.rascunhos || []).map(chaveRascunho), (dados.repetidos || []).map(chaveRepetido)));
+    if(dados.fonte!=="gestao") {
     const chavesIgn = Object.keys(ign).sort((a, b) => (ign[b].quando || 0) - (ign[a].quando || 0));
     partes.push(secao('ign', 'Ignorados', 'Itens que você mandou ignorar: não alertam nem acordam o líder, mas continuam sendo calculados. '
       + 'Reativar volta a alertar se o problema ainda existir.', chavesIgn.map((k) => itemIgnorado(k, ign[k], atuais.has(k))),
@@ -558,11 +567,12 @@ function desenhar() {
       + 'duplicados e PRs parados não contam como resolvidos). Ignorar e o veredicto da triagem valem só para a ocorrência: '
       + 'expiram quando o item se resolve, e pedido ainda não entregue é cancelado.', res.map(itemResolvido), 'Nada resolvido nas últimas 24 h.', true));
     if (!ehPc()) partes.push(el('p', 'saude-msg', 'Ignorar e avisar o líder só pelo PC.'));
+    }
   }
   else if (praticas) partes.push(blocoPraticas());
   corpo.replaceChildren(...partes);
   info.textContent = dados && dados.ts
-    ? `calculado às ${hora(dados.ts)} (recalcula a cada 5 min)` + (carregando ? ' · atualizando…' : '')
+    ? `calculado às ${hora(dados.ts)}${dados.fonte === "gestao" ? " (consulta por projeto a cada minuto)" : " (recalcula a cada 5 min)"}` + (carregando ? ' · atualizando…' : '')
     : (carregando ? 'consultando…' : '');
 }
 

@@ -18,3 +18,25 @@
 .gestaoPainel button:focus-visible, .gestaoPainel summary:focus-visible { outline: 3px solid #8fcef8; outline-offset: 3px; }
 .gestaoPainel .gestaoExcluir { border: 1px solid #eb9d9d; color: #ffd0d0; }
 @media (max-width: 600px) { .gestaoPainel { width: calc(100vw - 32px); padding: 12px; } .gestaoNavegacao button { flex: 1 1 40%; } }
+/* Gestão compartilha tipografia, superfícies e controles do escritório. */
+.gestaoPainel { font: 14px/1.45 "Segoe UI",system-ui,sans-serif; width: min(900px,calc(100vw - 32px)); max-height: 86vh; padding: 0; background: #161c24; color: #e6edf3; border-color: #3a4756; box-shadow: 0 12px 48px #0009; }
+.gestaoCabecalho { position: sticky; top: 0; z-index: 2; padding: 16px 20px; gap: 16px; flex-wrap: wrap; background: #161c24; border-bottom: 1px solid #2a3340; }
+.gestaoPainel h2 { font-size: 17px; text-transform: none; letter-spacing: normal; color: #e6edf3; margin: 0; }
+.gestaoPainel h3 { font-size: 16px; margin: 16px 0 12px; }
+.gestaoPainel h4 { font-size: 14px; margin: 14px 0 8px; }
+.gestaoAcoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.gestaoCorpo { padding: 16px 20px 24px; }
+.gestaoPainel button { font: inherit; min-height: 36px; margin: 4px 6px 4px 0; border: 1px solid #3a4756; border-radius: 6px; background: #232d3a; color: #e6edf3; }
+.gestaoAcoes button { margin: 0; }
+.gestaoPainel button:hover { background: #2d3a4b; }
+.gestaoPainel button:disabled { opacity: .55; cursor: wait; }
+.gestaoPainel section { border-color: #2a3340; }
+.gestaoPainel .gestaoCadastro, .gestaoPainel fieldset { background: #1a212b; border: 1px solid #3a4756; border-radius: 8px; padding: 16px; }
+.gestaoPainel input:not([type=checkbox]), .gestaoPainel textarea, .gestaoPainel select { font: inherit; color: #e6edf3; background: #0f1419; border: 1px solid #3a4756; border-radius: 6px; min-height: 38px; margin-top: 6px; }
+.gestaoPainel textarea { min-height: 96px; resize: vertical; }
+.gestaoPainel :is(input,select,textarea):focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.gestaoPainel p { overflow-wrap: anywhere; }
+.gestaoPainel .gestaoNavegacao { padding: 8px 0; border-bottom: 1px solid #2a3340; }
+#saude label:has(select), #prs label:has(select) { display: block; margin: 10px 0; color: #9aa7b6; }
+#saude select, #prs select { display: block; margin-top: 6px; width: 100%; padding: 8px; font: inherit; background: #232d3a; color: #e6edf3; border: 1px solid #3a4756; border-radius: 6px; }
+@media(max-width:600px) { .gestaoPainel { padding: 0; width: calc(100vw - 16px); max-height: 92vh; } .gestaoCabecalho, .gestaoCorpo { padding: 12px; } .gestaoAcoes { width: 100%; } .gestaoAcoes button { flex: 1; } }
