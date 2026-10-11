@@ -1771,6 +1771,10 @@ em linha. Pendências publicam `pending`; ausência de pendências após confer�
 publica `success`. Falha de API, mudança de política/commit/base ou PR rascunho
 impede a publicação. Os recibos ficam na caixa isolada do projeto (`gate-N.json`).
 
+Comentários ou revisões editados têm a evidência novamente conferida: mudança
+de conteúdo reabre a sugestão, sem reaproveitar uma decisão tomada sobre outro
+achado. Conteúdo inalterado preserva a decisão e não duplica itens.
+
 Essa conferência decorre de `merge.checks` exigir `sugestoes`: desligar bots extras
 e triagem paga não dispensa o gate nem desativa a leitura das revisões internas.
 Projetos sem esse check e o fluxo legado preservam o comportamento anterior.
