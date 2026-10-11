@@ -113,6 +113,7 @@ jobs:
           python -W error ferramentas/testar_revisao_cruzada.py
           python -W error ferramentas/testar_revisores_console.py
           python -W error ferramentas/testar_revisao_execucao.py
+          python -W error ferramentas/testar_finalizacao_publicada.py
           python -W error ferramentas/testar_despacho_revisao.py
           python -W error ferramentas/testar_executor_local.py
           python -W error ferramentas/testar_memoria_local.py

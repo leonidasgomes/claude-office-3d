@@ -374,6 +374,39 @@ class Controle:
             linha = db.execute('SELECT * FROM entrega WHERE token=?', (token,)).fetchone()
         return dict(linha, relatorio=json.loads(linha['relatorio'])) if linha else None
 
+    def finalizar_publicacao(self,esperado,tentativa,pr,relatorio,cfg,registro):
+        """Conciliação de revisão nova; não altera tentativa, saldo ou sessão do autor."""
+        from revisao_cruzada import conferir_cobertura,conferir
+        if (registro.get('estado')!='registrando' or registro.get('ceo',{}).get('acao')!='revisar'
+            or registro.get('diretor',{}).get('acao')!='revisar'
+            or registro.get('evidencia',{}).get('reserva')!=esperado
+            or registro['evidencia'].get('tentativa',{}).get('id')!=tentativa
+            or registro['evidencia'].get('pr')!=pr or registro.get('relatorio')!=relatorio
+            or not conferir_cobertura(cfg,relatorio,registro['evidencia'].get('sha'))):
+            raise ValueError('Finalização exige decisão e revisão completas')
+        aprovado=conferir(cfg,relatorio,relatorio['sha'])
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('CREATE TABLE IF NOT EXISTS finalizacao_publicada (token TEXT PRIMARY KEY,tentativa TEXT NOT NULL,pr INTEGER NOT NULL,registro TEXT NOT NULL)')
+            row=db.execute('SELECT * FROM reserva WHERE token=?',(esperado['token'],)).fetchone()
+            atual=dict(row,pacote=json.loads(row['pacote'])) if row else None
+            t=db.execute('SELECT id,fim,codigo FROM execucao_tarefa WHERE token=? ORDER BY inicio DESC,id DESC',(esperado['token'],)).fetchall()
+            a=db.execute('SELECT estado,codigo_console FROM atividade_execucao WHERE execucao=?',(tentativa,)).fetchone()
+            if (atual!=esperado or esperado['estado']!='bloqueado' or len(t)!=1 or t[0]['id']!=tentativa
+                or t[0]['fim'] is None or t[0]['codigo']!=124 or not a or a['estado']!='encerrado'
+                or type(a['codigo_console']) is not int):raise ValueError('Reserva/tentativa mudou durante finalização')
+            if db.execute('SELECT 1 FROM finalizacao_publicada WHERE token=?',(esperado['token'],)).fetchone():
+                raise ValueError('Publicação já finalizada; não repetir')
+            db.execute('INSERT INTO finalizacao_publicada VALUES (?,?,?,?)',
+                (esperado['token'],tentativa,pr,json.dumps(registro,ensure_ascii=False)))
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET sha=excluded.sha,pr=excluded.pr,aprovado=excluded.aprovado,relatorio=excluded.relatorio,atualizado=excluded.atualizado',
+                (esperado['token'],relatorio['sha'],pr,int(aprovado),json.dumps(relatorio,ensure_ascii=False),time.time()))
+            if aprovado:
+                db.execute("UPDATE reserva SET estado='revisao',atualizado=? WHERE token=?",(time.time(),esperado['token']))
+                from observabilidade_equipes import etapa_reserva
+                etapa_reserva(db,esperado['token'],'revisao',time.time())
+        return aprovado
+
     def registrar_conclusao(self, token, evidencia):
         """Diário local anterior à escrita remota; permite conciliar uma falha posterior."""
         texto=json.dumps(evidencia,ensure_ascii=False,sort_keys=True)

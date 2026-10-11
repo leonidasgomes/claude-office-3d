@@ -354,6 +354,21 @@ class Ciclo(unittest.TestCase):
         iniciar.assert_not_called()
         self.assertEqual(json.loads(c.caminho_estado(self.p).read_text()),anterior)
 
+    def test_checkpoint_finalizacao_preserva_124_sem_inventar_retorno_zero(self):
+        recibo=self.dados/'final.json';recibo.parent.mkdir(parents=True,exist_ok=True)
+        r={'estado':'confirmado','evidencia':{'reserva':{'token':'b'*32},'cartao':1,'pr':42,
+            'tentativa':{'codigo':124}},'ceo':{'acao':'revisar'},'diretor':{'acao':'revisar'},
+            'relatorio':{'aprovado':True}}
+        c.atomico(recibo,r)
+        final={'cartao':1,'token':'b'*32,'pr':42,'estado':'revisao','codigo_autor':124,'recibo':str(recibo)}
+        anterior={'vinculos_conclusao':[{'cartao':1,'token':'b'*32}],
+                  'resultados':[],'finalizacoes_publicadas':[final]}
+        novo=c.preservar_entregas(anterior)
+        self.assertEqual(novo['finalizacoes_publicadas'],[final]);self.assertEqual(novo['resultados'],[])
+        self.assertEqual(novo['vinculos_conclusao'],anterior['vinculos_conclusao'])
+        r['estado']='reprovado';c.atomico(recibo,r)
+        with self.assertRaisesRegex(ValueError,'diverge'):c.preservar_entregas(anterior)
+
     def test_checkpoint_duplicado_ou_divergente_nao_inicia(self):
         retorno={'cartao':1,'estado':'revisao','codigo':0}
         anterior={'id':'a'*32,'estado':'pausado','vinculos_conclusao':[{'cartao':1,'token':'b'*32}],

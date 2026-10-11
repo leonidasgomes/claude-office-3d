@@ -115,7 +115,12 @@ def publicar(projeto,dados):
                     raise ValueError('Pedido de publicação já versionado/indexado; retire-o da entrega antes de publicar')
             except (json.JSONDecodeError,UnicodeError,OSError):pass
     registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch,
-              'arquivos_pedido_excluidos':sorted(pedidos)}
+              'arquivos_pedido_excluidos':sorted(pedidos),'token':reserva['token']}
+    from contextlib import closing
+    import sqlite3
+    with closing(sqlite3.connect((pasta_dados(projeto)/'tarefas.db').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        tentativas=db.execute('SELECT id FROM execucao_tarefa WHERE token=? AND fim IS NULL',(reserva['token'],)).fetchall()
+    if len(tentativas)==1:registro['tentativa']=tentativas[0][0]
     if atualizar:
         conferir_pr()
         registro.update(pr=f"https://github.com/{cfg['kanban']['repo']}/pull/{dados['pr']}",head_anterior=dados['head_sha'],operacao='atualizar_pr')
