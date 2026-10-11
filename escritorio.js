@@ -1119,7 +1119,7 @@ function texturaMapa() {
 }
 function criarMesa(indice, nome, cor, dir = false) {   // dir: mesa dentro da diretoria (agente com "sala": "diretoria")
   const kind = dir ? 'diretoria' : tipoMesa(nome), boss = kind === 'lider';
-  const x = dir ? DIRETORIA.cx : xMesa(indice), z0 = dir ? DIRETORIA.mesaZ : 0;
+  const x = dir ? DIRETORIA.cx : xMesa(indice), z0 = dir ? DIRETORIA.mesaZ + indice * 4.0 : 0;
   const g = new THREE.Group(); g.position.set(x, 0, z0); cena.add(g);
   const largura = dir ? 5.2 : boss ? 4.2 : 3.2, prof = dir ? 2.1 : boss ? 1.9 : 1.6;
   const tampo = mat(dir ? 0x5a3a22 : boss ? 0x7a5230 : 0xb08a5e), pe = mat(dir ? 0x2a1a10 : 0x2b313a);
@@ -1178,11 +1178,11 @@ function criarMesa(indice, nome, cor, dir = false) {   // dir: mesa dentro da di
   mesa.sub = new THREE.Vector3(x - 1.6, 0, 2.6); mesa.foco = new THREE.Vector3(x, 1, 1.5);
   if (dir) {
     const D = DIRETORIA, xc = D.xCorredor, zp = D.portaZ;
-    mesa.visita = new THREE.Vector3(21.0, 0, 12.0);
+    mesa.visita = new THREE.Vector3(21.0, 0, z0 + 1.6);
     mesa.saida = [new THREE.Vector3(21.2, 0, zp), new THREE.Vector3(D.x0 + 1.2, 0, zp), new THREE.Vector3(xc, 0, zp), new THREE.Vector3(xc, 0, Z_CORREDOR)];
     mesa.entrada = [...mesa.saida].reverse();
     mesa.acesso = [new THREE.Vector3(xc, 0, Z_CORREDOR), new THREE.Vector3(xc, 0, zp), new THREE.Vector3(D.x0 + 1.2, 0, zp), mesa.visita];
-    mesa.sub = new THREE.Vector3(26.8, 0, 11.8); mesa.foco = new THREE.Vector3(x, 1, z0 + 1.2);
+    mesa.sub = new THREE.Vector3(26.8, 0, z0 + 2.5); mesa.foco = new THREE.Vector3(x, 1, z0 + 1.2);
   }
   mesas.push(mesa);
   return mesa;
@@ -1329,7 +1329,7 @@ function atualizarSinais(a, t, dt) {
 // ---------------------------------------------------------------- Agentes
 const agentes = new Map();   // nome -> agente
 const ordemAgentes = [];
-let extras = 0, mesasComuns = 0, mesaDiretoria = null;
+let extras = 0, mesasComuns = 0, mesasDiretoria = new Set();
 
 function normalizarNome(n) {
   const s = String(n || '').trim();
@@ -1351,12 +1351,12 @@ function garantirAgente(nome) {
   nome = normalizarNome(nome) || 'Desconhecido';
   if(PROJETO_CENA && !AGENTES_CFG.some(a=>a.nome===nome) && !ASSENTOS_FUNCIONARIOS.has(nome))return null;
   if (agentes.has(nome)) return agentes.get(nome);
-  const naDiretoria = TEM_DIRETORIA && SALA_DE[nome.toLowerCase()] === 'diretoria' && !mesaDiretoria;   // uma mesa só na diretoria
+  const naDiretoria = TEM_DIRETORIA && SALA_DE[nome.toLowerCase()] === 'diretoria';   // CEO e diretor compartilham a sala, em mesas distintas
   const indiceFuncionario = ASSENTOS_FUNCIONARIOS.get(nome);
   if (!naDiretoria && indiceFuncionario === undefined && mesasComuns >= MAX_MESAS) return null; // dez lugares legados
   const cor = corDoAgente(nome);
-  const mesa = criarMesa(naDiretoria ? 7 : (indiceFuncionario ?? mesasComuns++), nome, cor, naDiretoria);
-  if (naDiretoria) mesaDiretoria = mesa;
+  const mesa = criarMesa(naDiretoria ? ([...mesasDiretoria].some(m=>m.indice===0)?1:0) : (indiceFuncionario ?? mesasComuns++), nome, cor, naDiretoria);
+  if (naDiretoria) mesasDiretoria.add(mesa);
   const fig = criarFigura(cor);
   cena.add(fig.raiz);
   const pf = rotulos(nome, perfil(nome));
@@ -3030,7 +3030,7 @@ function removerAgente(a) {   // mesa criada só no replay (agente que não est�
   if (a.sinal) a.sinal.anel.material.dispose();
   cena.remove(a.mesa.grupo);
   const k = mesas.indexOf(a.mesa); if (k >= 0) mesas.splice(k, 1);
-  if (a.mesa === mesaDiretoria) mesaDiretoria = null;   // a mesa da diretoria também nasce com o agente: volta a ficar livre
+  mesasDiretoria.delete(a.mesa);   // a mesa da diretoria também nasce com o agente: volta a ficar livre
   if (a.li) a.li.remove();
   agentes.delete(a.nome);
   const i = ordemAgentes.indexOf(a); if (i >= 0) ordemAgentes.splice(i, 1);

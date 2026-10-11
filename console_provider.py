@@ -40,13 +40,26 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
         prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
+    if diretorios_escrita and (prompt_inicial is None or sandbox!='workspace-write'):
+        raise ValueError('Diretórios adicionais exigem início interativo Codex workspace-write')
     args = provider.comando(exe, projeto, prompt, modelo, sessao, agente, **({'sandbox':sandbox} if sandbox is not None else {}))
+    if prompt_inicial is not None:
+        if provider.nome != 'codex' or prompt is not None or sessao or politica_local:
+            raise ValueError('Prompt inicial exige Codex interativo novo, sem execução estruturada/local')
+        if not isinstance(prompt_inicial,str) or not prompt_inicial.strip() or len(prompt_inicial)>6000:
+            raise ValueError('Prompt inicial exige texto entre 1 e 6000 caracteres')
+        if diretorios_escrita:
+            for diretorio in diretorios_escrita:
+                pasta=Path(diretorio).resolve()
+                if not pasta.is_dir():raise ValueError('Diretório de escrita não existe')
+                args += ['--add-dir',str(pasta)]
+        args.append(prompt_inicial)
     entrada = None
     if provider.nome == "codex" and prompt is not None:
         # Catálogo extenso não cabe na linha de comando do Windows. O CLI lê '-'.
@@ -242,6 +255,7 @@ def main(argv=None):
     p.add_argument("--agente", help="nome nativo Claude/OpenCode")
     p.add_argument("--funcionario", help="ID do especialista cadastrado neste projeto")
     prompts = p.add_mutually_exclusive_group()
+    prompts.add_argument('--prompt-inicial', help='Codex interativo: começa a tarefa imediatamente e mantém o console aberto')
     prompts.add_argument("--prompt", help="execução com telemetria estruturada em Claude/Codex/OpenCode/Gemini")
     prompts.add_argument('--prompt-arquivo', type=Path, help='tarefa ou diagnóstico em UTF-8, evitando limites da linha de comando')
     p.add_argument("--banco", type=Path, help="SQLite opcional; padrão é o do escritório")
@@ -320,7 +334,8 @@ def main(argv=None):
                            if r.get('ativacao_nativa')=='Skill']
         return executar(provider, exe, projeto, args.mesa or (funcionarios.nome_eventos(funcionario) if args.funcionario else None) or args.equipe or args.papel or config.get("mesa") or "Dev", prompt,
                         modelo, args.sessao, args.agente, args.banco,skills_nativas=skills_nativas,
-                        **({'sandbox':sandbox} if sandbox is not None else {}))
+                        **({'sandbox':sandbox} if sandbox is not None else {}),
+                        **({'prompt_inicial':args.prompt_inicial} if args.prompt_inicial is not None else {}))
     except (OSError, ValueError) as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 2
