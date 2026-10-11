@@ -58,6 +58,29 @@ class Conclusao(unittest.TestCase):
         self.patchers=[patch.object(alvo,'carregar',return_value=self.cfg),
                        patch.object(alvo,'fontes_resolvidas',return_value=[])]
         for p in self.patchers:p.start();self.addCleanup(p.stop)
+    def test_fila_so_considera_entrega_vinculada_da_sessao(self):
+        with closing(sqlite3.connect(self.banco)) as db,db:
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?)',(self.token,HEAD,8,1,'{}',1))
+        registro={'vinculos_conclusao':[{'cartao':4,'token':self.token}],
+            'resultados':[{'resultados':[{'cartao':4,'estado':'revisao','codigo':0}]}]}
+        with patch.object(alvo,'pasta_dados',return_value=self.projeto),patch.object(alvo,'api') as api:
+            itens=alvo.pendencias_sessao(self.projeto,registro)
+            self.assertEqual(itens,[{'cartao':4,'equipe':'Dev','pr':8,'head':HEAD,'estado':'aguardando_merge','motivo':''}])
+            api.assert_not_called()
+            self.assertEqual(alvo.pendencias_sessao(self.projeto,{}),[])
+            registro['conclusoes']=[{'token':self.token,'estado':'bloqueado','motivo':'Gate ausente'}]
+            self.assertEqual(alvo.pendencias_sessao(self.projeto,registro)[0]['estado'],'conferencia_necessaria')
+            registro['conclusoes']=[{'token':self.token,'estado':'concluido'}]
+            self.assertEqual(alvo.pendencias_sessao(self.projeto,registro),[])
+
+    def test_fila_rejeita_vinculo_substituido_ou_duplicado(self):
+        registro={'vinculos_conclusao':[{'cartao':4,'token':'f'*32}],
+            'resultados':[{'resultados':[{'cartao':4,'estado':'revisao','codigo':0}]}]}
+        with patch.object(alvo,'pasta_dados',return_value=self.projeto):
+            with self.assertRaisesRegex(ValueError,'mudou'):alvo.pendencias_sessao(self.projeto,registro)
+            registro['vinculos_conclusao']*=2
+            with self.assertRaises(ValueError):alvo.pendencias_sessao(self.projeto,registro)
+
     def run_previa(self):return alvo.preparar(self.projeto,4,8,self.banco,self.k)[0]
     def test_previa_sem_escrita_e_sucesso_idempotente(self):
         antes=self.banco.read_bytes()

@@ -26,6 +26,7 @@ jobs:
       - name: Controlador local e início limitado do CEO Codex
         run: |
           python -W error ferramentas/testar_ciclo_gdd.py
+          python -W error ferramentas/testar_memoria_entregas.py
           python -W error ferramentas/testar_publicacao_host.py
           python -W error ferramentas/testar_controlador_local.py
           python -W error ferramentas/testar_inicio_equipe.py
@@ -44,6 +45,7 @@ jobs:
           node ferramentas/testar_cadastros_form.mjs
           node ferramentas/testar_atividade_cena.mjs
           node ferramentas/testar_cadastro_cena.mjs
+          node ferramentas/testar_ficha_gestao.mjs
           node ferramentas/testar_ciclo_cena.mjs
       - name: SDD em dia com o código (rotas, tabelas, scripts e flags, chaves do config)
         run: python ferramentas/verificar_docs.py

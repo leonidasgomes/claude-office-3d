@@ -80,6 +80,17 @@ class Ciclo(unittest.TestCase):
         self.assertIn('preparando',etapas);self.assertNotIn('implementando',etapas)
         self.assertEqual(c.resumo(self.p)['estado'],'erro')
 
+    def test_fila_aguarda_sem_modelo_nem_novo_despacho_e_pausa_responsiva(self):
+        self.cfg['ciclo']['max_prs_pendentes']=1;ident='a'*32;tempo=[0]
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':None,'resultados':[],'pausa_configuravel':True})
+        consulta=Mock();lote=Mock();k=Mock()
+        def dormir(seg):tempo[0]+=seg;c.solicitar_pausa(self.p,ident)
+        with patch.object(c,'Kanban',return_value=k),patch('conclusao_tarefas.confirmar_sessao',return_value=[]),patch('conclusao_tarefas.pendencias_sessao',return_value=[{'cartao':4,'pr':8}]):
+            c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta,lote=lote)
+        consulta.assert_not_called();lote.assert_not_called();k.quadro.assert_not_called()
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado');self.assertGreater(tempo[0],0)
+
     def test_duracao_futura_nao_muda_politica_efetiva(self):
         import copy
         atual=copy.deepcopy(self.cfg);atual['ciclo']['duracao_min']=60

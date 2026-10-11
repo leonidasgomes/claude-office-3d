@@ -15,6 +15,33 @@ from coordenacao_painel import resumo as pedidos_coordenacao
 from retomada_painel import resumo as pedidos_retomada
 
 
+def checkpoint(db,cfg,cartao,pacote,ultima,token=None):
+    """Projeção do diário existente, sem retomar, ler Git ou consultar modelos."""
+    ctx=pacote.get('contexto_execucao') or {}
+    politica=hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    branch=ctx.get('branch')
+    if not isinstance(branch,str) or not re.fullmatch(r'[A-Za-z0-9_./-]{1,256}',branch):branch=None
+    saida={'branch':branch,'worktree_vinculado':bool(ctx.get('worktree')),
+        'politica_compativel':ctx.get('politica_sha256')==politica,
+        'ultima_tentativa':({k:ultima.get(k) for k in ('tipo','resultado','inicio','fim','codigo','duracao_seg')} if ultima else None),
+        'entrega':None,'acao':'Conferir processos, política e prévia antes de recuperar'}
+    tabelas={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if 'entrega' in tabelas and token is not None:
+        row=db.execute('SELECT e.pr,e.sha,e.aprovado FROM reserva r JOIN entrega e ON e.token=r.token '
+            'WHERE r.projeto=? AND r.cartao=? AND r.token=?',(cfg['kanban']['repo'],str(cartao),token)).fetchone()
+        if row and type(row[0]) is int and row[0]>0 and isinstance(row[1],str) and re.fullmatch('[0-9a-f]{40}',row[1]):
+            saida['entrega']={'pr':row[0],'head':row[1],'revisao_registrada':row[2]==1,
+                'url':f'https://github.com/{cfg["kanban"]["repo"]}/pull/{row[0]}'}
+    if not saida['politica_compativel']:
+        saida['acao']='Política mudou: conciliar o contexto, sem retomada automática'
+    elif ultima and ultima.get('fim') is None:
+        saida['acao']='Acompanhar a tentativa e conferir atividade; não iniciar outra'
+    elif saida['entrega']:
+        saida['acao']='Conferir PRs e Alertas deste commit; entrega somente após merge'
+    saida['evidencia_sha256']=hashlib.sha256(json.dumps(saida,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    return saida
+
+
 def lotes(projeto, repo, ident=None):
     """Projeção limitada de relatórios locais; estado registrado não prova processo vivo."""
     base=pasta_dados(projeto).resolve(); pasta=base/'lotes'
@@ -117,7 +144,7 @@ def desempenho(db, repo, agora=None):
         tipos_resultado=('falha_console','sem_entrega','revisao_aprovada','revisao_desativada','revisao_reprovada','gate_bloqueado')
         if equipe is not None:
             if (not isinstance(equipe,str) or not equipe.strip() or len(equipe)>200
-                or tipo not in ('despacho','retomada') or resultado not in (*tipos_resultado,None)
+                or tipo not in ('despacho','retomada','correcao') or resultado not in (*tipos_resultado,None)
                 or type(atualizado) not in (int,float) or not math.isfinite(atualizado)
                 or type(item['inicio']) not in (int,float) or not math.isfinite(item['inicio']) or atualizado<item['inicio']
                 or (item['fim'] is not None and (type(item['fim']) not in (int,float)
@@ -143,10 +170,10 @@ def desempenho(db, repo, agora=None):
         chave=tuple(item[k] for k in ('equipe','console','modelo','origem_modelo','execucao'))
         g=grupos.setdefault(chave,dict(zip(('equipe','console','modelo','origem_modelo','execucao'),chave),
             tentativas=0,com_intervalo=0,sem_retorno=0,saida_zero=0,saida_nao_zero=0,soma_seg=0,_tentativas=[],
-            despachos=0,retomadas=0,tipo_nao_informado=0,sem_resultado=0,resultados=dict.fromkeys(tipos_resultado,0)))
+            despachos=0,retomadas=0,correcoes=0,tipo_nao_informado=0,sem_resultado=0,resultados=dict.fromkeys(tipos_resultado,0)))
         g['_tentativas'].append(linha[-1])
         g['tentativas']+=1
-        g['despachos' if tipo=='despacho' else 'retomadas' if tipo=='retomada' else 'tipo_nao_informado']+=1
+        g['despachos' if tipo=='despacho' else 'retomadas' if tipo=='retomada' else 'correcoes' if tipo=='correcao' else 'tipo_nao_informado']+=1
         if resultado is None:g['sem_resultado']+=1
         else:g['resultados'][resultado]+=1
         if item['fim'] is None: g['sem_retorno']+=1
@@ -294,7 +321,7 @@ def resumo(projetos,banco_consumo=None):
                     revisao = ',e.sha revisao_sha,e.pr revisao_pr,e.aprovado revisao_aprovada' if tem_revisao else ''
                     juntar = ' LEFT JOIN entrega e ON e.token=r.token' if tem_revisao else ''
                     tarefas = [dict(x) for x in db.execute(
-                        'SELECT r.cartao,r.equipe,r.console,r.estado,r.atualizado,r.sessao,r.pacote'+revisao+
+                        'SELECT r.cartao,r.equipe,r.console,r.estado,r.atualizado,r.sessao,r.pacote,r.token'+revisao+
                         ' FROM reserva r'+juntar+' WHERE r.projeto=? ORDER BY r.atualizado DESC LIMIT 200',
                         (cfg["kanban"]["repo"],))]
                     metricas=desempenho(db,cfg["kanban"]["repo"])
@@ -302,7 +329,9 @@ def resumo(projetos,banco_consumo=None):
                     for tarefa in tarefas:
                         tarefa['atividade']=saude['atividades'].get(str(tarefa['cartao']))
                         tarefa["ultima_execucao"]=metricas["por_cartao"].get(tarefa["cartao"])
-                        membro=json.loads(tarefa.pop('pacote')).get('funcionario')
+                        pacote=json.loads(tarefa.pop('pacote'))
+                        tarefa['checkpoint']=checkpoint(db,cfg,tarefa['cartao'],pacote,tarefa['ultima_execucao'],tarefa.pop('token'))
+                        membro=pacote.get('funcionario')
                         if membro:
                             tarefa['funcionario_id']=membro['id']
                             tarefa['funcionario_nome']=membro['nome']

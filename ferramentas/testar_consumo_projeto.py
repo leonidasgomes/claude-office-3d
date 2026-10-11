@@ -185,8 +185,15 @@ class ConsumoProjeto(unittest.TestCase):
         p=dados['projetos'][0];g=p['desempenho']['grupos'][0]
         self.assertEqual(g['tentativas_com_consumo'],1);self.assertEqual(g['consumo_observado']['total'],10)
         self.assertEqual(p['tarefas'][0]['ultima_execucao']['consumo']['grupos'][0]['total'],10)
-        for privado in (tentativa,token,'privada',identidade_projeto(self.a),str(self.raiz),'_tentativa'):
+        for privado in (tentativa,token,'privada',identidade_projeto(self.a),str(self.raiz)):
             self.assertNotIn(privado,json.dumps(dados))
+        def conferir_chaves(valor):
+            if isinstance(valor,dict):
+                self.assertNotIn('_tentativa',valor)
+                for item in valor.values():conferir_chaves(item)
+            elif isinstance(valor,list):
+                for item in valor:conferir_chaves(item)
+        conferir_chaves(dados)
         ledger.write_bytes(b'quebrado')
         with patch.object(gestao_painel,'pasta_dados',return_value=self.raiz):p=gestao_painel.resumo([self.a],banco_consumo=ledger)['projetos'][0]
         self.assertTrue(p['ativo']);self.assertIn('consumo_erro',p['desempenho'])

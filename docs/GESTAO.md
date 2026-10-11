@@ -1836,3 +1836,39 @@ O processo anterior precisa ter retorno confirmado e nenhum agente filho observa
 Cada tentativa fica registrada; tempo e tokens somam todas as tentativas, sem novo
 orçamento. Medição incompleta, erro do revisor ou limite atingido deixam bloqueio
 para conciliação. Reservas anteriores ao novo ciclo não são retomadas automaticamente.
+
+
+### Fila de PRs, referências seletivas e recuperação
+
+Em Gestão → CEO/diretor → Configurar operação automática, `max_prs_pendentes`
+limita PRs de entregas confirmadas da própria sessão antes de selecionar outro
+cartão. Zero desativa; de 1 a 20 habilita. A espera consulta conclusão pelo
+mecanismo existente, sem inferência nem despacho. Merge confirmado libera a
+fila. Conclusão recusada fica pendente para conferência em PRs/Alertas; não
+reduz gates. PRs históricos e externos não são adotados nem retomados por essa
+fila: exigem conciliação explícita. Alterar o limite exige ciclo pausado.
+
+`memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
+referências estruturadas a entregas com conclusão registrada por merge, do
+mesmo projeto, objetivo e hash do GDD, com ao menos um gate registrado e todos
+os gates aprovados. Inclui origem, PR, commits e hash da
+prova; texto longo permanece na fonte, sem carregar transcritos ou inventar
+lições. Não altera skills, regras ou aceite, não comprova a tarefa atual e não
+faz chamadas de modelo para indexação. Alterar exige ciclo pausado. Essa é uma
+memória inicial de entregas; aprendizado de decisões e promoção de skills
+continuam dependendo de evidências e validação.
+
+Em Trabalho, cada tarefa mostra um resumo de recuperação derivado do diário:
+branch e vínculo do worktree, última tentativa/retorno, PR/commit registrado,
+compatibilidade da política e próxima ação. Não lê o checkout principal,
+retoma processos ou publica novamente. Caminhos absolutos, sessões e tokens
+privados não são expostos. A prévia e a confirmação de retomada existentes
+continuam obrigatórias, assim como a conferência de agentes/ferramentas.
+Correções de revisão aparecem separadamente nas métricas de tentativas.
+
+Na ficha da mesa, a aba Trabalho também apresenta esses cartões e checkpoints.
+O vínculo segue o projeto selecionado e a equipe ou ID cadastrado do funcionário.
+A consulta é compartilhada, com cache de 30 segundos, somente enquanto houver
+ficha aberta. Estado da reserva e console observado aparecem separadamente;
+consulta indisponível não interrompe equipes nem reaproveita dados antigos como
+estado vivo. O botão abre a Gestão existente para conferência assistida.

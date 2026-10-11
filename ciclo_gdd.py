@@ -40,6 +40,8 @@ def resumo(projeto):
                                 'cartoes','motivo','proxima_acao','resultados')}
     publico['conclusoes']=[{k:c.get(k) for k in ('cartao','pr','estado','motivo','acao')}
                           for c in r.get('conclusoes',[])]
+    publico['prs_pendentes']=[{k:p.get(k) for k in ('cartao','equipe','pr','estado','motivo')}
+                              for p in r.get('prs_pendentes',[])]
     return publico
 
 
@@ -480,6 +482,14 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if conclusoes:
                 registro.setdefault('conclusoes',[]).extend(conclusoes)
                 atomico(p,registro)
+            if cfg['ciclo']['max_prs_pendentes']:
+                from conclusao_tarefas import pendencias_sessao
+                pendencias=pendencias_sessao(projeto,registro)
+                registro['prs_pendentes']=pendencias
+                if len(pendencias)>=cfg['ciclo']['max_prs_pendentes']:
+                    salvar('aguardando',cartoes=[],motivo='Limite de PRs pendentes desta sessão',
+                           proxima_acao='conferir PRs e Alertas; aguardar merge ou intervenção')
+                    esperar();continue
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
             prs=k._paginas(f"repos/{cfg['kanban']['repo']}/pulls?state=open")

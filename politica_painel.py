@@ -134,7 +134,7 @@ def atualizar_ciclo(projeto,versao,ciclo):
         raise Conflito('Política mudou; recarregue antes de salvar')
     if not cfg['ativo']:raise ValueError('Projeto deve estar ativo')
     if (not isinstance(ciclo,dict) or not ciclo
-        or not set(ciclo)<= {'duracao_min','continuo','max_correcoes_revisao'}):
+        or not set(ciclo)<= {'duracao_min','continuo','max_correcoes_revisao','max_prs_pendentes','memoria_referencias'}):
         raise ValueError('Informe duração, modo contínuo e limite de correções')
     from gestao_cli import pasta_dados
     estado=pasta_dados(raiz)/'ciclo.json'
@@ -145,10 +145,10 @@ def atualizar_ciclo(projeto,versao,ciclo):
             raise Conflito('Modo contínuo exige encerrar/conferir a sessão do controlador anterior')
         if registro.get('estado') not in ('concluido','limite','pausado') and not registro.get('duracao_futura_configuravel'):
             raise Conflito('Ciclo atual usa controlador anterior; aguarde finalizar para alterar a duração')
-    if (estado.exists() and ciclo.get('max_correcoes_revisao',cfg['ciclo']['max_correcoes_revisao'])
-        !=cfg['ciclo']['max_correcoes_revisao']
+    if (estado.exists() and any(ciclo.get(k,cfg['ciclo'][k])!=cfg['ciclo'][k]
+        for k in ('max_correcoes_revisao','max_prs_pendentes','memoria_referencias'))
         and json.loads(estado.read_text(encoding='utf-8')).get('estado') not in ('concluido','limite','pausado')):
-        raise Conflito('Pause e confira o ciclo antes de mudar as correções automáticas')
+        raise Conflito('Pause e confira o ciclo antes de mudar as correções ou a fila de PRs')
     novo=copy.deepcopy(cfg);novo['ciclo'].update(ciclo);novo=validar(novo)
     return gravar(raiz,cfg,atual,bruto,novo)
 

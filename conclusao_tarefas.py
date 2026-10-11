@@ -166,3 +166,38 @@ def confirmar_sessao(projeto,registro):
             novos.append({'token':token,'cartao':n,'pr':row[1],'estado':'bloqueado',
                           'motivo':str(exc),'acao':'conferir conclusão; não repetir automaticamente'})
     return novos
+
+
+def pendencias_sessao(projeto,registro):
+    """PRs de entregas confirmadas desta sessão; sem adoção/retomada de histórico."""
+    cfg=carregar(projeto);banco=pasta_dados(projeto)/'tarefas.db'
+    vinculos=registro.get('vinculos_conclusao',[])
+    if not vinculos:return []
+    if not isinstance(vinculos,list) or len(vinculos)>1000:
+        raise ValueError('Vínculos da sessão inválidos; confira Gestão')
+    retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
+              if r.get('estado')=='revisao' and r.get('codigo')==0]
+    feitos=registro.get('conclusoes',[]);saida=[];vistos=set()
+    with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        db.row_factory=sqlite3.Row
+        for item in vinculos:
+            n=item.get('cartao');token=item.get('token')
+            if (type(n) is not int or n<1 or not isinstance(token,str)
+                or not re.fullmatch('[0-9a-f]{32}',token) or token in vistos
+                or sum(r.get('cartao')==n for r in retornos)!=1):
+                raise ValueError('Vínculo da entrega ambíguo; confira Gestão')
+            vistos.add(token)
+            if any(r.get('token')==token and r.get('estado')=='concluido' for r in feitos):continue
+            row=db.execute('SELECT r.estado,r.equipe,e.pr,e.sha FROM reserva r '
+                'JOIN entrega e ON e.token=r.token WHERE r.projeto=? AND r.cartao=? AND r.token=?',
+                (cfg['kanban']['repo'],str(n),token)).fetchone()
+            if not row or row['estado'] not in ('revisao','concluido'):
+                raise ValueError('Entrega da sessão mudou; confira Gestão')
+            if row['estado']=='concluido':continue
+            if type(row['pr']) is not int or row['pr']<1 or not SHA.fullmatch(row['sha'] or ''):
+                raise ValueError('PR da entrega inválido; confira Gestão')
+            falha=next((r for r in feitos if r.get('token')==token and r.get('estado')=='bloqueado'),None)
+            saida.append({'cartao':n,'equipe':row['equipe'],'pr':row['pr'],'head':row['sha'],
+                'estado':'conferencia_necessaria' if falha else 'aguardando_merge',
+                'motivo':falha.get('motivo','') if falha else ''})
+    return saida

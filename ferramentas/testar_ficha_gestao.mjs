@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {tarefasDaMesa,leitorGestao,desenharTrabalhoMesa} from '../ficha_gestao.mjs';
+const id='a'.repeat(20),fid='b'.repeat(32);
+const tarefa={cartao:1,equipe:'Dev',estado:'bloqueado',checkpoint:{branch:'work/1',worktree_vinculado:true,acao:'Conferir política',ultima_tentativa:{tipo:'correcao',codigo:1},entrega:{pr:4,head:'c'.repeat(40),url:'https://github.com/o/r/pull/4'}}};
+const dados={projetos:[{id,ativo:true,equipes:[{nome:'Dev'}],tarefas:[tarefa,{cartao:2,equipe:'QA',funcionario_id:fid}]},{id:'d'.repeat(20),ativo:true,equipes:[{nome:'Dev'}],tarefas:[{cartao:999,equipe:'Dev'}]}]};
+assert.deepEqual(tarefasDaMesa(dados,id,'Dev'),[tarefa]);
+assert.equal(tarefasDaMesa(dados,id,'Office_'+fid)[0].cartao,2);
+assert.deepEqual(tarefasDaMesa(dados,'inexistente','Dev'),[]);
+assert.deepEqual(tarefasDaMesa(dados,id,'CEO'),[]);
+let chamadas=0,agora=100000;
+const ler=leitorGestao(async(url,opts)=>{chamadas++;assert.equal(url,'/api/gestao');assert.equal(opts.cache,'no-store');return {ok:true,json:async()=>dados};},()=>agora);
+await Promise.all([ler(),ler()]);assert.equal(chamadas,1);
+await ler();assert.equal(chamadas,1);agora+=30001;await ler();assert.equal(chamadas,2);
+let falhar=false;
+const seguro=leitorGestao(async()=>{if(falhar)throw Error('indisponível');return {ok:true,json:async()=>dados};},()=>agora);
+await seguro();agora+=30001;falhar=true;await assert.rejects(seguro);await assert.rejects(seguro);
+class E {constructor(tag){this.tag=tag;this.children=[];this.textContent='';}append(e){this.children.push(e);}addEventListener(){}set innerHTML(v){throw Error('HTML proibido');}}
+const pai=new E('ul'),doc={createElement:t=>new E(t)};
+desenharTrabalhoMesa(pai,[{...tarefa,checkpoint:{...tarefa.checkpoint,acao:'<script>texto</script>'}}],doc);
+const texto=e=>[e.textContent,...e.children.map(texto)].join('\n');
+assert.match(texto(pai),/não confirmado/);assert.match(texto(pai),/correcao/);assert.match(texto(pai),/<script>texto<\/script>/);
+assert.match(texto(pai),/PR #4/);assert.match(texto(pai),/Conferir em Gestão/);
+assert.equal(pai.children[0].children.find(e=>e.tag==='a').href,'https://github.com/o/r/pull/4');
+const inseguro=new E('ul');desenharTrabalhoMesa(inseguro,[{...tarefa,checkpoint:{...tarefa.checkpoint,entrega:{url:'javascript:alert(1)',pr:4}}}],doc);
+assert.equal(inseguro.children[0].children.some(e=>e.tag==='a'),false);
+console.log('OK: ficha por mesa/projeto, consulta compartilhada e estado registrado sem despacho.');

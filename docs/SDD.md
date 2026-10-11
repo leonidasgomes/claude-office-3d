@@ -2074,3 +2074,17 @@ PR via push normal, sem novo PR/merge, após verificar contexto/política e entr
 Recibos incertos não são repetidos; ciclo_painel deduplica cartão/PR. A conclusão
 continua condicionada ao merge comprovado. Testes: testar_despacho_revisao,
 testar_metas_cartao, testar_publicacao_host e testar_revisao_painel.
+
+
+Fila e memória de entregas: ciclo.max_prs_pendentes (0..20) controla espera por
+entregas em revisão desta sessão; pendencias_sessao usa vínculos privados e
+retornos confirmados, sem adoção de reservas antigas. A conclusão por merge
+continua em conclusao_tarefas. ciclo.memoria_referencias (0..5) habilita
+memoria_entregas.recuperar: leitura SQLite sem migração, conclusão registrada,
+mesmo repositório/objetivo/hash GDD, até cinco referências e hashes de origem.
+Ambas opções são desligadas por padrão e editáveis no formulário existente
+somente após pausa. O despacho Codex/OpenCode recebe referências como dados;
+Claude preserva o fluxo anterior. gestao_painel.checkpoint projeta o diário,
+sem paths, sessões, tokens ou inferência; correção é um tipo de tentativa
+reconhecido e agregado separadamente. Testes: testar_ciclo_gdd,
+testar_conclusao_tarefas, testar_memoria_entregas e testar_resultados_tentativas.
