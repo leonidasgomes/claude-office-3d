@@ -46,7 +46,8 @@ class Gates(unittest.TestCase):
         self.pr={'number':42,'state':'open','draft':False,'body':'Closes #1','labels':[],
                  'head':{'sha':self.rel['sha'],'ref':'feat/trabalho','repo':{'full_name':'owner/repo'}},
                  'base':{'sha':self.base,'ref':'main','repo':{'full_name':'owner/repo'}}}
-        self.k=Mock();self.k.chamar.side_effect=lambda *_:copy.deepcopy(self.pr)
+        self.k=Mock();self.remote_base=self.base
+        self.k.chamar.side_effect=lambda url:({'object':{'sha':self.remote_base}} if '/git/ref/' in url else copy.deepcopy(self.pr))
         self.statuses=[];self.k._paginas.side_effect=lambda _:copy.deepcopy(self.statuses)
         self.patches=[patch('gates_projeto.sys.platform','win32'),
                       patch('fila_prs.checks_atuais',return_value={'gates':[{'nome':g.CHECK,'estado':'missing'}]})]
@@ -100,6 +101,7 @@ class Gates(unittest.TestCase):
             r=self.rodar(e,pasta,ao_processo)
             self.pr.update(state='closed',merged=True,merged_at='2026-10-11T20:00:00Z',merge_commit_sha='b'*40)
             self.pr['base']['sha']='b'*40
+            self.remote_base='b'*40
             return r
         self.assertEqual(self.encaminhar(rodar=worker)['estado'],'publicado')
     def test_base_mudou_sem_merge_confirmado_nao_adota(self):
@@ -113,7 +115,10 @@ class Gates(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'ambíguos'):g.comando_script(self.repo,self.cfg)
     def test_ref_da_base_deve_corresponder_ao_sha_remoto(self):
         self.git('update-ref','refs/remotes/origin/main',self.rel['sha'])
-        with self.assertRaisesRegex(ValueError,'base diverge'):self.preparar()
+        self.assertIsNone(self.preparar())
+    def test_snapshot_antigo_do_pr_nao_substitui_referencia_atual(self):
+        self.pr['base']['sha']='a'*40
+        e=self.preparar();self.assertEqual(e['base'],self.base);self.assertEqual(e['base_pr'],'a'*40)
     def test_comando_nativo_fixo_perfil_restrito_sem_inferencia(self):
         import subprocess
         e=self.preparar();pasta=self.dados/'logs';pasta.mkdir()
