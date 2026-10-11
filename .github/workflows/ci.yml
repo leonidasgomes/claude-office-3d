@@ -30,6 +30,7 @@ jobs:
           python -W error ferramentas/testar_controlador_local.py
           python -W error ferramentas/testar_inicio_equipe.py
           python -W error ferramentas/testar_acompanhamento_ciclo.py
+          python -W error ferramentas/testar_ciclo_painel.py
           python -W error ferramentas/testar_git_codex.py
           python -W error ferramentas/testar_saude_projeto.py
           node ferramentas/testar_saude_projeto.mjs
@@ -43,6 +44,7 @@ jobs:
           node ferramentas/testar_cadastros_form.mjs
           node ferramentas/testar_atividade_cena.mjs
           node ferramentas/testar_cadastro_cena.mjs
+          node ferramentas/testar_ciclo_cena.mjs
       - name: SDD em dia com o código (rotas, tabelas, scripts e flags, chaves do config)
         run: python ferramentas/verificar_docs.py
       - name: Regressões do verificador de documentação
@@ -70,6 +72,7 @@ jobs:
           python -W error ferramentas/testar_providers.py
           python -W error ferramentas/testar_inicio_equipe.py
           python -W error ferramentas/testar_acompanhamento_ciclo.py
+          python -W error ferramentas/testar_ciclo_painel.py
           python -W error ferramentas/testar_compatibilidade_skills.py
           python -W error ferramentas/testar_skills_execucao.py
           python -W error ferramentas/testar_coordenacao.py

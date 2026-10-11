@@ -6,7 +6,7 @@ from iniciar_equipe import tarefa,main
 from console_provider import executar
 from providers_console import PROVIDERS
 class Inicio(unittest.TestCase):
-    def test_ciclo_abre_monitor_e_conversa_sem_despachar_lote(self):
+    def test_ciclo_abre_so_ceo_com_acompanhamento_no_escritorio(self):
         cfg={'ativo':True,'ceo':{'console':'codex','modelo':'teste','execucao':'cloud'},
              'ciclo':{'ativo':True,'base':'origin/main'}}
         with tempfile.TemporaryDirectory() as tmp, \
@@ -17,7 +17,8 @@ class Inicio(unittest.TestCase):
              patch('iniciar_equipe.executar',return_value=0) as ceo:
             host.return_value.returncode=0
             self.assertEqual(main(['--projeto',tmp,'--base','origin/main']),0)
-            monitor.assert_called_once_with(Path(tmp).resolve())
+            monitor.assert_not_called()
+            self.assertIn('escritório 3D',ceo.call_args.kwargs['prompt_inicial'])
             self.assertIn('publicacoes/*.json',ceo.call_args.kwargs['prompt_inicial'])
             self.assertIn('ciclo',host.call_args.args[0])
             self.assertNotIn('lote',host.call_args.args[0])
