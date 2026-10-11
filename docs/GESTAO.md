@@ -2110,3 +2110,19 @@ Para conferir autonomia, use os registros do ciclo, das tentativas e dos merges,
 em vez de presença na cena ou processo aberto. Uma correção com testes sintéticos
 aprovados não substitui medições ou validação do mapa exigidas pelo cartão.
 A atualização do texto não aprova o código, gates ou aceite integral do cartão.
+
+Quando todas as concessões autorizadas de um PR terminam por limite, o diretor
+recebe a cadeia de contratos e a meta encerrada. Esse contexto não renova saldo
+nem libera a reserva. A classificação pode propor preparação leve independente,
+com uma lacuna nova, equipe, entrega e aceite próprios. Etapas futuras abertas
+são fornecidas com corpo completo; uma preparação já aberta impede duplicação.
+O diretor precisa explicar a independência em relação às etapas existentes.
+Sem entrega útil, a decisão é esperar, sem repetir consultas enquanto nada mudar.
+
+Essa preparação usa recibos separados, identificados pela prova do esgotamento,
+e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
+política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos
+continuam exigindo conciliação. Medição, implementação e aceite do pai permanecem
+em seus cartões; uma investigação não pode consumir outro orçamento para executar
+o trabalho esgotado. O histórico de preparação permanece visível após mudanças
+de head, com os commits antigo e atual explícitos, sem aprovar o commit atual.

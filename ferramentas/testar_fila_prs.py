@@ -228,6 +228,61 @@ class Fila(unittest.TestCase):
                          lambda _:json.dumps({'subtarefa':s}))
         self.assertEqual(criar.call_args.args[3]['objetivo_gdd'],1)
 
+    def test_esgotamento_permite_preparacao_complementar_sem_renovar_reserva(self):
+        s=self.preparar_fixture();self.d['acao']='correcao'
+        esgotado={'pr':3,'cartao':1,'token':'f'*32,'max_concessoes':3}
+        pai=self.k.issue.return_value
+        filho={'number':10,'title':'Benchmark futuro','body':'## Escopo\nMedir na Unreal\n## Aceite\nCSV real',
+               'state':'open','html_url':'https://github.com/o/r/issues/10'}
+        self.k._paginas.return_value=[filho]
+        self.k.issue.side_effect=lambda n:pai if n==1 else filho
+        consultar=Mock(return_value=json.dumps({'subtarefa':s,'independencia':'Preparar insumos locais, sem executar ou repetir o benchmark #10.'}))
+        criar=Mock(return_value=11)
+        antigos=self.p/'preparacoes_prs';antigos.mkdir();(antigos/'3.json').write_text('{"estado":"dispensado"}')
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[esgotado]),patch('gestao_projeto.carregar',return_value=self.cfg):
+            r=preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consultar)
+        self.assertEqual(r['numero'],11);self.assertIn('Benchmark futuro',consultar.call_args.args[0])
+        self.assertEqual(criar.call_args.kwargs['preparacao']['sub_issues'],[filho])
+        self.assertEqual((antigos/'3.json').read_text(),'{"estado":"dispensado"}')
+        self.assertEqual(len(list(antigos.glob('3-*.json'))),1)
+        recibo=json.loads(next(antigos.glob('3-*.json')).read_text(encoding='utf-8'));proposta=recibo['proposta']
+        novo={'number':11,'title':proposta['titulo'],'state':'open','html_url':'https://github.com/o/r/issues/11',
+              'body':'\n\n'.join('**'+nome+':** '+valor for nome,valor in (
+                  ('Objetivo',proposta['objetivo']),('Aceite',proposta['aceite']),('Skills',proposta['skills']),
+                  ('Escopo','Planejamento/investigação deste bloqueio; não implementar o pai.')))}
+        self.k._paginas.return_value=[filho,novo];self.k.issue.side_effect=lambda n:pai if n==1 else novo if n==11 else filho
+        vinculos=self.p/'desbloqueios';vinculos.mkdir()
+        chave=criar.call_args.kwargs['preparacao']['chave']
+        (vinculos/('1-'+chave+'.json')).write_text(json.dumps({'estado':'criado','origem_pr':3,'numero':11,'proposta':proposta}),encoding='utf-8')
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[esgotado]):
+            self.assertEqual(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consultar)['numero'],11)
+        consultar.assert_called_once();criar.assert_called_once()
+
+    def test_esgotamento_sem_independencia_ou_com_preparacao_aberta_nao_duplica(self):
+        s=self.preparar_fixture();self.d['acao']='correcao';criar=Mock()
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[{'pr':3,'cartao':1}]):
+            with self.assertRaisesRegex(ValueError,'independência'):
+                preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,
+                              lambda _:json.dumps({'subtarefa':s}))
+            outra=self.p/'outra';outra.mkdir();pai=self.k.issue.return_value
+            filho={'number':10,'title':'Investigar','body':'**Escopo:** Planejamento/investigação deste bloqueio; não implementar o pai.',
+                   'state':'open','html_url':'https://github.com/o/r/issues/10'}
+            self.k._paginas.return_value=[filho];self.k.issue.side_effect=lambda n:pai if n==1 else filho
+            consulta=Mock()
+            self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],outra,self.k,criar,consulta))
+            consulta.assert_not_called()
+        criar.assert_not_called()
+
+    def test_subissue_mudou_durante_decisao_nao_cria(self):
+        s=self.preparar_fixture();criar=Mock();self.d['acao']='correcao'
+        def consultar(_):
+            self.k._paginas.return_value=[{'state':'open'}]
+            return json.dumps({'subtarefa':s,'independencia':'Resolver nova lacuna de recursos, preservando etapas.'})
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[{'pr':3,'cartao':1}]),patch('gestao_projeto.carregar',return_value=self.cfg):
+            with self.assertRaisesRegex(ValueError,'mudaram'):
+                preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consultar)
+        criar.assert_not_called()
+
     def test_envelope_kanban_nao_duplica_preparacao_e_aceite_mudado_nao_e_adotado(self):
         s=self.preparar_fixture();pai=dict(self.k.issue.return_value);cartao=dict(self.k.cartao.return_value)
         consulta=Mock(return_value=json.dumps({'subtarefa':s}));criar=Mock(return_value=9)

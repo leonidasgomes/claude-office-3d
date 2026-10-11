@@ -438,24 +438,42 @@ não comprovação automática de desempenho. Fontes, Kanban e instruções do u
     return chamar(rota,prompt,normalizador=lambda s:validar_decisao(s,cartoes,cfg),ao_evento=coletor.consumir)
 
 
-def subtarefa(projeto,cfg,k,cartao,d,origem_pr=None):
+def subtarefa(projeto,cfg,k,cartao,d,origem_pr=None,preparacao=None):
     """Intento persistido antes do POST; falha remota incerta não gera retry."""
     if not cfg['ciclo']['criar_subtarefas']:return None
     s=d['subtarefa']
     if s is None:return None
     if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou antes de criar subtarefa')
     pai=cartao['numero'];marca=f'office-desbloqueio:{pai}'
+    sufixo=''
+    if preparacao is not None:
+        if (origem_pr is None or not isinstance(preparacao,dict) or set(preparacao)!={'chave','sub_issues','independencia'}
+            or not re.fullmatch('[0-9a-f]{64}',str(preparacao['chave']))
+            or not isinstance(preparacao['independencia'],str) or not 1<=len(preparacao['independencia'].strip())<=4000):
+            raise ValueError('Preparação independente inválida')
+        from fila_prs import subissues_preparacao
+        from correcoes_prs import contexto_esgotamento,assinatura
+        provas=[x for x in contexto_esgotamento(pasta_dados(projeto),cfg)
+                if x['pr']==origem_pr and x['cartao']==pai and assinatura(x)==preparacao['chave']]
+        if len(provas)!=1:raise ValueError('Prova de esgotamento mudou antes de criar preparação')
+        sufixo='-'+preparacao['chave'];marca+=sufixo
     pasta=pasta_dados(projeto)/'desbloqueios';pasta.mkdir(parents=True,exist_ok=True)
-    recibo=pasta/(str(pai)+'.json')
+    recibo=pasta/(str(pai)+sufixo+'.json')
+    if recibo.is_symlink():raise ValueError('Recibo de subtarefa inválido')
     if recibo.exists():
         anterior=json.loads(recibo.read_text(encoding='utf-8'))
         if origem_pr is not None and anterior.get('origem_pr')!=origem_pr:return None
+        if preparacao is not None and (anterior.get('preparacao_independente')!=preparacao or anterior.get('proposta')!=s):
+            raise ValueError('Preparação diverge do recibo existente')
         if anterior['estado']=='criado':return anterior['numero']
         raise ValueError('Criação de subtarefa incerta; concilie '+str(recibo))
+    if preparacao is not None and subissues_preparacao(k,cfg['kanban']['repo'],pai)!=preparacao['sub_issues']:
+        raise ValueError('Sub-issues mudaram antes de criar preparação')
     relacionados=k._paginas(f"repos/{cfg['kanban']['repo']}/issues/{pai}/sub_issues")
     # Qualquer sub-issue aberta exige análise antes de adicionar outra.
-    if any(i.get('state')=='open' for i in relacionados):return None
+    if preparacao is None and any(i.get('state')=='open' for i in relacionados):return None
     registro={'estado':'criando','pai':pai,'proposta':s}
+    if preparacao is not None:registro['preparacao_independente']=preparacao
     if origem_pr is not None:registro['origem_pr']=origem_pr
     atomico(recibo,registro)
     corpo=(f'Parte de #{pai}. <!-- {marca} -->\n\n**Objetivo:** {s["objetivo"]}\n\n'
