@@ -388,13 +388,10 @@ def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executa
     falha_previa=None
     with ocupar_worktree(banco_worktrees(trabalho),trabalho):
         try:
-            from correcoes_prs import delegacao,identidade_pacote
+            from correcoes_prs import conferir_concessao,identidade_pacote
             cfg,_,_,k,pacote=preparado
-            d=delegacao(pasta_dados(projeto),cfg)
-            alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
-                  'token':reserva['token'],'head':contrato['head']}
-            if (not d or d['id']!=contrato['delegacao'] or alvo not in d['prs']
-                or carregar(projeto)!=cfg or identidade_pacote(pacote)!=contrato['pacote_sha256']):
+            conferir_concessao(pasta_dados(projeto),cfg,contrato,reserva)
+            if (carregar(projeto)!=cfg or identidade_pacote(pacote)!=contrato['pacote_sha256']):
                 raise ValueError('Delegação/política mudou antes de executar a correção')
             validar_worktree(projeto,trabalho)
             atual=estado_git(trabalho)

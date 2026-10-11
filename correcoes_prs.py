@@ -31,8 +31,10 @@ def delegacao(dados,cfg):
     if not arq.exists():return None
     d=ler(arq)
     if d.get('ativo') is not True:return None
-    if (set(d)-{'continuar_limite'}!={'id','ativo','repo','politica','origem','limites','prs'}
+    if (set(d)-{'continuar_limite','max_concessoes'}!={'id','ativo','repo','politica','origem','limites','prs'}
         or ('continuar_limite' in d and type(d['continuar_limite']) is not bool)
+        or type(d.get('max_concessoes',1)) is not int or not 1<=d.get('max_concessoes',1)<=5
+        or (d.get('max_concessoes',1)>1 and d.get('continuar_limite') is not True)
         or not re.fullmatch('[0-9a-f]{32}',d.get('id','')) or d['repo']!=cfg['kanban']['repo']
         or d['politica']!=assinatura(cfg) or not isinstance(d['origem'],str) or not d['origem'].strip()
         or d['limites']!={'tempo_min':cfg['metas']['tempo_min'],'tokens':cfg['metas']['tokens']}
@@ -47,6 +49,38 @@ def delegacao(dados,cfg):
             or p['pr'] in numeros):raise ValueError('Alvos da delegação inválidos')
         numeros.add(p['pr'])
     return d
+
+
+def pendentes(dados,cfg):
+    """Concessões finitas: chefe decide cada rodada, com cadeia de reservas comprovada."""
+    raiz=delegacao(dados,cfg)
+    if not raiz:return []
+    from controle_tarefas import Controle
+    from gestao_cli import estado_git
+    resultado=[]
+    for inicial in raiz['prs']:
+        alvo=dict(inicial)
+        for rodada in range(raiz.get('max_concessoes',1)):
+            ident=raiz['id'] if rodada==0 else assinatura({'raiz':raiz['id'],'pr':alvo['pr'],'rodada':rodada})[:32]
+            d={**raiz,'id':ident,'prs':[alvo],'raiz':raiz['id'],'rodada':rodada+1}
+            if not utilizado(dados,d,alvo['pr']):
+                if rodada:
+                    reservas=Controle(Path(dados)/'tarefas.db').listar(cfg['kanban']['repo'])
+                    r=next((r for r in reservas if r['token']==alvo['token']),None)
+                    if not r:raise ValueError('Cadeia de concessões diverge da reserva vigente')
+                    if r['estado']!='bloqueado':break
+                    with closing(sqlite3.connect((Path(dados)/'tarefas.db').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                        t=db.execute('SELECT fim,codigo FROM execucao_tarefa WHERE token=? ORDER BY inicio DESC,id DESC LIMIT 1',(alvo['token'],)).fetchone()
+                    if not t or t[0] is None:raise ValueError('Continuação incerta; não renovar concessão')
+                    if t[1]!=124:break  # Revisão usa saldo existente, não inventa limite.
+                    limite_confirmado(dados,alvo)
+                    alvo['head']=estado_git(r['pacote']['contexto_execucao']['worktree'])['sha']
+                resultado.append(d);break
+            with closing(sqlite3.connect((Path(dados)/'tarefas.db').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                anterior=db.execute('SELECT anterior,token FROM contrato_correcao WHERE delegacao=? AND pr=?',(ident,alvo['pr'])).fetchone()
+            if not anterior or anterior[0]!=alvo['token']:raise ValueError('Cadeia de concessões inválida')
+            alvo={**alvo,'token':anterior[1]}
+    return resultado
 
 
 def limite_confirmado(dados,alvo):
@@ -78,9 +112,18 @@ def limite_confirmado(dados,alvo):
 def contexto_continuacao(dados,cfg):
     d=delegacao(dados,cfg)
     if not d or not d.get('continuar_limite'):return None
-    alvos=[{**alvo,'limite_confirmado':limite_confirmado(dados,alvo)}
-           for alvo in d['prs'] if not utilizado(dados,d,alvo['pr'])]
-    return {'delegacao':d['id'],'limites':d['limites'],'prs':alvos} if alvos else None
+    alvos=[{**alvo,'concessao':p['id'],'limite_confirmado':limite_confirmado(dados,alvo)}
+           for p in pendentes(dados,cfg) for alvo in p['prs']]
+    return {'delegacao':d['id'],'limites':d['limites'],'max_concessoes':d.get('max_concessoes',1),'prs':alvos} if alvos else None
+
+
+def conferir_concessao(dados,cfg,contrato,reserva):
+    alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
+          'token':reserva['token'],'head':contrato['head']}
+    d=next((d for d in pendentes(dados,cfg) if d['id']==contrato['delegacao'] and alvo in d['prs']),None)
+    if not d or d['limites']!=contrato['limites']:
+        raise ValueError('Delegação/política mudou antes de executar a correção')
+    return d
 
 
 def utilizado(dados,d,pr):
@@ -156,7 +199,8 @@ def preparar(projeto,cfg,alvo,encaminhamento,d,k):
         'token_anterior':r['token'],'equipe':r['equipe'],'estado_kanban':cartao['status'],
         'politica':assinatura(cfg),'limites':d['limites'],'diretor':encaminhamento,'revisao':revisao,
         'reserva_sha256':assinatura(r),'pacote_sha256':identidade_pacote(pacote),
-        **({'continuacao_limite':limite} if limite else {})}
+        **({'continuacao_limite':limite,'autorizacao':{'raiz':d.get('raiz',d['id']),
+            'rodada':d.get('rodada',1),'max_concessoes':d.get('max_concessoes',1)}} if limite else {})}
     return evidencia,(cfg,provider,exe,k,pacote),r,trabalho
 
 
@@ -199,10 +243,8 @@ def decidir(projeto,cfg,evidencia,dados,chamar=None):
 
 def encaminhar(projeto,cfg,prs,fila,dados,k,ao_etapa=None,chamar=None,despachar=None):
     """Um despacho sequencial por rodada; incerteza fica registrada, sem retry."""
-    d=delegacao(dados,cfg)
-    if d is None:return None
-    for alvo in d['prs']:
-        if utilizado(dados,d,alvo['pr']):continue
+    for d in pendentes(dados,cfg):
+        alvo=d['prs'][0]
         pr=next((p for p in prs if p['number']==alvo['pr']),None)
         e=next((x for x in fila['encaminhamentos'] if x['pr']==alvo['pr']),None)
         if not pr or not e or e['acao'] not in (('correcao','etapa') if d.get('continuar_limite') else ('correcao',)):continue
@@ -212,7 +254,7 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,ao_etapa=None,chamar=None,despachar=
         if decisao['ceo']['acao']!='corrigir':continue
         # Revalidação após inferência, antes do claim/transação e do processo.
         atual,preparado,reserva,trabalho=preparar(projeto,cfg,alvo,e,d,k)
-        if atual!=evidencia or delegacao(dados,cfg)!=d:
+        if atual!=evidencia or d not in pendentes(dados,cfg):
             raise ValueError('Contrato mudou durante a decisão; não despachar')
         contrato={**evidencia,'assinatura':assinatura(decisao),'ceo':decisao['ceo']}
         if ao_etapa:ao_etapa('preparando',alvo,r=reserva)

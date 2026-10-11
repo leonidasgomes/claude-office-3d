@@ -2045,8 +2045,12 @@ Preparação não antecipa dependências nem substitui aceite, revisão ou merge
 
 Tentativa ativa, retorno incerto, filhos não conciliados, meta de outro cartão,
 política divergente ou concessão já utilizada impedem despacho. Histórico e
-consumo anteriores ficam arquivados. O controlador não gera concessões novas
-em loop nem usa esse mecanismo para reservas fora da delegação. Instalações
+consumo anteriores ficam arquivados. Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
+a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
+a reserva atual veio do contrato anterior e confere o novo head no PR. Cada
+rodada tem um identificador determinístico, uma decisão nova e o mesmo limite
+por concessão; o teto esgotado impede novas rodadas. Não gera concessões sem teto
+nem usa esse mecanismo para reservas fora da delegação. Instalações
 existentes continuam sem essa autorização até configuração explícita.
 
 

@@ -1,6 +1,6 @@
 import copy,json,sqlite3,sys,tempfile,unittest
 from pathlib import Path
-from contextlib import closing
+from contextlib import closing,nullcontext
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 import correcoes_prs as c
@@ -18,6 +18,7 @@ class Correcoes(unittest.TestCase):
         self.pacote={'objetivo':'entrega','aceite':'aceite integral preservado','escopo':'implementar',
             'skills':'nenhuma','cartao':1,'url':'https://github.com/o/r/issues/1',
             'executor':{'console':'codex','modelo':'modelo','execucao':'cloud'},
+            'contexto_execucao':{'worktree':str(self.p),'branch':'work/teste','escopo':'implementar'},
             'dependencias':{'verificadas_em':1,'itens':[]},
             'meta':{'limites':{'tempo_min':60,'tokens':2000000}}}
         self.token=self.ctrl.reservar('o/r','1','Dev','codex',self.pacote,quadro_atual=True)
@@ -104,6 +105,60 @@ class Correcoes(unittest.TestCase):
         self.assertIsNone(c.encaminhar(self.p,self.cfg,[{'number':3}],
             {'encaminhamentos':[{'pr':3,'acao':'etapa'}]},self.p,Mock(),despachar=despacho))
         despacho.assert_not_called()
+
+    def test_chefe_decide_proxima_concessao_sem_apagar_historico(self):
+        self.d.update(continuar_limite=True,max_concessoes=2);self.gravar_delegacao()
+        token=self.contratar();tentativa=self.ctrl.iniciar_execucao(token)
+        self.ctrl.terminar_execucao(tentativa,124,30);self.ctrl.transicao(token,'bloqueado')
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            db.execute('INSERT INTO atividade_execucao VALUES (?,?,?)',(tentativa,'encerrado',124))
+        self.tentativa=tentativa;self.meta_limite()
+        with patch('gestao_cli.estado_git',return_value={'sha':'b'*40,'branch':'work/teste'}):
+            ds=c.pendentes(self.p,self.cfg)
+            self.assertEqual(len(ds),1);self.assertNotEqual(ds[0]['id'],self.d['id'])
+            self.assertEqual(ds[0]['prs'][0]['token'],token)
+            self.assertEqual(ds[0]['prs'][0]['head'],'b'*40)
+            self.assertEqual(ds[0]['rodada'],2);self.assertEqual(ds[0]['raiz'],self.d['id'])
+            self.assertEqual(ds,c.pendentes(self.p,self.cfg))
+            self.assertEqual(c.contexto_continuacao(self.p,self.cfg)['max_concessoes'],2)
+            contrato={**self.contrato,'delegacao':ds[0]['id'],'head':'b'*40}
+            self.assertEqual(c.conferir_concessao(self.p,self.cfg,contrato,{'token':token}),ds[0])
+            with self.assertRaises(ValueError):
+                c.conferir_concessao(self.p,self.cfg,{**contrato,'delegacao':self.d['id']},{'token':token})
+            with self.assertRaises(ValueError):
+                c.conferir_concessao(self.p,self.cfg,{**contrato,'head':'c'*40},{'token':token})
+            # Exercita a entrada real: ela deve aceitar o ID da rodada, não o raiz.
+            import gestao_cli
+            pacote=copy.deepcopy(self.pacote);contrato['pacote_sha256']=c.identidade_pacote(pacote)
+            k=Mock();k.chamar.return_value={'state':'open','draft':False,'merged':False,
+                'head':{'sha':'b'*40,'ref':'work/teste'},'labels':[]}
+            reserva=self.ctrl.listar('o/r')[0]
+            with patch('gestao_cli.ocupar_worktree',return_value=nullcontext()),\
+                 patch('gestao_cli.banco_worktrees'),patch('gestao_cli.pasta_dados',return_value=self.p),\
+                 patch('gestao_cli.carregar',return_value=self.cfg),patch('gestao_cli.validar_worktree'),\
+                 patch('gestao_cli._despachar',return_value={'estado':'executando'}) as despacho:
+                r=gestao_cli.despachar_correcao(self.p,(self.cfg,Mock(),None,k,pacote),reserva,self.p,contrato)
+                self.assertEqual(r['estado'],'executando');despacho.assert_called_once()
+        with closing(sqlite3.connect(self.ctrl.banco)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM execucao_tarefa').fetchone()[0],2)
+        self.d['max_concessoes']=1;self.gravar_delegacao()
+        self.assertEqual(c.pendentes(self.p,self.cfg),[])
+
+    def test_concessoes_exigem_teto_finito_e_nao_renovam_revisao(self):
+        for valor in (0,6,True,'2'):
+            self.d.update(continuar_limite=True,max_concessoes=valor);self.gravar_delegacao()
+            with self.assertRaises(ValueError):c.delegacao(self.p,self.cfg)
+        self.d.update(continuar_limite=False,max_concessoes=2);self.gravar_delegacao()
+        with self.assertRaises(ValueError):c.delegacao(self.p,self.cfg)
+        self.d.update(continuar_limite=True,max_concessoes=2);self.gravar_delegacao()
+        token=self.contratar();tentativa=self.ctrl.iniciar_execucao(token)
+        self.ctrl.terminar_execucao(tentativa,0,30);self.ctrl.transicao(token,'bloqueado')
+        self.assertEqual(c.pendentes(self.p,self.cfg),[])
+
+    def test_nova_concessao_nao_retoma_tentativa_ativa(self):
+        self.d.update(continuar_limite=True,max_concessoes=2);self.gravar_delegacao()
+        token=self.contratar();self.ctrl.iniciar_execucao(token);self.ctrl.transicao(token,'bloqueado')
+        with self.assertRaisesRegex(ValueError,'incerta'):c.pendentes(self.p,self.cfg)
 
     def test_novo_contrato_arquiva_historico_sem_aprovar_entrega(self):
         token=self.contratar();self.assertNotEqual(token,self.token)
