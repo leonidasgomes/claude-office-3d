@@ -1747,7 +1747,7 @@ executar com recurso leve; usa os mesmos worktrees, lote, limite de dois cartõe
 e gates. Não encadeia criação de subtarefas nem retoma reservas bloqueadas.
 Investigações despachadas aparecem com essa etapa real no acompanhamento.
 
-### Publicação da revisão dos providers
+### Proteção contra orçamento insuficiente
 
 No ciclo automático, um primeiro despacho encerrado por limite de tempo ou tokens
 pode ser seguido por trabalho independente. Dois despachos consecutivos com
@@ -1758,6 +1758,8 @@ não cria sub-issues para contorná-lo e não retoma reservas. Depois de conferi
 causa, salve a configuração com tarefas paradas e inicie explicitamente outro
 ciclo. Tokens de entrada em cache também contam: contexto grande pode consumir
 o orçamento em poucas chamadas, mesmo com pouca saída.
+
+### Publicação da revisão dos providers
 
 Quando o projeto usa merge automático e exige `revisor-ia`, o despacho publica
 a revisão independente aprovada antes de encaminhar o cartão para revisão no
