@@ -46,13 +46,18 @@ def iniciar(projeto):
     if not cfg['ativo'] or not cfg['ciclo']['ativo']:raise ValueError('Ciclo não habilitado pelo usuário')
     p=caminho_estado(projeto);p.parent.mkdir(parents=True,exist_ok=True)
     # Pedido inicial persistido antes do processo: resultado incerto nunca é repetido.
+    limite_anterior=None
     if p.exists():
         anterior=json.loads(p.read_text(encoding='utf-8'))
         if anterior['estado'] not in TERMINAIS:
             raise ValueError('Ciclo existente/incerto; confira estado antes de iniciar outro')
+        if anterior.get('conciliacao',{}).get('preservar_janela') is True:
+            limite_anterior=anterior['limite']
     ident=uuid.uuid4().hex;agora=time.time()
+    limite=min(agora+60*cfg['ciclo']['duracao_min'],limite_anterior) if limite_anterior is not None else agora+60*cfg['ciclo']['duracao_min']
+    if limite<=agora:raise ValueError('Janela conciliada encerrada; configure novo início explícito')
     r={'id':ident,'estado':'iniciando','inicio':agora,
-       'limite':agora+60*cfg['ciclo']['duracao_min'],'atualizado':agora,
+       'limite':limite,'atualizado':agora,
        'pid':None,'cartoes':[],'resultados':[],'motivo':'','proxima_acao':'consultar quadro'}
     # Lock exclusivo de criação evita dois pedidos em paralelo.
     lock=p.with_suffix('.inicio.lock')

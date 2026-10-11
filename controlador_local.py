@@ -29,7 +29,15 @@ def bloquear_instancia():
 def atomico(arq,dados):
     tmp=arq.with_suffix('.tmp')
     if arq.is_symlink() or tmp.is_symlink():raise ValueError('Arquivo inválido')
-    tmp.write_text(json.dumps(dados,ensure_ascii=False),encoding='utf-8');tmp.replace(arq)
+    tmp.write_text(json.dumps(dados,ensure_ascii=False),encoding='utf-8')
+    for tentativa in range(5):
+        try:
+            if arq.is_symlink() or tmp.is_symlink():raise ValueError('Arquivo inválido')
+            tmp.replace(arq);return
+        except PermissionError:
+            if tentativa==4:raise
+            # Um leitor/antivírus pode manter o JSON aberto por instantes no Windows.
+            time.sleep(.05)
 
 
 def criar_worktrees(projeto,dados):

@@ -36,6 +36,10 @@ comprovado que não houve despacho nem reserva e os processos próprios acabaram
 o operador pode registrar `cancelado_antes_despacho` com a justificativa em
 `conciliacao`, preservando o branch/worktree parcial. O próximo início cria
 outro destino; não reaproveita nem limpa o anterior.
+Na conciliação explícita de um coordenador encerrado, `preservar_janela: true`
+em `conciliacao` do estado pausado limita o novo coordenador ao prazo anterior.
+Isso não retoma tarefas: permite um novo início após conferir os recibos, sem
+estender a janela aprovada. Um prazo já vencido continua bloqueado.
 
 O controlador aceita `--acao ciclo --arquivo` com `{}` e `--projeto` canônico.
 Para publicação limitada, `--acao publicar` recebe cartão, worktree, título e

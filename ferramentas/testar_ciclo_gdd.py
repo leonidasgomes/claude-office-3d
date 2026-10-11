@@ -65,6 +65,12 @@ class Ciclo(unittest.TestCase):
             with self.assertRaises(ValueError):c.iniciar(self.p)
             self.assertEqual(criar.call_count,1)
 
+    def test_inicio_conciliado_nao_estende_janela(self):
+        c.atomico(c.caminho_estado(self.p),{'estado':'pausado','limite':200,'conciliacao':{'preservar_janela':True}})
+        with patch.object(c.time,'time',return_value=100),patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)):
+            c.iniciar(self.p)
+        self.assertEqual(c.resumo(self.p)['limite'],200)
+
     def test_paginas_20_encontra_cartao_25_e_respeita_limite(self):
         itens=[self.item(n) for n in range(1,26)];tempo=[0];consultados=[];despachos=[]
         (self.p/'PRODUTO.md').write_text('#### Objetivo 1\n'+ ' '.join('#'+str(n) for n in range(1,26)),encoding='utf-8')
