@@ -48,7 +48,8 @@ class Ciclo(unittest.TestCase):
 
     def test_diretor_nao_executa_bloqueado_nem_inventa_equipe(self):
         candidato={**self.item(1),'preparavel':False,'bloqueio':'reserva bloqueada'}
-        with self.assertRaises(ValueError):c.validar_decisao(json.dumps({'decisoes':[self.decisao(1,'executar')]}),[candidato],self.cfg)
+        r=c.validar_decisao(json.dumps({'decisoes':[self.decisao(1,'executar')]}),[candidato],self.cfg)
+        self.assertEqual(r[0]['acao'],'aguardar');self.assertIn('reserva bloqueada',r[0]['motivo'])
         d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'x','equipe':'inventada','objetivo':'x','aceite':'x','skills':'nenhuma'}
         with self.assertRaises(ValueError):c.validar_decisao(json.dumps({'decisoes':[d]}),[candidato],self.cfg)
 
