@@ -13,6 +13,10 @@ os projetos. As áreas CEO e diretor, Equipes, Funcionários e Trabalho e indica
 separam os controles. Equipes e funcionários podem ser cadastrados, editados e
 excluídos com proteção de vínculos pendentes e preservação do histórico.
 A roda do mouse aproxima a região sob o ponteiro.
+Personagens cadastrados permanecem na cena mesmo sem console aberto. A lista
+distingue cadastro, histórico e atividade recente observada, com a fonte do evento;
+a presença de uma mesa ou a leitura da ponte não comprova sessão ativa. Falhas de
+conexão exibem aviso e não ligam a demonstração automaticamente.
 Consulte [a separação e o Claude padronizado](docs/VERSOES.md) antes de migrar.
 
 ## Começar em uma instalação nova

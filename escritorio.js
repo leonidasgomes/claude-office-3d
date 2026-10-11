@@ -1,4 +1,4 @@
-// Claude Office 3D - escritório 3D onde os agentes do Claude Code trabalham.
+// Office Multi-provider - escritório 3D das equipes do projeto.
 // Cena leve: low-poly, sem sombras, materiais Lambert/Basic compartilhados.
 // Time, cores, apelidos e tema vêm do config.json (lido do servidor em /config por config.js).
 import * as THREE from 'three';
@@ -7,6 +7,7 @@ import { MOVEL, COMPACTO, gavetaInfo } from './movel.js';   // celular/tablet: m
 const K_ROTULO = COMPACTO ? 1.45 : 1;   // balões e rótulos 3D maiores em tela pequena
 import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG } from './config.js';
 import { buscarFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from './funcionarios_cena.mjs';
+import { eventoRecente, demoAutomaticaPermitida, fonteObservada } from './atividade_cena.mjs';
 const FUNCIONARIOS = await buscarFuncionarios();
 const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(FUNCIONARIOS);
 
@@ -44,7 +45,7 @@ const CORES_EXTRA = [0xa855f7, 0x14b8a6, 0xec4899, 0x06b6d4, 0x84cc16, 0xf97316]
 const corHex = (c, padrao) => { const n = parseInt(String(c || '').replace('#', ''), 16); return Number.isFinite(n) ? n : padrao; };
 // Por agente configurado (chave = nome em minúsculas): cor, nome de exibição + função, tipo de mesa e apelidos.
 const CORES_FIXAS = { outra_sessao: 0x64748b };
-const PERFIS = { outra_sessao: ['Outra sessão', 'Fora do time (outra janela do Claude)'] };
+const PERFIS = { outra_sessao: ['Outra sessão', 'Fora do time (outra sessão observada)'] };
 const MESA_DE = {};                 // chave -> 'lider' | 'dev' | 'design' | 'pesquisa' | 'padrao'
 const ALIAS = {};                   // chave (com '_') de qualquer nome conhecido -> nome canônico
 const CARGOS = { outra_sessao: 'Visita', assistente: 'Estagiário', explorador: 'Estagiária', planejador: 'Estagiário', guia_claude: 'Consultor' };
@@ -870,7 +871,7 @@ function construirDecoracaoNeutra() {
     g.fillStyle = gr; g.fillRect(0, 0, W, H);
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = 'bold 54px "Segoe UI", sans-serif'; g.fillText(CONFIG.titulo, W / 2, H * 0.42, W - 40);
-    g.font = '28px "Segoe UI", sans-serif'; g.fillStyle = '#b8c4d2'; g.fillText('agentes do Claude Code trabalhando', W / 2, H * 0.78, W - 40);
+    g.font = '28px "Segoe UI", sans-serif'; g.fillStyle = '#b8c4d2'; g.fillText('agentes e equipes do projeto', W / 2, H * 0.78, W - 40);
   });
   const tapete = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.6), mat(0x4b5a49));
   tapete.rotation.x = -Math.PI / 2; tapete.position.set(2, 0.02, 22.6); cena.add(tapete);
@@ -1973,7 +1974,8 @@ function atualizarAgente(a, dt, t) {
   if (a.pausa && a.pausa.pedirVolta && (a.atual || !a.fila.some((i) => i.pausa))) aplicarInterrupcao(a);
   // envelope/pasta que sobrou na mão (fila cortada pelo limite de 14 ações): larga ao sentar com a fila vazia
   if ((a.maoTipo === 'envelope' || a.maoTipo === 'pasta') && !a.atual && !a.fila.length && a.sentado) soltarItem(a);
-  const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado;
+  const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado &&
+    (emDemo() || eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO));
   if (!livre) a.ociosoDesde = null;
   else {
     if (a.ociosoDesde == null) a.ociosoDesde = t;
@@ -2032,10 +2034,13 @@ const rodandoComando = (a) => !!a.ocupadoAte && agora() < a.ocupadoAte && a.inic
 // o que o agente está fazendo agora: {sub, rel, exata}. Comando longo: "rodando há 9 min"; ocioso: "ocioso há 20 min".
 function linhaAgente(a) {
   const e = String(a.estado || 'ocioso'), ocioso = e.startsWith('ocioso');
-  if (!a.ultimoEventoMs) return { sub: e, rel: 'sem eventos recentes', exata: 'nenhum evento entre os últimos carregados pela página' };
+  if (!a.ultimoEventoMs) return { sub: 'Cadastrado no escritório', rel: 'sem atividade observada', exata: 'A presença na cena não comprova console ou sessão ativa.' };
   const fazendo = e.startsWith('trabalhando') && a.agoraFaz && a.agoraFaz.resumo;   // conversa/reunião: vale o último evento
   const resumo = String(fazendo || a.ultimoResumo || '').replace(/\s+/g, ' ').trim();
-  const exata = 'último evento às ' + (a.ultimoEvento || '');
+  const fonte = fonteObservada(a.agoraFaz || a.eventoObservado);
+  const exata = 'último evento às ' + (a.ultimoEvento || '') + ' · fonte observada: ' + fonte;
+  if (!rodandoComando(a) && !eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO))
+    return { sub: resumo ? 'histórico: ' + resumo : 'sem atividade recente', rel: 'sem atividade recente · ' + fonte, exata };
   if (ocioso) return { sub: resumo ? 'último: ' + resumo : 'ocioso', rel: 'ocioso ' + haQuanto(a.ultimoEventoMs).replace('agora', 'há < 1 min'), exata };
   if (rodandoComando(a)) return { sub: resumo || e, rel: 'rodando ' + haQuanto(a.inicioComandoMs).replace('agora', 'há < 1 min'), exata };
   const est = e.split(' · ')[0];
@@ -2059,8 +2064,9 @@ const elResumo = $('resumo');
 let resumoAtual = '';
 function atualizarResumo() {
   if (!elResumo) return;
-  const n = ordemAgentes.length, w = ordemAgentes.filter((a) => String(a.estado).startsWith('trabalhando')).length;
-  const txt = `${n} agente${n === 1 ? '' : 's'} · ${w} trabalhando`;
+  const n = ordemAgentes.length, w = ordemAgentes.filter((a) => String(a.estado).startsWith('trabalhando') &&
+    (rodandoComando(a) || eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO))).length;
+  const txt = `${n} mesas · ${w} com atividade observada`;
   if (txt !== resumoAtual) { resumoAtual = txt; elResumo.textContent = txt; }
 }
 function horaDe(ev) {
@@ -2503,6 +2509,7 @@ $('btnVisao').addEventListener('click', () => iniciarFoco(VISAO_GERAL.alvo.clone
 // ---------------------------------------------------------------- Eventos
 function processar(ev, animar = true, silencioso = false) {   // silencioso: avanço rápido do replay (sem feed nem ficha)
   if (!ev || typeof ev !== 'object') return;
+  if (!replay && !eventoRecente(ev, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO)) animar = false;
   const nome = normalizarNome(ev.agente) || 'Desconhecido';
   const tipo = String(ev.tipo || 'trabalho').toLowerCase();
   let para = ev.para; if (typeof para === 'string') para = [para];
@@ -2514,6 +2521,7 @@ function processar(ev, animar = true, silencioso = false) {   // silencioso: ava
   if (!silencioso && !replay) window.dispatchEvent(new CustomEvent('office-evento', { detail: ev }));   // painel 🗺️ Arquitetura (quem mexe onde)
   if (!a) return;
   a.ultimoEvento = horaDe(ev);
+  a.eventoObservado = ev;
   const msEv = Date.parse(ev.ts);
   a.ultimoEventoMs = Number.isFinite(msEv) ? Math.min(msEv, relogioMs()) : relogioMs();
   a.ultimoResumo = resumo || (tipo !== 'ocioso' ? tipo : a.ultimoResumo);
@@ -2809,7 +2817,7 @@ function limparCena() {   // todos sentados, sem filas, pausas, balões, subagen
     a.pos.copy(a.mesa.assento); a.yaw = a.yawAlvo = Math.PI; a.sentado = true; posturaSentado(a.fig, true); a.fig.dentro.visible = true;
     a.estado = a.base = 'ocioso';
     Object.assign(a, { balao: null, balaoDesenhado: null, gesto: null, festa: null, resultado: null, ocupadoAte: 0, inicioComandoMs: 0, agoraFaz: null,
-      ultimoEventoMs: 0, ultimoEvento: null, ultimoResumo: '', convocados: [], ultimoComando: null, falhasSeguidas: 0, ultimoTrabalho: 0,
+      ultimoEventoMs: 0, ultimoEvento: null, eventoObservado: null, ultimoResumo: '', convocados: [], ultimoComando: null, falhasSeguidas: 0, ultimoTrabalho: 0,
       circulo: null, circuloAteMs: 0, ociosoDesde: null, emConversa: false, balaoSaida: 0 });
     a.hist.length = 0;
     a.ultimaLinha = '';
@@ -3069,7 +3077,9 @@ let desde = 0, iniciou = false, demoForcada = false, demoAuto = false, falhas = 
 const selo = $('selo'), btnDemo = $('btnDemo');
 function atualizarSelo() {
   const ativo = demoForcada || demoAuto;
-  selo.hidden = !ativo; btnDemo.classList.toggle('ativo', demoForcada);
+  selo.hidden = !ativo && !falhas;
+  selo.textContent = ativo ? 'Demonstração — eventos simulados' : 'Sem conexão — atividade não confirmada';
+  btnDemo.classList.toggle('ativo', demoForcada);
   const txt = demoForcada ? '🎬 Demo: ligado' : demoAuto ? '🎬 Demo: automática (sem servidor)' : '🎬 Demo: desligado';
   if (btnDemo.textContent !== txt) btnDemo.textContent = txt;   // item do menu ⚙️ Opções (menuitemcheckbox)
   btnDemo.setAttribute('aria-checked', demoForcada ? 'true' : demoAuto ? 'mixed' : 'false');
@@ -3091,12 +3101,14 @@ async function poll() {
   try {
     if (!iniciou) {
       const r = await fetch('/eventos?desde=0&ultimos=' + MAX_FEED, { cache: 'no-store' });
+      if (!r.ok) throw new Error('eventos indisponíveis');
       const j = await r.json();
       if (geracao !== geracaoPoll) throw new Error('descartada');
       (j.eventos || []).forEach((e) => processar(e, false));
       desde = j.total || 0; iniciou = true;
     } else {
       const r = await fetch('/eventos?desde=' + desde, { cache: 'no-store' });
+      if (!r.ok) throw new Error('eventos indisponíveis');
       const j = await r.json();
       if (geracao !== geracaoPoll) throw new Error('descartada');
       if (typeof j.total === 'number') {
@@ -3107,7 +3119,7 @@ async function poll() {
     }
     falhas = 0; demoAuto = false;
   } catch (e) {
-    if (geracao === geracaoPoll) { falhas++; if (falhas >= 1) demoAuto = true; }
+    if (geracao === geracaoPoll) { falhas++; demoAuto = demoAutomaticaPermitida(location.protocol); }
   }
   atualizarSelo();
   aplicarLinkDireto();

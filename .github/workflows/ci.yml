@@ -31,6 +31,7 @@ jobs:
         run: |
           python -W error ferramentas/testar_cadastro_gestao.py
           node ferramentas/testar_cadastros_form.mjs
+          node ferramentas/testar_atividade_cena.mjs
       - name: SDD em dia com o código (rotas, tabelas, scripts e flags, chaves do config)
         run: python ferramentas/verificar_docs.py
       - name: Regressões do verificador de documentação
