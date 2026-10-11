@@ -12,11 +12,13 @@ class Fila(unittest.TestCase):
         self.pr={'number':3,'state':'open','head':{'sha':'a'*40,'ref':'work/1'},'base':{'repo':{'full_name':'o/r'}},'body':'Parte de #1','draft':False}
         self.d={'pr':3,'head':'a'*40,'equipe':'Dev','acao':'etapa','motivo':'Validação prevista em etapa separada','objetivo':'medir mapa','aceite':'registro real das medições','evidencias_faltantes':'disponibilidade da bancada'}
         self.k=Mock();self.k.issue.return_value={'number':1,'body':'aceite original preservado'}
+        self.k.chamar.return_value={'check_runs':[],'total_count':0};self.k._paginas.return_value=[]
     def test_classifica_uma_vez_por_contexto_sem_escrever_kanban(self):
         consultar=Mock(return_value=[self.d]);etapa=Mock()
         a=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar,ao_consulta=etapa)
         b=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar,ao_consulta=etapa)
-        self.assertEqual(a,b);consultar.assert_called_once();self.k.chamar.assert_not_called()
+        self.assertEqual(a,b);consultar.assert_called_once()
+        self.assertTrue(all(len(chamada.args)==1 for chamada in self.k.chamar.call_args_list))
         etapa.assert_called_once()
         self.assertTrue(a['somente_preparacao']);self.assertIn('aceite original preservado',consultar.call_args.args[0])
         self.pr['head']['sha']='b'*40;self.d['head']='b'*40
@@ -34,5 +36,12 @@ class Fila(unittest.TestCase):
         self.pr['base']['repo']['full_name']='outro/repo';consultar=Mock()
         with self.assertRaises(ValueError):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         consultar.assert_not_called()
+    def test_check_atual_entra_no_pacote_e_mudanca_reclassifica(self):
+        run={'id':12,'name':'compilar','head_sha':'a'*40,'status':'completed','conclusion':'success','app':{'id':15368}}
+        self.k.chamar.return_value={'check_runs':[run],'total_count':1};consultar=Mock(return_value=[self.d])
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertIn('"estado": "success"',consultar.call_args.args[0])
+        run['conclusion']='failure';planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(consultar.call_count,2)
 
 if __name__=='__main__':unittest.main()

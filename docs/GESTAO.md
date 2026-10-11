@@ -1853,6 +1853,9 @@ Alterar o limite exige ciclo pausado.
 Ao atingir a fila, o diretor classifica cada PR no commit atual: revisar provas,
 corrigir o PR, propor etapa vinculada ou aguardar. O pacote contém corpos dos
 PRs/cartões e diagnósticos do mesmo commit. O recibo em dados/fila_prs guarda
+Também recebe checks e statuses remotos do head atual, com cobertura conferida:
+o relato antigo do corpo do PR não substitui esses estados. Check de build
+aprovado não comprova automaticamente benchmark, Drive ou Validate locais.
 a classificação por hash do contexto; sem mudanças, não há nova inferência.
 Consulta interrompida exige conferir o recibo, sem repetição automática.
 A classificação é preparação: não aprova merge, não muda o aceite do pai,
