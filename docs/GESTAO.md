@@ -2146,6 +2146,10 @@ Recibos novos vinculam token e tentativa. Um recibo antigo só é elegível com
 origem única e horário anterior ao fim da tentativa. Divergência ou intento
 incerto exige conciliação explícita; não gera outro PR, modelo ou despacho.
 
+O acompanhamento do merge reconhece a finalização pelo diário transacional e
+recibo confirmado, mantendo o código 124 do autor. Não exige um retorno zero
+inventado nem conclui um cartão cujo PR esteja aberto ou com gates pendentes.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos

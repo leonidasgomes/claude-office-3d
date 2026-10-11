@@ -113,6 +113,19 @@ class Finalizacao(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM finalizacao_publicada').fetchone()[0],1)
             self.assertEqual(db.execute('SELECT aprovado FROM entrega').fetchone()[0],1)
         self.assertIsNone(self.executar(revisar=revisor));revisor.assert_called_once()
+        registro={'finalizacoes_publicadas':[r],'vinculos_conclusao':[{'cartao':1,'token':self.token}]}
+        self.assertTrue(f.vinculo_confirmado(self.repo,registro,registro['vinculos_conclusao'][0]))
+        import conclusao_tarefas
+        fila=conclusao_tarefas.pendencias_sessao(self.repo,registro)
+        self.assertEqual(fila[0]['pr'],42);self.assertEqual(fila[0]['estado'],'aguardando_merge')
+        with patch('conclusao_tarefas.api',return_value={'merged':False}),patch('conclusao_tarefas.executar') as concluir:
+            self.assertEqual(conclusao_tarefas.confirmar_sessao(self.repo,registro),[]);concluir.assert_not_called()
+        with patch('conclusao_tarefas.api',return_value={'merged':True}),patch('conclusao_tarefas.executar',return_value={'estado':'concluido'}) as concluir:
+            self.assertEqual(conclusao_tarefas.confirmar_sessao(self.repo,registro)[0]['estado'],'concluido')
+            concluir.assert_called_once_with(self.repo,1,42)
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            db.execute('UPDATE execucao_tarefa SET codigo=0')
+        with self.assertRaisesRegex(ValueError,'diverge'):f.vinculo_confirmado(self.repo,registro,registro['vinculos_conclusao'][0])
     def test_reprovacao_mantem_bloqueio_sem_novo_autor(self):
         antes=self.historico()
         def rejeitar(*a,**kw):return revisao_execucao.executar(*a,**kw,chamar=lambda *_:

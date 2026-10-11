@@ -228,11 +228,13 @@ def confirmar_sessao(projeto,registro):
     banco=pasta_dados(projeto)/'tarefas.db'
     if not banco.is_file():return []
     feitos=registro.get('conclusoes',[]);novos=[]
+    from finalizacao_publicada import vinculo_confirmado
     for item in registro.get('vinculos_conclusao',[]):
         retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
                   if r.get('cartao')==item.get('cartao') and r.get('estado')=='revisao' and r.get('codigo')==0]
         token=item.get('token');n=item.get('cartao')
-        if (len(retornos)!=1
+        finalizado=vinculo_confirmado(projeto,registro,item)
+        if (len(retornos)+int(finalizado)!=1
             or not isinstance(token,str) or not re.fullmatch('[0-9a-f]{32}',token)
             or type(n) is not int or n<1 or any(r.get('token')==token for r in feitos)):
             continue
@@ -262,13 +264,14 @@ def pendencias_sessao(projeto,registro):
     retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
               if r.get('estado')=='revisao' and r.get('codigo')==0]
     feitos=registro.get('conclusoes',[]);saida=[];vistos=set()
+    from finalizacao_publicada import vinculo_confirmado
     with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row
         for item in vinculos:
             n=item.get('cartao');token=item.get('token')
             if (type(n) is not int or n<1 or not isinstance(token,str)
                 or not re.fullmatch('[0-9a-f]{32}',token) or token in vistos
-                or sum(r.get('cartao')==n for r in retornos)!=1):
+                or sum(r.get('cartao')==n for r in retornos)+int(vinculo_confirmado(projeto,registro,item))!=1):
                 raise ValueError('Vínculo da entrega ambíguo; confira Gestão')
             vistos.add(token)
             if any(r.get('token')==token and r.get('estado')=='concluido' for r in feitos):continue

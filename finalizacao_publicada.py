@@ -5,6 +5,48 @@ from pathlib import Path
 from correcoes_prs import assinatura,ler,limite_confirmado
 
 
+def vinculo_confirmado(projeto,registro,item):
+    """Revisão nova já conciliada: não transforma o código do autor em zero."""
+    from gestao_cli import pasta_dados
+    from gestao_projeto import carregar
+    from revisao_cruzada import conferir
+    finais=[f for f in registro.get('finalizacoes_publicadas',[])
+            if f.get('cartao')==item.get('cartao') and f.get('token')==item.get('token')]
+    if not finais:return False
+    if len(finais)!=1 or finais[0].get('estado')!='revisao' or finais[0].get('codigo_autor')!=124:
+        raise ValueError('Vínculo de finalização ambíguo')
+    f=finais[0];dados=pasta_dados(projeto);cfg=carregar(projeto)
+    with closing(sqlite3.connect((dados/'tarefas.db').resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        db.row_factory=sqlite3.Row
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='finalizacao_publicada'").fetchone():
+            raise ValueError('Finalização sem diário transacional')
+        row=db.execute('SELECT f.registro,f.pr AS pr_final,f.tentativa AS id_final,e.relatorio,e.pr,e.sha,e.aprovado,r.estado,r.cartao '
+            'FROM finalizacao_publicada f JOIN entrega e ON e.token=f.token '
+            'JOIN reserva r ON r.token=f.token WHERE f.token=? AND r.projeto=?',
+            (item['token'],cfg['kanban']['repo'])).fetchone()
+        if not row:raise ValueError('Finalização sem entrega registrada')
+        r=json.loads(row['registro']);e=r['evidencia'];t=e['tentativa']['id']
+        tentativas=db.execute('SELECT id,fim,codigo FROM execucao_tarefa WHERE token=?',(item['token'],)).fetchall()
+        atividade=db.execute('SELECT estado,codigo_console FROM atividade_execucao WHERE execucao=?',(t,)).fetchone()
+        if (row['estado'] not in ('revisao','concluido') or row['cartao']!=str(item['cartao'])
+            or row['pr']!=f['pr'] or row['pr_final']!=f['pr'] or row['id_final']!=t
+            or row['sha']!=e['sha'] or row['aprovado']!=1
+            or e['cartao']!=item['cartao'] or e['pr']!=f['pr'] or e['reserva']['token']!=item['token']
+            or len(tentativas)!=1 or tentativas[0]['id']!=t or tentativas[0]['fim'] is None
+            or tentativas[0]['codigo']!=124 or not atividade or atividade['estado']!='encerrado'
+            or type(atividade['codigo_console']) is not int
+            or r.get('estado')!='registrando' or r.get('ceo',{}).get('acao')!='revisar'
+            or r.get('diretor',{}).get('acao')!='revisar'
+            or json.loads(row['relatorio'])!=r.get('relatorio')
+            or not conferir(cfg,r['relatorio'],row['sha'])):
+            raise ValueError('Finalização/entrega/tentativa diverge do diário')
+    esperado=dados/'finalizacoes_publicadas'/(assinatura({'evidencia':e,'diretor':r['diretor']})+'.json')
+    arq=Path(f['recibo'])
+    if arq.resolve()!=esperado.resolve() or arq.is_symlink() or ler(arq)!={**r,'estado':'confirmado'}:
+        raise ValueError('Recibo de finalização não confere com o diário')
+    return True
+
+
 def preparar(projeto,cfg,pr,dados,k):
     from gestao_cli import validar_worktree,estado_git,conferir_cartao,worktree_sujo,RAIZ
     from gestao_projeto import fontes_resolvidas,executor
