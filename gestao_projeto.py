@@ -20,7 +20,7 @@ PADRAO = {
     "equipes": [],
     "rotas": {},
     "metas": {"ativo": False, "tempo_min": 60, "tokens": 100000},
-    "ciclo": {"ativo": False, "duracao_min": 120, "max_cartoes": 2,
+    "ciclo": {"ativo": False, "continuo": False, "duracao_min": 120, "max_cartoes": 2,
               "intervalo_seg": 300, "base": "", "criar_subtarefas": False},
     "sugestoes": {"ativo": False, "bots": [], "triagem": False},
     "auditor": {"ativo": False, "max_diff": 60000, "max_prs": 3},
@@ -89,7 +89,7 @@ def validar(dados):
         if type(metas[chave]) is not int or not minimo<=metas[chave]<=maximo:
             raise ValueError('Metas: limite inválido em '+chave)
     ciclo=cfg['ciclo']
-    for chave in ('ativo','criar_subtarefas'):
+    for chave in ('ativo','continuo','criar_subtarefas'):
         if type(ciclo[chave]) is not bool:raise ValueError('Ciclo: flags booleanas obrigatórias')
     for chave, minimo, maximo in [('duracao_min',1,240),('max_cartoes',1,2),('intervalo_seg',60,3600)]:
         if type(ciclo[chave]) is not int or not minimo<=ciclo[chave]<=maximo:
@@ -99,6 +99,8 @@ def validar(dados):
         import re
         if not re.fullmatch(r'origin/[A-Za-z0-9_./-]+',ciclo['base']):raise ValueError('Ciclo exige base origin/branch')
         if not cfg['ativo']:raise ValueError('Ciclo exige projeto ativo')
+    if ciclo['continuo'] and (not ciclo['ativo'] or not metas['ativo']):
+        raise ValueError('Operação contínua exige ciclo e metas por cartão habilitados')
     s=cfg['sugestoes']
     if type(s['triagem']) is not bool:raise ValueError('Sugestões: triagem deve ser booleana')
     if s['triagem'] and (not s['ativo'] or cfg['diretor'].get('execucao','cloud')!='cloud'):

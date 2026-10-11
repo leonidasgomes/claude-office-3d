@@ -15,6 +15,8 @@ class Ciclo(unittest.TestCase):
         atual=copy.deepcopy(self.cfg);atual['ciclo']['duracao_min']=60
         self.assertTrue(c.mesma_politica_em_execucao(atual,self.cfg))
         self.assertEqual(atual['ciclo']['duracao_min'],60)
+        atual['ciclo']['continuo']=True
+        self.assertTrue(c.mesma_politica_em_execucao(atual,self.cfg))
         atual['revisao']['ativo']=True
         self.assertFalse(c.mesma_politica_em_execucao(atual,self.cfg))
     def setUp(self):
@@ -36,8 +38,57 @@ class Ciclo(unittest.TestCase):
 
     def test_config_desligada_e_limites_validos(self):
         self.assertFalse(validar({})['ciclo']['ativo'])
+        self.assertFalse(validar({})['ciclo']['continuo'])
+        with self.assertRaises(ValueError):validar({'ciclo':{'continuo':True}})
         for cambio in ({'max_cartoes':3},{'duracao_min':True},{'intervalo_seg':0},{'ativo':True,'base':'-x'}):
             with self.assertRaises(ValueError):validar({'ciclo':cambio})
+
+    def test_inicio_continuo_exige_metas_e_nao_tem_prazo_global(self):
+        self.cfg['metas']['ativo']=True;self.cfg['ciclo']['continuo']=True
+        validar(self.cfg)
+        with patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)):
+            c.iniciar(self.p)
+        self.assertIsNone(c.resumo(self.p)['limite'])
+        self.assertTrue(c.resumo(self.p)['continuo'])
+
+    def test_continuo_passa_prazo_sem_repetir_ia_e_pausa_responsiva(self):
+        tempo=[0];consulta=Mock(return_value=[self.decisao(1)]);ident='a'*32
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':10,'resultados':[],'pausa_configuravel':True})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[self.item(1)]};k.cartoes.return_value=[self.item(1)];k._paginas.return_value=[]
+        def dormir(seg):
+            tempo[0]+=seg
+            if tempo[0]>=30:c.solicitar_pausa(self.p,ident)
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=[{**self.item(1),'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]):
+            c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta)
+        self.assertGreater(tempo[0],10);self.assertEqual(consulta.call_count,1)
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
+
+    def test_pausa_encerra_despacho_em_curso_sem_iniciar_segundo_cartao(self):
+        ident='a'*32;itens=[self.item(1),self.item(25)];despachos=[]
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':None,'resultados':[],'pausa_configuravel':True})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.return_value=itens;k._paginas.return_value=[]
+        grupo=[{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in itens]
+        def lote(p,plano):
+            despachos.extend(plano['cartoes']);c.solicitar_pausa(p,ident)
+            return {'estado':'processado','resultados':[{'cartao':1,'estado':'revisao','codigo':0}]}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo):
+            c.rodar(self.p,ident,consulta=lambda *args:[self.decisao(i['numero'],'executar') for i in itens],
+                criar=lambda p,d:{'plano':{'cartoes':[{'cartao':n,'worktree':'novo'} for n in d['cartoes']]}},lote=lote)
+        self.assertEqual([i['cartao'] for i in despachos],[1])
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
+        self.assertEqual(len(c.resumo(self.p)['resultados']),1)
+        with self.assertRaises(ValueError):c.solicitar_pausa(self.p,ident)
+
+    def test_continuo_para_por_falha_do_provider_sem_loop(self):
+        ident='a'*32
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,'limite':None,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[self.item(1)]};k.cartoes.return_value=[self.item(1)];k._paginas.return_value=[]
+        consulta=Mock(side_effect=ValueError('Provider sem tokens'))
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=[self.item(1)]):
+            with self.assertRaisesRegex(ValueError,'sem tokens'):c.rodar(self.p,ident,consulta=consulta)
+        self.assertEqual(consulta.call_count,1);self.assertEqual(c.resumo(self.p)['estado'],'erro')
 
     def test_ordem_prioridade_objetivo_nao_numero(self):
         itens=[{**self.item(1),'prioridade':'P2'},self.item(25),self.item(30)]

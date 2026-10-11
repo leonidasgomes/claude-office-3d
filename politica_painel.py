@@ -133,12 +133,15 @@ def atualizar_ciclo(projeto,versao,ciclo):
     if not isinstance(versao,str) or versao!=atual:
         raise Conflito('Política mudou; recarregue antes de salvar')
     if not cfg['ativo']:raise ValueError('Projeto deve estar ativo')
-    if not isinstance(ciclo,dict) or set(ciclo)!={'duracao_min'}:
-        raise ValueError('Informe somente a duração')
+    if not isinstance(ciclo,dict) or set(ciclo) not in ({'duracao_min'},{'duracao_min','continuo'}):
+        raise ValueError('Informe somente a duração e o modo contínuo')
     from gestao_cli import pasta_dados
     estado=pasta_dados(raiz)/'ciclo.json'
-    if estado.exists() and ciclo.get('duracao_min')!=cfg['ciclo']['duracao_min']:
+    if estado.exists() and any(ciclo.get(k,cfg['ciclo'][k])!=cfg['ciclo'][k] for k in ('duracao_min','continuo')):
         registro=json.loads(estado.read_text(encoding='utf-8'))
+        if (ciclo.get('continuo',cfg['ciclo']['continuo'])!=cfg['ciclo']['continuo']
+            and registro.get('estado') not in ('concluido','limite','pausado') and not registro.get('pausa_configuravel')):
+            raise Conflito('Modo contínuo exige encerrar/conferir a sessão do controlador anterior')
         if registro.get('estado') not in ('concluido','limite','pausado') and not registro.get('duracao_futura_configuravel'):
             raise Conflito('Ciclo atual usa controlador anterior; aguarde finalizar para alterar a duração')
     novo=copy.deepcopy(cfg);novo['ciclo'].update(ciclo);novo=validar(novo)
@@ -147,6 +150,18 @@ def atualizar_ciclo(projeto,versao,ciclo):
 
 def api_ciclo(projetos,dados,ident):
     if ident.get('permissao')!='pc':return 403,{'erro':'Configuração editável somente no PC'}
+    if isinstance(dados,dict) and dados.get('acao')=='pausar':
+        if set(dados)!={'projeto_id','versao','acao','sessao'}:return 400,{'erro':'Pedido inválido'}
+        projeto=next((p for p in projetos if id_projeto(p)==dados['projeto_id']),None)
+        if projeto is None:return 400,{'erro':'Projeto não configurado'}
+        try:
+            cfg,versao,_=snapshot(projeto)
+            if not cfg['ativo'] or versao!=dados['versao']:raise Conflito('Política mudou; recarregue Gestão')
+            from ciclo_gdd import solicitar_pausa
+            return 200,solicitar_pausa(projeto,dados['sessao'])
+        except Conflito as exc:return 409,{'erro':str(exc)}
+        except ValueError as exc:return 400,{'erro':str(exc)}
+        except (OSError,TypeError,KeyError):return 400,{'erro':'Estado indisponível; confira Gestão'}
     if not isinstance(dados,dict) or set(dados)!={'projeto_id','versao','ciclo'}:
         return 400,{'erro':'Pedido inválido'}
     projeto=next((p for p in projetos if id_projeto(p)==dados['projeto_id']),None)
@@ -154,7 +169,7 @@ def api_ciclo(projetos,dados,ident):
     try:return 200,atualizar_ciclo(projeto,dados['versao'],dados['ciclo'])
     except Conflito as exc:return 409,{'erro':str(exc)}
     except (ValueError,OSError,TypeError,KeyError):
-        return 400,{'erro':'Duração deve ser inteira entre 1 e 240 minutos; confira permissão de gravação'}
+        return 400,{'erro':'Confira duração de 1 a 240 minutos e metas habilitadas para operação contínua'}
 
 
 def atualizar_metas(projeto,versao,metas):
