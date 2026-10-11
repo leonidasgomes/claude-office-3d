@@ -103,19 +103,29 @@ def publicar(projeto,dados):
     registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch,
               'arquivos_pedido_excluidos':sorted(pedidos)}
     if atualizar:
-        if not nomes:raise ValueError('Correção sem alterações')
         conferir_pr()
         registro.update(pr=f"https://github.com/{cfg['kanban']['repo']}/pull/{dados['pr']}",head_anterior=dados['head_sha'],operacao='atualizar_pr')
+        if not nomes:
+            if pr_atual.get('title')==dados['titulo'] and pr_atual.get('body')==dados['corpo']:
+                raise ValueError('Correção sem alterações de arquivos ou descrição')
+            registro['operacao']='atualizar_descricao_pr'
     atomico(recibo,registro)
     if nomes:
         git('add','--all','--',*sorted(nomes));git('commit','-m',dados['titulo'])
     sha=git('rev-parse','HEAD')
     if atualizar:conferir_pr()
-    git('push','origin','HEAD:refs/heads/'+branch)
+    if not atualizar or nomes:git('push','origin','HEAD:refs/heads/'+branch)
     if atualizar:
         atual=api(f"repos/{cfg['kanban']['repo']}/pulls/{dados['pr']}")
         if atual.get('head',{}).get('sha')!=sha:
             raise ValueError('Push sem confirmação remota; concilie antes de repetir')
+        # A entrega pode ser documental no próprio PR; sem commit artificial ou push vazio.
+        api(f"repos/{cfg['kanban']['repo']}/pulls/{dados['pr']}",'PATCH',
+            {'title':dados['titulo'],'body':dados['corpo']})
+        confirmacao=api(f"repos/{cfg['kanban']['repo']}/pulls/{dados['pr']}")
+        if (confirmacao.get('head',{}).get('sha')!=sha or confirmacao.get('state')!='open'
+            or confirmacao.get('title')!=dados['titulo'] or confirmacao.get('body')!=dados['corpo']):
+            raise ValueError('Descrição sem confirmação remota; concilie antes de repetir')
         registro.update(estado='publicado',sha=sha)
         atomico(recibo,registro)
         return registro

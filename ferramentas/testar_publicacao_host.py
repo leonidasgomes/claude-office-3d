@@ -67,10 +67,12 @@ class Publicacao(unittest.TestCase):
                 update={**pedido,'pr':1,'head_sha':antigo}
                 original_recibo=(dados/'publicacoes'/'7.json').read_bytes()
                 pr={'number':1,'state':'open','draft':False,'merged':False,'body':'Closes #7',
+                    'title':'Entrega original',
                     'html_url':'https://github.com/teste/projeto/pull/1',
                     'head':{'sha':antigo,'ref':'work/teste','repo':{'full_name':'teste/projeto'}},
                     'base':{'ref':'main','repo':{'full_name':'teste/projeto'}}}
                 def api(*args):
+                    if len(args)>1 and args[1]=='PATCH':pr.update(args[2])
                     atual=copy.deepcopy(pr)
                     atual['head']['sha']=git('--git-dir',remoto,'rev-parse','refs/heads/work/teste')
                     return atual
@@ -88,6 +90,18 @@ class Publicacao(unittest.TestCase):
                     self.assertEqual((dados/'publicacoes'/'7.json').read_bytes(),original_recibo)
                     self.assertEqual(len(criacoes),1)
                     with self.assertRaises(ValueError):h.publicar(projeto,update)
+                    # Atualização apenas do texto: preserva SHA, não cria commit/push/PR.
+                    controle.registrar_revisao(token,1,{'sha':atualizado['sha']},cfg)
+                    texto={**pedido,'titulo':'Entrega com vínculo explícito','corpo':'Parte de #7\nEtapa futura existente #8; aceite do pai preservado.',
+                           'pr':1,'head_sha':atualizado['sha']}
+                    antes_log=git('-C',work,'rev-list','--count','HEAD')
+                    com_texto=h.publicar(projeto,texto)
+                    self.assertEqual(com_texto['operacao'],'atualizar_descricao_pr')
+                    self.assertEqual(com_texto['sha'],atualizado['sha'])
+                    self.assertEqual(git('-C',work,'rev-list','--count','HEAD'),antes_log)
+                    self.assertEqual(pr['body'],texto['corpo']);self.assertEqual(pr['title'],texto['titulo'])
+                    self.assertEqual(len(criacoes),1)
+                    with self.assertRaisesRegex(ValueError,'anterior'):h.publicar(projeto,texto)
                 self.assertEqual(git('-C',projeto,'branch','--show-current'),'main')
 
 
