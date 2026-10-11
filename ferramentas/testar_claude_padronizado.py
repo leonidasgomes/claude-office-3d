@@ -169,6 +169,8 @@ for r in (
                 eventos=[json.loads(x[0]) for x in c.execute('select dados from evento')]
             self.assertTrue(any(x.get('texto')=='Pronto' and x['sessao']=='raiz' for x in eventos))
             self.assertTrue(all(x['fonte']=='claude' for x in eventos))
+            from funcionarios import id_projeto
+            self.assertTrue(all(x['projeto_id']==id_projeto(raiz) for x in eventos))
 
 
 if __name__=='__main__': unittest.main()

@@ -246,6 +246,14 @@ def main():
         ev = evento(d)
         if ev is None:
             sys.exit(0)
+        # Campo aditivo: liga novos eventos ao projeto monitorado sem mudar nomes/hooks.
+        import hashlib
+        candidatos=[Path(p).resolve() for p in CFG['projetos']
+                    if configuracao.pasta_dentro(d.get('cwd',''),[p])]
+        if candidatos:
+            raiz=max(candidatos,key=lambda p:len(p.parts))
+            ev['projeto_id']=hashlib.sha256(str(raiz).encode()).hexdigest()[:20]
+            ev['fonte']='claude'
         try:
             import banco  # ao lado deste script; importado só depois do filtro de projeto
             banco.gravar_evento(ev)

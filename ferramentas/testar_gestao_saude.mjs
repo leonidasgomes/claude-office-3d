@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {mesasDoProjeto,mudarProjeto} from '../cadastro_cena.mjs';
 class Elemento {
   constructor(tag) { this.tag=tag; this.children=[]; this.open=false; this.textContent=''; this.dataset={}; this.handlers={}; }
   append(...filhos) { this.children.push(...filhos); }
@@ -41,7 +42,7 @@ dados.projetos.push({id:'d'.repeat(20),nome:'Projeto inativo',ativo:false,docume
   instrucoes_consoles:[{arquivo:'AGENTS.md',consoles:['codex','opencode'],estado:'presente',necessario:false,cita_regras:true}],
   limite:'Presença não comprova concordância das regras'}});
 const eventos={};
-const contexto=vm.createContext({document:{body,hidden:false,getElementById:id=>botoes[id]||null,documentElement:{classList:{contains:()=>compacto}},createElement:t=>new Elemento(t),addEventListener(){}},
+const contexto=vm.createContext({mesasDoProjeto,mudarProjeto,document:{body,hidden:false,getElementById:id=>botoes[id]||null,documentElement:{classList:{contains:()=>compacto}},createElement:t=>new Elemento(t),addEventListener(){}},
   window:{__opcoes:{fechar:foco=>menusFechados.push(foco)},addEventListener:(nome,fn)=>{eventos[nome]=fn;},dispatchEvent:e=>eventos[e.type]?.(e)},
   CustomEvent:class {constructor(type,opts={}){this.type=type;this.detail=opts.detail;}},
   fetch:async()=>({ok:true,json:async()=>dados}),formularioFuncionarios:vazio,formularioExecutores:vazio,formularioEquipe:vazio,botaoExcluir:vazio,
@@ -56,6 +57,9 @@ vm.runInContext(fonte,contexto);
 await vm.runInContext('painel.open=true; carregar()',contexto);
 const texto=e=>[e.textContent,...e.children.map(texto)].join('\n');
 const resultado=texto(body);
+assert.match(resultado,/Todas as mesas deste projeto/);
+assert.match(resultado,/Ver este projeto na cena/);
+assert.match(resultado,/Funcionários adicionais cadastrados/);
 assert.match(resultado,/Consumo deste projeto/);
 assert.match(resultado,/Acompanhamento de outras instalações/);
 assert.match(resultado,/Ponte: algumas fontes interrompidas/);

@@ -38,6 +38,12 @@ def rodar(*args, banco, entrada=None):
 
 
 def main():
+    marcado=ee.normalizar({'tipo':'trabalho','agente':'Dev','projeto_id':'a'*20})
+    assert marcado['projeto_id']=='a'*20
+    for invalido in ('../privado','b'*19,3):
+        try: ee.normalizar({'tipo':'trabalho','agente':'Dev','projeto_id':invalido})
+        except ValueError: pass
+        else: raise AssertionError('Identidade inválida aceita')
     tmp = Path(tempfile.mkdtemp(prefix="emit-teste-"))
     banco = tmp / "escritorio.db"
 

@@ -1,6 +1,7 @@
 // Gestão por especialidade. Consulta apenas com painel aberto e aba visível.
 // Toda informação externa é inserida como texto, sem HTML ou comandos executáveis.
 import { formularioEquipe, botaoExcluir } from './cadastros_form.mjs';
+import { mesasDoProjeto, mudarProjeto } from './cadastro_cena.mjs';
 import { formularioFuncionarios } from './funcionarios_form.js';
 import { formularioAgenteNativo } from './agentes_nativos_form.mjs';
 import { formularioRetomada, renderizarRetomadas, botaoConciliarRetomada } from './retomada_form.mjs';
@@ -60,6 +61,11 @@ async function carregar() {
       const secao = document.createElement('section'); corpo.append(secao);
       secao.dataset.projeto=p.id || '';
       linha('h3', p.nome, secao);
+      if(p.ativo && !p.erro) {
+        const ver=linha('button','Ver este projeto na cena',secao);ver.type='button';
+        ver.addEventListener('click',()=>mudarProjeto(p.id));
+        linha('p',`${(p.equipes||[]).length} equipes · ${(p.funcionarios||[]).length} funcionários adicionais. As mesas usam este cadastro.`,secao);
+      }
       if (p.erro) { linha('p', p.erro, secao); continue; }
       const atualizarProjeto=async()=>{corpo.querySelectorAll('details').forEach(d=>{d.open=false;});await carregar();};
       const areas={};
@@ -112,10 +118,20 @@ async function carregar() {
         for(const texto of linhasVisaoGeral(p.consumo))linha('p',texto,trabalho);
         for(const texto of linhasConsumo(p.consumo))linha('p',texto,trabalho);
       }
-      linha('h4', 'Funcionários cadastrados', funcionarios);
+      linha('h4', 'Todas as mesas deste projeto', funcionarios);
+      linha('p','CEO, diretor e mesas de equipe vêm da mesma configuração usada na cena. Mesa de equipe representa sua especialidade, sem criar um funcionário adicional.',funcionarios);
+      for(const mesa of mesasDoProjeto(p)) {
+        const card=linha('article','',funcionarios);card.className='gestaoCadastro';
+        linha('h4',mesa.titulo,card);linha('p',mesa.funcao,card);
+        if(mesa.cargo==='Equipe') {
+          const equipe=p.equipes.find(e=>e.nome===mesa.nome);
+          card.append(formularioEquipe(p,atualizarProjeto,equipe));
+        } else linha('p','Configure esta função na área CEO e diretor.',card);
+      }
+      linha('h4', 'Funcionários adicionais cadastrados', funcionarios);
       linha('p','Cadastre um funcionário, escolha sua equipe e selecione os skills compartilhados. Após salvar, atualize a cena 3D para carregar os assentos.',funcionarios);
       funcionarios.append(formularioFuncionarios(p,atualizarProjeto));
-      if(!(p.funcionarios||[]).length)linha('p','Nenhum funcionário cadastrado. Use Cadastrar funcionário para adicionar o primeiro.',funcionarios);
+      if(!(p.funcionarios||[]).length)linha('p','Nenhum funcionário adicional. As mesas das equipes acima já fazem parte do escritório.',funcionarios);
       for (const f of p.funcionarios || []) {
         const card=linha('article','',funcionarios);card.className='gestaoCadastro';
         linha('h4',f.nome,card);linha('p',`${f.equipe} · ${executor(f.executor)} · ${f.funcao}`,card);
