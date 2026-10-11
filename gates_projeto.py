@@ -163,8 +163,16 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,chamar=None,rodar=executar,ao_etapa=
             atual=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{e["pr"]}')
             from gestao_cli import estado_git,worktree_sujo
             git=estado_git(e['worktree'])
+            # O GitHub pode confirmar o auto-merge imediatamente após o status.
+            merge_confirmado=(atual.get('state')=='closed' and atual.get('merged') is True
+                and isinstance(atual.get('merged_at'),str)
+                and re.fullmatch('[0-9a-f]{40}',atual.get('merge_commit_sha') or ''))
             if (carregar(projeto)!=cfg or git['sha']!=e['sha'] or git['branch']!=e['branch'] or worktree_sujo(e['worktree'])
-                or atual.get('head',{}).get('sha')!=e['sha'] or atual.get('base',{}).get('sha')!=e['base']):raise ValueError('Contexto mudou durante gate; conferir publicação')
+                or atual.get('head',{}).get('sha')!=e['sha']
+                or atual.get('base',{}).get('repo',{}).get('full_name')!=cfg['kanban']['repo']
+                or atual.get('base',{}).get('ref')!=cfg['ciclo']['base'].removeprefix('origin/')
+                or (atual.get('base',{}).get('sha')!=e['base'] and not merge_confirmado)):
+                raise ValueError('Contexto mudou durante gate; conferir publicação')
             statuses=k._paginas(f'repos/{cfg["kanban"]["repo"]}/commits/{e["sha"]}/statuses')
             recentes=[s for s in statuses if s.get('context')==CHECK]
             if resultado.get('codigo') not in (0,1) or not recentes or recentes[0].get('id') in anteriores or recentes[0].get('state')!=('success' if resultado['codigo']==0 else 'failure'):

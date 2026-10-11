@@ -94,6 +94,17 @@ class Gates(unittest.TestCase):
         worker=Mock()
         with self.assertRaises(ValueError):self.encaminhar(chef,worker)
         worker.assert_not_called()
+    def test_merge_confirmado_durante_publicacao_nao_e_execucao_incerta(self):
+        def worker(e,pasta,ao_processo):
+            r=self.rodar(e,pasta,ao_processo)
+            self.pr.update(state='closed',merged=True,merged_at='2026-10-11T20:00:00Z',merge_commit_sha='b'*40)
+            self.pr['base']['sha']='b'*40
+            return r
+        self.assertEqual(self.encaminhar(rodar=worker)['estado'],'publicado')
+    def test_base_mudou_sem_merge_confirmado_nao_adota(self):
+        def worker(e,pasta,ao_processo):
+            r=self.rodar(e,pasta,ao_processo);self.pr['base']['sha']='b'*40;return r
+        with self.assertRaisesRegex(ValueError,'Contexto mudou'):self.encaminhar(rodar=worker)
     def test_script_sem_autorizacao_ou_ambiguo(self):
         (self.repo/'CLAUDE.md').write_text('Sem comando autorizado',encoding='utf-8')
         self.assertIsNone(g.comando_script(self.repo,self.cfg))
