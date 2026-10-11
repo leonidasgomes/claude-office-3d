@@ -33,6 +33,28 @@ def ambiente_git_codex(env):
     return saida
 
 
+def ambiente_objetos_git(projeto,env,destino,permitidas):
+    """Objetos temporários em cache autorizado; refs e index permanecem no .git."""
+    import subprocess
+    raiz=Path(projeto).resolve();cache=Path(destino).resolve()
+    pastas=[Path(p).resolve() for p in permitidas]
+    if (Path(destino).is_symlink() or cache.exists() or cache.is_relative_to(raiz)
+        or not any(cache!=p and cache.is_relative_to(p) for p in pastas)):
+        raise ValueError('Cache de objetos exige pasta nova fora do worktree na área autorizada')
+    leitura=env.copy()
+    for chave in ('GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES'):
+        leitura.pop(chave,None)
+    r=subprocess.run(['git','-C',str(raiz),'rev-parse','--path-format=absolute','--git-path','objects'],
+                     env=leitura,capture_output=True,text=True,encoding='utf-8',timeout=30)
+    if r.returncode:raise ValueError('Não foi possível localizar os objetos do repositório')
+    objetos=Path(r.stdout.strip()).resolve()
+    if not objetos.is_dir() or cache.is_relative_to(objetos):raise ValueError('Diretório de objetos inválido')
+    cache.mkdir(parents=True,exist_ok=False)
+    saida=env.copy();saida['GIT_OBJECT_DIRECTORY']=str(cache)
+    saida['GIT_ALTERNATE_OBJECT_DIRECTORIES']=json.dumps(objetos.as_posix(),ensure_ascii=False)
+    return saida
+
+
 def comando_nativo(exe, nome):
     """Evita cmd.exe nos shims npm dos novos providers (prompts são dados, não shell)."""
     caminho = Path(exe)

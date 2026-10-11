@@ -432,6 +432,8 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 'Execute Python "'+str(RAIZ/'controlador_local.py')+'" --projeto "'+str(Path(projeto).resolve())+
                 '" --acao publicar --arquivo caminho_json. O host faz commit/push/PR, preservando hooks e gates. '
                 'Depois publique a revisão de arquitetura pelo script autorizado do projeto. '
+                'O launcher fornece cache de objetos Git por tentativa para merge-tree; '
+                'use o ambiente herdado, sem alterar .git, refs, index ou permissões. '
                 'Não publique checks obrigatórios à mão nem faça merge. Se publicar falhar, pare sem repetir.\n')
         medicao=controle.iniciar_execucao(token,'retomada' if retomada else 'despacho')
         if pacote.get('meta'):
@@ -457,7 +459,8 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 if meta_execucao:parametros_skills['limites_meta']=meta_execucao
                 if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex' and not retomada:
                     fila_host=RAIZ/'dados'/'controlador';fila_host.mkdir(parents=True,exist_ok=True)
-                    parametros_skills.update({'diretorios_escrita':[fila_host],'sandbox':'workspace-write'})
+                    parametros_skills.update({'diretorios_escrita':[fila_host],'sandbox':'workspace-write',
+                                              'objetos_git':fila_host/('git-objetos-'+medicao)})
                 nativas=[r['nome'] for r in pacote['skills_resolvidas'] if r.get('ativacao_nativa')=='Skill']
                 if nativas:
                     parametros_skills.update({'skills_nativas':nativas,

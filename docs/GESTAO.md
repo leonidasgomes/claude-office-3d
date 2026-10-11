@@ -54,6 +54,16 @@ por engano como arquivo novo da entrega, o host exclui somente envelopes JSON
 idênticos ao pedido atual, registra os nomes e preserva o arquivo no disco.
 Arquivos JSON de produto permanecem na entrega. Pedido já indexado/versionado
 bloqueia antes do commit: retire-o da entrega e confira novamente.
+Despachos Codex novos do ciclo recebem `GIT_OBJECT_DIRECTORY` apontando para um
+cache novo por tentativa em `dados/controlador/git-objetos-ID`, já dentro da
+área autorizada. `GIT_ALTERNATE_OBJECT_DIRECTORIES` aponta para os objetos
+existentes do worktree, usados somente para leitura. Isso permite ao gate
+executar `git merge-tree --write-tree` sem escrever no `.git` protegido.
+Refs, índice, hooks e permissões permanecem nos locais anteriores; commit/push
+continuam exclusivos da publicação limitada pelo host. Cache existente ou fora
+da área autorizada bloqueia o lançamento. Retomadas e outros consoles não
+recebem essa configuração. O cache não é uma entrega nem substitui testes,
+aprovação de arquitetura, revisões e checks do commit atual.
 Claude legado continua com suas sessões e instruções específicas.
 
 Abra **⚙️ → Gestão das equipes** e escolha uma das áreas do seu projeto:
