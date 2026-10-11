@@ -1715,3 +1715,12 @@ decisão documentada com evidências e PR, pelos mesmos gates. Não implementa n
 encerra o pai e não altera seu aceite. Nos campos de skills, a declaração inteira
 `nenhuma` significa ausência de skill adicional; nomes desconhecidos numa lista
 continuam sendo recusados. As regras canônicas do projeto continuam aplicáveis.
+
+Quando uma decisão prepara uma subtarefa leve, o ciclo consulta imediatamente
+seu cartão no quadro vivo e pede sua classificação ao diretor, antes de continuar
+a varredura. Ela precisa estar no Backlog, manter a prioridade do pai e passar
+pela preparação comum, incluindo reservas, recursos, skills e meta. A resposta
+é validada e registrada separadamente. Só entra no despacho se o diretor aceitar
+executar com recurso leve; usa os mesmos worktrees, lote, limite de dois cartões
+e gates. Não encadeia criação de subtarefas nem retoma reservas bloqueadas.
+Investigações despachadas aparecem com essa etapa real no acompanhamento.
