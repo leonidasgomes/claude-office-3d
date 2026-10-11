@@ -9,6 +9,8 @@ import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG, PROJETO_CENA } from './
 import { destinoEvento } from './cadastro_cena.mjs';
 import { buscarFuncionarios, distribuirFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from './funcionarios_cena.mjs';
 import { eventoRecente, demoAutomaticaPermitida, fonteObservada } from './atividade_cena.mjs';
+import { estadoDoEscritorio } from './ciclo_ao_vivo.js';
+import { estadoNaCena } from './ciclo_cena.mjs';
 const FUNCIONARIOS = PROJETO_CENA ? distribuirFuncionarios({projetos:[PROJETO_CENA]}) : await buscarFuncionarios();
 const EXTENSAO_CENA = [...CONFIG.agentes.slice(10),...FUNCIONARIOS];
 const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(EXTENSAO_CENA);
@@ -1974,11 +1976,13 @@ function atualizarAgente(a, dt, t) {
     } else a.festa = null;
   }
   // pausas: atende pedido de volta e decide quando um agente ocioso vai descansar
+  const gestaoLivre = PROJETO_CENA && !replay && !emDemo() ? estadoNaCena(estadoDoEscritorio(),a.nome,relogioMs()) : null;
+  if(gestaoLivre && !gestaoLivre.livre) interromperPausa(a);
   if (a.pausa && a.pausa.pedirVolta && (a.atual || !a.fila.some((i) => i.pausa))) aplicarInterrupcao(a);
   // envelope/pasta que sobrou na mão (fila cortada pelo limite de 14 ações): larga ao sentar com a fila vazia
   if ((a.maoTipo === 'envelope' || a.maoTipo === 'pasta') && !a.atual && !a.fila.length && a.sentado) soltarItem(a);
   const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado &&
-    (emDemo() || eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO));
+    (gestaoLivre ? gestaoLivre.livre : (emDemo() || eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO)));
   if (!livre) a.ociosoDesde = null;
   else {
     if (a.ociosoDesde == null) a.ociosoDesde = t;
@@ -2036,6 +2040,13 @@ function haQuanto(ms) {
 const rodandoComando = (a) => !!a.ocupadoAte && agora() < a.ocupadoAte && a.inicioComandoMs;
 // o que o agente está fazendo agora: {sub, rel, exata}. Comando longo: "rodando há 9 min"; ocioso: "ocioso há 20 min".
 function linhaAgente(a) {
+  if(PROJETO_CENA && !replay && !emDemo()) {
+    const real=estadoNaCena(estadoDoEscritorio(),a.nome,relogioMs());
+    const lazer=a.pausa?' · lazer: '+ROTULO_LUGAR[a.pausa.slot.lugar]:'';
+    if(real.livre && !a.pausa && a.base==='trabalhando' && eventoRecente(a.eventoObservado,relogioMs(),TRABALHO_EXPIRA,MAX_COMANDO))
+      return {sub:'Atividade observada · '+fonteObservada(a.eventoObservado),rel:'evento recente',exata:'Evento recente; não comprova processo vivo nem conclusão.'};
+    return {sub:real.texto+lazer,rel:real.livre?'livre para pausa':'estado do host',exata:'Estado da Gestão; animação de lazer não comprova atividade de console.'};
+  }
   const e = String(a.estado || 'ocioso'), ocioso = e.startsWith('ocioso');
   if (!a.ultimoEventoMs) return { sub: 'Cadastrado no escritório', rel: 'sem atividade observada', exata: 'A presença na cena não comprova console ou sessão ativa.' };
   const fazendo = e.startsWith('trabalhando') && a.agoraFaz && a.agoraFaz.resumo;   // conversa/reunião: vale o último evento
@@ -2052,10 +2063,11 @@ function linhaAgente(a) {
 function atualizarPainel() {
   const fatia = Math.floor(relogioMs() / 30000);   // tempo relativo: refaz o texto a cada 30 s
   for (const a of ordemAgentes) {
-    const e = a.estado, chave = e + '|' + a.ultimoEventoMs + '|' + (a.agoraFaz && a.agoraFaz.resumo) + '|' + rodandoComando(a) + '|' + fatia;
+    const e = a.estado, chave = e + '|' + a.ultimoEventoMs + '|' + (a.agoraFaz && a.agoraFaz.resumo) + '|' + rodandoComando(a) + '|' + fatia+'|'+estadoDoEscritorio()?.ts;
     if (a.ultimaLinha !== chave) {
       const l = linhaAgente(a);
       a.liSub.textContent = l.sub; a.liSub.title = l.sub; a.liPonto.style.background = CORES_ESTADO[e.split(' · ')[0]] || '#6b7280';
+      if(PROJETO_CENA && !replay && !emDemo()) a.liPonto.style.background=estadoNaCena(estadoDoEscritorio(),a.nome,relogioMs()).cor;
       a.liRel.textContent = l.rel; a.liHora.title = l.exata; a.liHoraSr.textContent = ', ' + l.exata;
       a.ultimaLinha = chave;
       if (fichaAberta === a) estadoFicha(a);

@@ -24,7 +24,7 @@ assert.equal(fonteObservada({}), 'não identificada');
 const fonte = fs.readFileSync(new URL('../escritorio.js', import.meta.url),'utf8');
 const inicio=fonte.indexOf('function linhaAgente(a) {');
 const fim=fonte.indexOf('function atualizarPainel()',inicio);
-const contexto=vm.createContext({eventoRecente,fonteObservada,TRABALHO_EXPIRA:60,MAX_COMANDO:1800,
+const contexto=vm.createContext({PROJETO_CENA:null,eventoRecente,fonteObservada,TRABALHO_EXPIRA:60,MAX_COMANDO:1800,
   relogioMs:()=>agora, rodandoComando:a=>!!a.ocupadoAte,haQuanto:()=> 'há 1 h'});
 vm.runInContext(fonte.slice(inicio,fim),contexto);
 let linha=contexto.linhaAgente({estado:'ocioso'});

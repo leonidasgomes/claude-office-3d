@@ -68,7 +68,7 @@ def main(argv=None):
                     'Consulte o estado em '+str(pasta_dados(projeto))+' e no painel de gestão; explique bloqueios ao usuário. '
                     'Confira publicacoes/*.json para localizar PRs publicados pelo host. '
                     'Candidatos do diretor, reservas e revisão desativada não comprovam implementação ativa nem ausência de PR. '
-                    'A janela Acompanhamento ao vivo mostra mudanças automaticamente; esta conversa responde ao usuário. '
+                    'O Acompanhamento ao vivo no escritório 3D mostra mudanças automaticamente; esta conversa responde ao usuário. '
                     'O usuário pode conversar com você enquanto as equipes trabalham. Projeto: '+str(projeto))
         if args.verificar:
             print(prompt);return 0
@@ -83,9 +83,7 @@ def main(argv=None):
         worktrees=office.parent/'worktrees'
         worktrees.mkdir(exist_ok=True)
         if ciclo.get('ativo'):
-            from acompanhamento_ciclo import abrir
-            abrir(projeto)
-            print('CEO: abrindo acompanhamento do ciclo host; equipes continuam nas worktrees.',flush=True)
+            print('CEO: acompanhamento ao vivo no escritório 3D; equipes continuam nas worktrees.',flush=True)
         else:
             print('CEO: iniciando coordenação do Kanban; equipes executam em worktrees. Limite:',args.max_cartoes,flush=True)
         return executar(provider,exe,projeto,'CEO',modelo=cfg['ceo']['modelo'],

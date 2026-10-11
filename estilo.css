@@ -12,6 +12,14 @@ button:hover { background: #2d3a4b; }
 button.ativo { background: #b45309; border-color: #f59e0b; }
 .botoes { display: flex; gap: 6px; }
 #agentes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 40%; overflow-y: auto; }
+#cicloAoVivo { background: #1d2530; border: 1px solid #3a4756; border-radius: 8px; padding: 8px 10px; max-height: 230px; overflow-y: auto; flex-shrink: 0; }
+#cicloAoVivo p { margin: 5px 0; font-size: 12px; overflow-wrap: anywhere; }
+#cicloAoVivo strong { color: #93c5fd; }
+#cicloAoVivo small { display: block; color: #9aa7b6; font-size: 11px; margin-top: 5px; }
+#cicloAoVivo summary { cursor: pointer; margin-top: 8px; }
+#cicloAoVivo a { display: block; color: #93c5fd; margin-top: 5px; }
+#cicloAoVivo ~ #agentes { min-height: 130px; }
+#painel:has(#cicloAoVivo:not([hidden])) { overflow-y: auto; }
 #agentes li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #1d2530; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 #agentes li:hover { border-color: #3a4756; }
 .ponto { width: 12px; height: 12px; border-radius: 50%; flex: none; }
