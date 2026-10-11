@@ -1974,7 +1974,8 @@ function atualizarAgente(a, dt, t) {
   if (a.pausa && a.pausa.pedirVolta && (a.atual || !a.fila.some((i) => i.pausa))) aplicarInterrupcao(a);
   // envelope/pasta que sobrou na mão (fila cortada pelo limite de 14 ações): larga ao sentar com a fila vazia
   if ((a.maoTipo === 'envelope' || a.maoTipo === 'pasta') && !a.atual && !a.fila.length && a.sentado) soltarItem(a);
-  const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado;
+  const livre = a.base === 'ocioso' && !a.atual && !a.fila.length && !a.pausa && a.sentado &&
+    (emDemo() || eventoRecente(a.eventoObservado, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO));
   if (!livre) a.ociosoDesde = null;
   else {
     if (a.ociosoDesde == null) a.ociosoDesde = t;

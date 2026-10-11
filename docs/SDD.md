@@ -1212,7 +1212,8 @@ de comando ainda dentro do prazo, até 1800 s). Datas inválidas/futuras além d
 não geram atividade. Replay mantém seu relógio e animação históricos. A lista mostra
 cadastro sem atividade, histórico e fonte observada (inclusive ponte), sem inferir
 console ativo pela presença do personagem. Histórico permanece no feed e no banco.
-Evento recente tira o agente da pausa (`interromperPausa`).
+Evento recente tira o agente da pausa (`interromperPausa`). Pausas espontâneas
+exigem evento recente ou modo demonstração/replay; cadastro isolado não passeia.
 
 ### 6.2 Sugestões dos bots e `--pronto`
 
