@@ -2157,6 +2157,23 @@ cache compartilhados; contexto inalterado não repete consulta de modelo. A etap
 `revisando` identifica coordenação viva e permite solicitar pausa, aplicada após
 o trabalho em curso, sem interromper a revisão nem lançar outro coordenador.
 
+Um gate de arquitetura ausente pode ser encaminhado ao revisor cadastrado,
+após decisão estruturada do diretor e CEO. O adapter inicial usa o sandbox
+nativo do Codex no Windows para executar somente `scripts/review_pr.py`, quando
+esse comando estiver explicitamente autorizado na fonte de regras do projeto.
+Exige entrega revisada, autor e filhos encerrados, política e fontes atuais,
+worktree gerenciado limpo e script igual ao da base. PRs que alteram regras ou
+skills ficam fora deste encaminhamento, assim como rascunhos e merges manuais.
+
+O script do projeto publica seu próprio relatório e status no commit conferido.
+O Office exige um status novo compatível com a saída, conserva logs e recibo,
+e não fabrica aprovação. Usa rede filtrada para GitHub e escrita no worktree e
+temporário privado; objetos Git novos ficam nesse temporário, preservando o
+checkout principal. Não chama modelo para executar o script, reinicia o autor
+ou concede tokens. Falha publicada permanece reprovada; execução incerta não
+é repetida automaticamente. Outros consoles/plataformas conservam o fluxo
+existente até haver adapter validado. Todos os gates e o merge seguem exigidos.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos
