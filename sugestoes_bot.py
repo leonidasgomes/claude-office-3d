@@ -896,19 +896,34 @@ def publicar_gate_gestao(projeto,n,chamar=None):
         revisoes=consulta(f'repos/{repo}/pulls/{n}/reviews?per_page=100',paginar=True)
         if any(not isinstance(x,list) or len(x)>10000 for x in (comentarios,revisoes)):
             raise ValueError('Coleta de sugestões inválida ou excessiva; não publicar')
-        caixa=ler_caixa(cfg);ids={str(i['id']) for i in caixa}
+        caixa=ler_caixa(cfg);existentes={str(i['id']):i for i in caixa};fontes={}
         prs={str(n):{'branch':pr['head'].get('ref',''),'time':_time_do_pr(cfg,pr.get('labels'))}}
         novos=[]
         for comentario in comentarios:
             if ((eh_bot((comentario.get('user') or {}).get('login',''),cfg['bots'])
                  or MARCA_REVISOR in (comentario.get('body') or ''))
-                and not comentario.get('in_reply_to_id') and str(comentario['id']) not in ids):
+                and not comentario.get('in_reply_to_id')):
                 item=_item(cfg,{**comentario,'pull_request_url':f'https://api.github.com/repos/{repo}/pulls/{n}'},prs)
-                novos.append(item);ids.add(str(item['id']))
-        extra,gravidades=_revisoes(cfg,n,prs,ids,dados=revisoes)
+                novos.append(item);fontes[str(item['id'])]=comentario
+        extra,gravidades=_revisoes(cfg,n,prs,set(),dados=revisoes)
         for item in novos:
             if item['prioridade']=='?' and str(item['id']) in gravidades:item['prioridade']=gravidades[str(item['id'])]
-        gravar_caixa(cfg,caixa+novos+extra)
+        for item in novos+extra:
+            fonte=fontes.get(str(item['id']))
+            if fonte is None:
+                fonte=next((r for r in revisoes if re.fullmatch('r'+re.escape(str(r['id']))+'(?:m[0-9]+)?',str(item['id']))),None)
+            digest=hashlib.sha256(json.dumps({k:(fonte or {}).get(k) for k in
+                ('body','path','line','original_line','commit_id')},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            antigo=existentes.get(str(item['id']))
+            igual=(antigo and (antigo.get('fonte_sha256')==digest if antigo.get('fonte_sha256') else
+                   all(antigo.get(k)==item.get(k) for k in ('texto','titulo','arquivo','linha','prioridade','tipo'))))
+            if igual:antigo['fonte_sha256']=digest
+            else:
+                item['fonte_sha256']=digest
+                if antigo:caixa[caixa.index(antigo)]=item
+                else:caixa.append(item)
+                existentes[str(item['id'])]=item
+        gravar_caixa(cfg,caixa)
         commit=consulta(f'repos/{repo}/commits/{sha}')
         ok,motivos=pronto(cfg,n,coletar_antes=False,evidencias=(pr,revisoes,commit))
         atual(sha,base)

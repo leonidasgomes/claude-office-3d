@@ -170,6 +170,9 @@ class Gate(unittest.TestCase):
         self.assertTrue(sb.tratar(self.cfg(),'7','resolvida','Teste existente conferido')[0])
         self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'success')
         self.assertEqual(len(sb.ler_caixa(self.cfg())),1)
+        self.comentarios[0]['body']='**P1 — Outro erro**\nAchado novo comprovado. [revisor-ia]'
+        self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'pending')
+        self.assertEqual(sb.ler_caixa(self.cfg())[0]['situacao'],'nova')
 
     def test_falha_de_coleta_ou_head_mudou_nao_publica(self):
         api=self.preparar()
