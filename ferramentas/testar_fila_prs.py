@@ -65,6 +65,15 @@ class Fila(unittest.TestCase):
             planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         self.assertEqual(consultar.call_count,2)
         self.assertIn(json.dumps(str(self.p/'travas')),consultar.call_args.args[0])
+
+    def test_travas_sem_politica_atual_nao_interrompem_diretor(self):
+        from recursos_host import PoliticaRecursosDivergente
+        consultar=Mock(return_value=[self.d])
+        with patch('recursos_host.diretorios_travas',side_effect=PoliticaRecursosDivergente('política antiga')):
+            resultado=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(resultado['estado'],'classificado')
+        self.assertIn('"travas_por_equipe": {"Dev": []}',consultar.call_args.args[0])
+        self.assertIn('"recurso": "travas"',consultar.call_args.args[0])
     def revisao_fixture(self):
         from revisao_cruzada import assinatura
         pasta=self.p/'revisoes';pasta.mkdir(exist_ok=True)

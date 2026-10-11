@@ -2175,6 +2175,10 @@ com delegação antiga, ausência de despacho/escrita e prova de esgotamento pre
 fontes/política mudaram. A seleção informa `gates_contextos_pendentes` ao diretor
 e exclui somente esse candidato; o encaminhamento não consulta CEO nem executa
 worker nesse contexto. Revalidação após decisão continua obrigatória e estrita.
+`recursos_host.contexto_travas` projeta autorizações da política atual. Uma
+`PoliticaRecursosDivergente` gera pendência para o diretor e listas vazias, sem
+fornecer diretórios aos executores. Projeto, estrutura e caminhos inválidos
+continuam erros. Testes: `testar_recursos_host` e `testar_fila_prs`.
 
 `finalizacao_publicada` conserva token, tentativa, PR e registro completo da
 conciliação de uma publicação confirmada antes do limite do autor. Uma revisão
