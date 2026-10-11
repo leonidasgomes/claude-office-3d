@@ -400,6 +400,8 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     pacote['concessoes_esgotadas']=contexto_esgotamento(dados,cfg)
     from finalizacao_publicada import candidatos as publicacoes_revisaveis
     pacote['publicacoes_apos_limite']=publicacoes_revisaveis(projeto,cfg,prs,dados,k)
+    from gates_projeto import candidatos as gates_revisaveis
+    pacote['gates_pelo_revisor']=gates_revisaveis(projeto,cfg,prs,dados,k)
     from recursos_host import diretorios_travas
     pacote['recursos_host']={'assets':'Hidratação de pointers versionados do cache LFS local, sem download; a equipe solicita --acao assets.',
         'travas_por_equipe':{e['nome']:[str(p) for p in diretorios_travas(projeto,dados,cfg,e['nome'])] for e in cfg['equipes']}}
@@ -442,6 +444,10 @@ publicacoes_apos_limite identifica publicação concluída antes do término do 
 por orçamento, com contexto íntegro e origem comprovada. Encaminhe revisar quando
 uma revisão independente do PR existente permitir avançar: não peça retomar autor
 nem renovar saldo. O CEO decide essa revisão; gates e confirmação de merge continuam.
+gates_pelo_revisor lista gates ausentes com script autorizado pelas regras, entrega
+revisada e autor encerrado. Encaminhe revisar para o revisor cadastrado executar
+esse script em sandbox e publicar seu relatório, sem nova implementação, sessão
+do autor ou concessão. Não declare que um gate passou antes dessa execução.
 não trate falha antiga de build como atual quando o check atual passou, nem confunda
 build aprovado com prova de benchmark, Drive ou Validate que não foram apresentados.
 revisao_registrada traz os vereditos e achados já salvos para este head, com origem e hash.

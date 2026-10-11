@@ -619,6 +619,12 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     if finalizado['estado']=='revisao':
                         registro.setdefault('vinculos_conclusao',[]).append({'cartao':finalizado['cartao'],'token':finalizado['token']})
                     atomico(p,registro);continue
+                from gates_projeto import encaminhar as encaminhar_gate
+                gate=encaminhar_gate(projeto,cfg,prs,fila,pasta_dados(projeto),k,
+                    ao_etapa=lambda e:salvar('revisando',cartoes=[{'cartao':e['cartao'],'equipe':e['equipe'],'revisor':e['revisor']['nome']}],
+                                            proxima_acao='revisor executando gate autorizado do projeto; autor encerrado'))
+                if gate:
+                    registro.setdefault('gates_encaminhados',[]).append(gate);atomico(p,registro);continue
                 from correcoes_prs import encaminhar
                 correcao=encaminhar(projeto,cfg,prs,fila,pasta_dados(projeto),k,
                     ao_etapa=lambda etapa,alvo,r:salvar(etapa,

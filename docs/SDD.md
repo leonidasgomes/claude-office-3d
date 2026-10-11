@@ -2199,3 +2199,11 @@ percentual histórico, retira percentual atual/restante quando a leitura vence o
 `entregas_merge` conta apenas conclusões verificadas (até 100 recentes), com consumo
 vinculado observado nos últimos sete dias e cobertura parcial. Esperas são intervalos
 fechados do diário, não uma estimativa de causas de bloqueio nem de produtividade.
+
+`gates_projeto` encaminha o gate de arquitetura autorizado pelas regras ao
+revisor cadastrado, com decisões do diretor/CEO e recibo anterior à execução.
+O adapter inicial é Codex sandbox por perfil no Windows; executa o script
+versionado, sem inferência ou nova tentativa do autor, e verifica status novo
+no mesmo head. Política, fontes, base, worktree e processos encerrados são
+conferidos novamente. Alteração de skills/regras, publicação incerta ou contexto
+divergente impede o encaminhamento; nenhum resultado dispensa outros gates.
