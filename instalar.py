@@ -76,7 +76,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "grafo/claude/instalar_grafo.py", "grafo/testes/testar_grafo.py", "modelos/diretor.md", "modelos/briefing_diretor.py", "modelos/auto-merge.exemplo.yml", "modelos/sugestoes_lider.md", "modelos/GUIA-TIME-ENXUTO.md",
           "modelos/praticas/python-venv.md", "modelos/praticas/scripts-do-projeto.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
           "modelos/time/pesquisa.md", "modelos/time/revisor.md", "modelos/time/agente.md",
-          "emit_evento.py", "ponte_eventos.py", "importar_opencode.py", "opencode/office.js", "opencode/LEIAME.md",
+          "emit_evento.py", "eventos_sse.py", "eventos_ao_vivo.mjs", "observabilidade_equipes.py", "ponte_eventos.py", "importar_opencode.py", "opencode/office.js", "opencode/LEIAME.md",
           "providers_console.py", "console_provider.py", "codex_observador.py", "skills_compartilhados.py",
           "console.exemplo.json", "docs/PROVIDERS.md", "docs/VERSOES.md", "docs/CLAUDE-COMPATIBILIDADE.md",
           "gestao_projeto.py", "gestao_cli.py", "controle_tarefas.py", "claude_sessao.py", "kanban_gestao.py", "kanban_painel.py", "prs_gestao.py", "kanban_projetos.mjs", "dependencias_tarefas.py",

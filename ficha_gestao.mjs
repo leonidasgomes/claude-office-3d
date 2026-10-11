@@ -11,7 +11,7 @@ export function tarefasDaMesa(dados, projetoId, mesa) {
 
 export function leitorGestao(fetcher=globalThis.fetch, agora=()=>Date.now()) {
   let dados=null, instante=0, pendente=null;
-  return async()=>{
+  const ler=async()=>{
     if(dados && agora()-instante<30000)return dados;
     if(pendente)return pendente;
     pendente=(async()=>{
@@ -26,6 +26,8 @@ export function leitorGestao(fetcher=globalThis.fetch, agora=()=>Date.now()) {
     })();
     try{return await pendente;}finally{pendente=null;}
   };
+  ler.invalidar=()=>{instante=-Infinity;};
+  return ler;
 }
 
 export function desenharTrabalhoMesa(pai,tarefas,documento=globalThis.document) {
@@ -36,6 +38,10 @@ export function desenharTrabalhoMesa(pai,tarefas,documento=globalThis.document) 
     adicionar('b',`#${t.cartao} · ${t.estado}`,li);
     // Reserva em execução não comprova processo ativo; mantém sinais separados.
     adicionar('p',`Console observado: ${t.atividade?.console_observado===true?'sim':'não confirmado'} · estado registrado: ${t.atividade?.estado||'sem medição'}`,li);
+    for(const op of t.operacoes||[]){
+      const tempo=Number.isFinite(op.duracao_seg)?`${Math.round(op.duracao_seg)} s observados`:'duração não informada';
+      adicionar('p',`${op.ferramenta} · ${op.estado} · ${tempo} · saída ${op.codigo??'não informada'}`,li);
+    }
     if(cp){
       if(cp.branch)adicionar('p',`Branch: ${cp.branch}`,li);
       adicionar('p',`Worktree: ${cp.worktree_vinculado?'vinculado':'não confirmado'}`,li);

@@ -1,5 +1,12 @@
 # Changelog
 
+## Não lançado
+
+- Observação Codex paginada, deduplicação por chamada e comandos em segundo plano vinculados à tentativa.
+- Atualização SSE com cursor, batidas e alternativa REST paginada; replay e acesso pareado preservados.
+- Operações e duração observada na ficha da mesa, intervalos de espera e consumo parcial por merge confirmado.
+- Cotas com origem e validade; leitura histórica não aparece como saldo atual.
+
 ## 2.0.0-dev.5
 
 - Recuperações manuais confirmadas passam a ser acompanhadas até o merge, com checkpoints preservados e sem repetir despacho ou publicação. Tentativas interrompidas continuam exigindo conciliação.

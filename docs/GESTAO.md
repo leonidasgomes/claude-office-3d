@@ -1986,3 +1986,45 @@ avaliando o aceite original; a decisão do chefe não substitui os gates.
 Entrega parcial preserva `Parte de #n` e não conclui o cartão-pai. Correção publicada,
 processo encerrado e merge são estados diferentes. Somente merge comprovado com
 aceite integral permite concluir o cartão pelo fluxo existente.
+
+## Acompanhamento por eventos e comandos
+
+O feed usa SSE (`/eventos/ao-vivo`) após a leitura inicial. A reconexão usa o último
+ID; eventos repetidos são descartados. A alternativa REST paginada (`/eventos?pagina=1`)
+preserva a ordem em rajadas acima de 200 eventos. Replay continua separado do vivo.
+Há oito conexões simultâneas; saturação ou falta de batidas volta às consultas.
+A guarda de acesso do PC/celular permanece a mesma. Nenhum canal despacha comandos.
+
+O parser passivo Codex aceita rollouts legados e paginados, resultados de comandos,
+alterações e MCP, mensagens e ancestralidade de subagentes. Contexto injetado não
+vira fala no modo paginado. Chamadas/resultados usam o mesmo ID para evitar duplicação.
+`exec_command` em segundo plano e sua consulta `write_stdin` permanecem uma operação.
+Os eventos do `exec --json` também identificam início e fim de comandos. Isso não
+transforma sessão antiga ou processo encerrado em funcionário ativo.
+
+Na ficha da mesa aparecem operações vinculadas à tentativa: rótulo Build/Testes/Comando,
+estado registrado, segundos observados e saída explícita. O rótulo é heurístico;
+argumentos, caminhos e prompts não são expostos na gestão. Comando sem início observado
+não ganha duração; ausência de retorno não comprova sucesso. Sinal de processo vencido
+ou tentativa encerrada impede mostrar a operação como atividade atual. Somente novas
+execuções do controlador coletam esses campos; não há reconstrução fictícia do passado.
+
+O histórico registra transições do ciclo e das reservas, incluindo avaliação do diretor,
+espera, revisão e bloqueio. Só intervalos fechados entram na soma; etapas abertas ou
+interrompidas permanecem incertas. A soma pode incluir intervalos sobrepostos entre
+equipes e controlador: não é tempo de relógio perdido. Sem sinal explícito, não atribui
+o bloqueio a autorização, recurso ou cloud. Cobertura começa na instalação; consultas
+limitadas e contratos anteriores permanecem parciais. O resumo de tokens por merge
+usa exclusivamente conclusões comprovadas e consumo vinculado às tentativas nos últimos
+sete dias, com cobertura explícita; PR aberto não entra como entrega nem dado ausente vira zero.
+
+No Placar, cada cota preserva fornecedor, origem, data de leitura, validade de 300 s e
+renovação. Falha na consulta, reset vencido ou leitura antiga deixam o saldo atual
+indisponível, conservando o percentual histórico separado. Cota de assinatura e
+equivalente teórico por token continuam indicadores diferentes.
+
+A implementação usa o diário Office e adapters existentes. A leitura estática do
+[Habblaud neste commit](https://github.com/marmottajr/habblaud/tree/d5f371869097be683f624f29efefef49d3209c90)
+orientou os formatos; não foi incorporado código, daemon compartilhado, `codex queue`
+ou presença baseada apenas em arquivo recente. Claude legado, OpenCode, GDD/Kanban,
+reservas, orçamentos, revisão e confirmação de merge mantêm seus contratos.

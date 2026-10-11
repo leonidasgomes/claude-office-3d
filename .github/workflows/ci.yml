@@ -39,6 +39,8 @@ jobs:
           node ferramentas/testar_saude_projeto.mjs
       - name: Conclusão nativa dos novos providers
         run: |
+          python -W error ferramentas/testar_observabilidade.py
+          node ferramentas/testar_eventos_ao_vivo.mjs
           python -W error ferramentas/testar_retorno_console.py
           python -W error ferramentas/testar_pipe_console.py
       - name: Cadastros por projeto e proteção de histórico

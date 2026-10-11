@@ -12,6 +12,7 @@ import { eventoRecente, demoAutomaticaPermitida, fonteObservada } from './ativid
 import { estadoDoEscritorio } from './ciclo_ao_vivo.js';
 import { estadoNaCena } from './ciclo_cena.mjs';
 import { tarefasDaMesa, leitorGestao, desenharTrabalhoMesa } from './ficha_gestao.mjs';
+import { fluxoEventos } from './eventos_ao_vivo.mjs';
 const FUNCIONARIOS = PROJETO_CENA ? distribuirFuncionarios({projetos:[PROJETO_CENA]}) : await buscarFuncionarios();
 const EXTENSAO_CENA = [...CONFIG.agentes.slice(10),...FUNCIONARIOS];
 const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(EXTENSAO_CENA);
@@ -3077,7 +3078,7 @@ function sairReplay() {
   atualizarChips();
   // recarrega do servidor os últimos eventos, sem animar (os que chegaram durante o replay aparecem no feed);
   // a consulta que estiver em andamento é descartada (geracaoPoll) para não duplicar o feed
-  geracaoPoll++; iniciou = false;
+  fluxo.fechar();geracaoPoll++; iniciou = false;
   if (!pollando) { clearTimeout(pollTimer); poll(); }
   if (ultimaSaude) aplicarSaude(ultimaSaude);
   if (r.prsPendente) receberPrs(r.prsPendente);
@@ -3129,32 +3130,56 @@ $('btnApelidos').textContent = ROTULO_MODO[modoApelido];
 $('tituloEscritorio').textContent = CONFIG.titulo;
 
 let pollTimer = null, pollando = false, geracaoPoll = 0;   // geracaoPoll: sair do replay descarta a consulta em andamento
+let timerGestaoEvento=null;
+const invalidarGestaoEvento=()=>{
+  consultarGestaoFicha.invalidar();
+  if(timerGestaoEvento===null)timerGestaoEvento=setTimeout(()=>{
+    timerGestaoEvento=null;atualizarGestaoFicha();
+    window.dispatchEvent(new CustomEvent('office-dados-atualizados'));
+  },10000);
+};
+const fluxo=fluxoEventos({cursor:()=>desde,gestao:invalidarGestaoEvento,
+  receber:(ev,id)=>{
+    if(replay){replay.aoVivo++;atualizarInfoReplay();}else processar(ev,true);
+    desde=id;falhas=0;demoAuto=false;atualizarSelo();invalidarGestaoEvento();
+  },
+  reiniciar:()=>{iniciou=false;desde=0;geracaoPoll++;clearTimeout(pollTimer);poll();},
+  conexao:ok=>{
+    window.dispatchEvent(new CustomEvent('office-fluxo',{detail:{ativo:ok}}));
+    if(ok){falhas=0;demoAuto=false;atualizarSelo();}else if(!pollando){clearTimeout(pollTimer);poll();}
+  },
+});
 async function poll() {
   if (pollando) return;
+  if(iniciou && fluxo.ativo){pollTimer=setTimeout(poll,INTERVALO_POLL_OCULTO);return;}
   pollando = true;
   const geracao = geracaoPoll;
+  const cursorConsulta=desde;
   try {
     if (!iniciou) {
       const r = await fetch('/eventos?desde=0&ultimos=' + MAX_FEED, { cache: 'no-store' });
       if (!r.ok) throw new Error('eventos indisponíveis');
       const j = await r.json();
       if (geracao !== geracaoPoll) throw new Error('descartada');
+      if(desde!==cursorConsulta)throw new Error('descartada');
       (j.eventos || []).forEach((e) => processar(e, false));
       desde = j.total || 0; iniciou = true;
     } else {
-      const r = await fetch('/eventos?desde=' + desde, { cache: 'no-store' });
+      const r = await fetch('/eventos?pagina=1&desde=' + desde, { cache: 'no-store' });
       if (!r.ok) throw new Error('eventos indisponíveis');
       const j = await r.json();
       if (geracao !== geracaoPoll) throw new Error('descartada');
+      if(desde!==cursorConsulta)throw new Error('descartada');
       if (typeof j.total === 'number') {
         if (j.total < desde) desde = 0;
-        else if (replay) { replay.aoVivo += (j.eventos || []).length; desde = j.total; atualizarInfoReplay(); }   // não mistura com o replay
-        else { (j.eventos || []).forEach((e) => processar(e, true)); desde = j.total; }
+        else if (replay) { replay.aoVivo += (j.eventos || []).length; desde = j.proximo ?? j.total; atualizarInfoReplay(); }   // não mistura com o replay
+        else { (j.eventos || []).forEach((e) => processar(e, true)); desde = j.proximo ?? j.total; }
       }
     }
     falhas = 0; demoAuto = false;
+    fluxo.abrir();
   } catch (e) {
-    if (geracao === geracaoPoll) { falhas++; demoAuto = demoAutomaticaPermitida(location.protocol); }
+    if (geracao === geracaoPoll && e.message!=='descartada') { falhas++; demoAuto = demoAutomaticaPermitida(location.protocol); }
   }
   atualizarSelo();
   aplicarLinkDireto();

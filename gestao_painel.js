@@ -172,6 +172,13 @@ async function carregar() {
       }
       linha('h4', 'Execuções observadas · últimos 7 dias', trabalho);
       const desempenho = p.desempenho || {grupos: []};
+      const entregas=desempenho.entregas_merge;
+      if(entregas?.merges)linha('p',`Entregas por merge confirmado: ${entregas.merges} · tokens por merge com medição: ${entregas.tokens_por_merge==null?'não informado':Math.round(entregas.tokens_por_merge).toLocaleString('pt-BR')} · ${entregas.merges_com_consumo}/${entregas.merges} merges com consumo observado nos últimos 7 dias (parcial).`,trabalho);
+      if(p.esperas?.intervalos?.length){
+        linha('h4','Esperas observadas do controlador',trabalho);
+        linha('p',`${Math.round(p.esperas.segundos)} s em intervalos fechados · cobertura parcial, desde a instalação. Não mede esperas internas não observadas nem comprova entrega.`,trabalho);
+        for(const e of p.esperas.intervalos.slice(0,10))linha('p',`${e.etapa} · ${Math.round(e.segundos)} s · cartões ${e.cartoes.map(c=>'#'+c).join(', ')||'não vinculados'}`,trabalho);
+      }
       if (!desempenho.grupos?.length) linha('p', 'Nenhuma medição de execução disponível neste período.', trabalho);
       if (desempenho.limitado) linha('p', 'Cobertura limitada às 1.000 tentativas recentes consultadas.', trabalho);
       if (desempenho.historico_sem_vinculo) linha('p', 'Há tentativas antigas sem vínculo de projeto recuperável neste banco. Elas foram excluídas dos agregados; o histórico pode estar incompleto.', trabalho);
@@ -287,6 +294,7 @@ function abrirGestao() {
 }
 botao.addEventListener('click', abrirGestao);
 window.addEventListener('office-gestao-abrir', abrirGestao);
+window.addEventListener('office-dados-atualizados',()=>carregar());
 window.addEventListener('office-projeto-alerta', (e) => {
   if (e.detail?.painel!=='gestao' || !/^[0-9a-f]{20}$/.test(e.detail?.projeto || '')) return;
   projetoAlerta=e.detail.projeto; abrirGestao();

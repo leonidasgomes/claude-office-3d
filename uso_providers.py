@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 import threading
 import time
+import copy
 
 from providers_console import selecionar, comando_nativo
 from rpc_console import Rpc
@@ -50,6 +51,25 @@ def coletar_codex(cliente=Rpc):
         return normalizar_limites(rpc.chamar("account/rateLimits/read", timeout=20))
 
 
+def validade(dados, agora=None, falhou=False):
+    """Preserva a leitura histórica, mas não a apresenta como saldo atual."""
+    agora=time.time() if agora is None else agora
+    dados=copy.deepcopy(dados)
+    coleta=dados.get('coletado_em')
+    idade=agora-coleta if type(coleta) in (int,float) and math.isfinite(coleta) else None
+    velha=falhou or idade is None or idade<0 or idade>=300
+    dados.update(idade_seg=idade, validade_seg=300, desatualizado=velha)
+    for limite in dados.get('limites') or []:
+        for janela in limite.get('janelas') or []:
+            reset=janela.get('renova_em')
+            expirou=reset is not None and reset<=agora
+            janela.update(expirado=expirou, atual=not velha and not expirou)
+            if velha or expirou:
+                janela['ultimo_usado_pct']=janela.get('ultimo_usado_pct',janela.get('usado_pct'))
+                janela['usado_pct']=None;janela['restante_pct']=None
+    return dados
+
+
 def limites_codex(forcar=False):
     arquivo = RAIZ / "dados" / "providers" / "limites_codex.json"
     with _trava:
@@ -59,7 +79,7 @@ def limites_codex(forcar=False):
                 ultimo = json.loads(arquivo.read_text(encoding="utf-8"))
                 idade = time.time() - ultimo["coletado_em"]
                 if not forcar and 0 <= idade < 300:
-                    return ultimo
+                    return validade(ultimo)
             except (ValueError, KeyError, TypeError, OSError):
                 ultimo = None
         try:
@@ -68,9 +88,9 @@ def limites_codex(forcar=False):
             temporario = arquivo.with_suffix(".tmp")
             temporario.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
             temporario.replace(arquivo)
-            return dados
+            return validade(dados)
         except (ValueError, OSError, RuntimeError, TimeoutError):
             if ultimo:
-                return {**ultimo, "desatualizado": True, "erro": "Não foi possível atualizar a cota do Codex"}
+                return {**validade(ultimo,falhou=True), "erro": "Não foi possível atualizar a cota do Codex"}
             return {"provider": "codex", "disponivel": False, "limites": [],
                     "erro": "Cota indisponível; confira autenticação e compatibilidade do Codex no PC"}

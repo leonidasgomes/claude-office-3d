@@ -16,6 +16,7 @@ class Acompanhamento:
         self.persistencia=threading.Lock()
         self.thread=None
         self.total_eventos=0;self.eventos_filhos=0;self.ultimo_evento=None;self.ultimo_tipo=None
+        self.operacoes={}
 
     def vincular(self,processo):
         if type(processo.pid) is not int or processo.pid<=0 or not callable(processo.poll):
@@ -35,6 +36,7 @@ class Acompanhamento:
             pid=processo.pid if processo else None
             codigo=processo.poll() if processo else None
             evento=(self.ultimo_evento,self.total_eventos,self.ultimo_tipo,self.eventos_filhos)
+            operacoes={k:dict(v) for k,v in self.operacoes.items()}
         with closing(sqlite3.connect(self.banco,timeout=2)) as db,db:
             cursor=db.execute('UPDATE atividade_execucao SET pid_console=?,ultimo_sinal=?,estado=?,codigo_console=? '
                 'WHERE execucao=? AND controlador=?',(pid,time.time(),estado,codigo,self.execucao,self.dono))
@@ -44,6 +46,9 @@ class Acompanhamento:
                     ON CONFLICT(execucao) DO UPDATE SET ultimo_evento=excluded.ultimo_evento,
                     total=excluded.total,ultimo_tipo=excluded.ultimo_tipo,eventos_filhos=excluded.eventos_filhos''',
                     (self.execucao,*evento))
+            if operacoes:
+                from observabilidade_equipes import registrar_operacoes
+                registrar_operacoes(db,self.execucao,operacoes)
 
     def acompanhar(self):
         while not self.parar.wait(self.intervalo):
@@ -61,6 +66,22 @@ class Acompanhamento:
                 self.erro='Evento recebido após acompanhamento encerrado';return
             self.total_eventos+=1;self.eventos_filhos+=int(filho)
             self.ultimo_evento=time.time();self.ultimo_tipo=ev['tipo']
+            ident=ev.get('operacao_id');estado=ev.get('operacao_estado')
+            if ident and estado in ('executando','segundo_plano','concluido'):
+                chave=(str(ev.get('sessao') or '')[:128],str(ident)[:128])
+                if chave not in self.operacoes and len(self.operacoes)>=100:
+                    encerradas=[k for k,v in self.operacoes.items() if v['fim'] is not None]
+                    if encerradas:self.operacoes.pop(encerradas[0])
+                    else:return
+                op=self.operacoes.setdefault(chave,{'ferramenta':str(ev.get('ferramenta') or 'Ferramenta')[:64],
+                    'inicio':self.ultimo_evento if estado=='executando' else None,'fim':None,'estado':estado,'codigo':None})
+                if ev.get('operacao_nome') in ('Build','Testes','Comando'):
+                    op['ferramenta']=ev['operacao_nome']
+                if op['fim'] is None:
+                    op['estado']=estado
+                    if estado=='concluido':
+                        op['fim']=self.ultimo_evento
+                        op['codigo']=ev.get('codigo') if type(ev.get('codigo')) is int else None
 
     def __enter__(self):
         with closing(sqlite3.connect(self.banco,timeout=2)) as db,db:
