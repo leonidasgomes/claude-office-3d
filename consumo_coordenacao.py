@@ -13,6 +13,13 @@ class ColetorIsolado:
             if not cfg['ativo'] or not cfg['ciclo']['ativo'] or not registro or registro['executor']!=executor:
                 raise ValueError('Conferência exige executor da equipe cadastrada')
             nomes[papel]='Conferência: '+equipe
+        elif papel=='revisor_preliminar':
+            from gestao_projeto import carregar
+            from revisao_preliminar import revisores_sem_autoria
+            escolhidos=revisores_sem_autoria(carregar(projeto))
+            if not any(r['nome']==equipe and r['executor']==executor for r in escolhidos):
+                raise ValueError('Revisor preliminar não cadastrado')
+            nomes[papel]='Revisão preliminar: '+equipe
         elif equipe is not None:raise ValueError('Equipe somente no papel de conferência')
         if papel not in nomes or executor.get('execucao','cloud')!='cloud':
             raise ValueError('Coletor exige papel cloud')

@@ -116,6 +116,7 @@ jobs:
           python -W error ferramentas/testar_finalizacao_publicada.py
           python -W error ferramentas/testar_gates_projeto.py
           python -W error ferramentas/testar_conferencias_prs.py
+          python -W error ferramentas/testar_revisao_preliminar.py
           python -W error ferramentas/testar_despacho_revisao.py
           python -W error ferramentas/testar_executor_local.py
           python -W error ferramentas/testar_memoria_local.py

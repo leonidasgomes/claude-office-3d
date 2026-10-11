@@ -645,6 +645,13 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     registro.setdefault('correcoes_encaminhadas',[]).append(correcao)
                     atomico(p,registro)
                     continue
+                from revisao_preliminar import encaminhar as revisar_rascunho
+                preliminar=revisar_rascunho(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,
+                    ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[],
+                        proxima_acao='revisão preliminar do PR #'+str(e['pr'])+'; rascunho preservado'))
+                if preliminar:
+                    registro.setdefault('revisoes_preliminares',[]).append(preliminar)
+                    atomico(p,registro);continue
                 from conferencias_prs import encaminhar as conferir_pr
                 conferencia=conferir_pr(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,
                     ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[],
