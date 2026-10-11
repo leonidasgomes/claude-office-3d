@@ -2118,6 +2118,9 @@ com uma lacuna nova, equipe, entrega e aceite próprios. Etapas futuras abertas
 são fornecidas com corpo completo; uma preparação já aberta impede duplicação.
 O diretor precisa explicar a independência em relação às etapas existentes.
 Sem entrega útil, a decisão é esperar, sem repetir consultas enquanto nada mudar.
+Esperar a implementação também permite essa consulta de preparação: não converte
+a espera em autorização de execução. Se o diretor dispensar a investigação,
+o recibo conserva a decisão e evita novas chamadas de modelo no mesmo contexto.
 
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
