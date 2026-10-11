@@ -2174,6 +2174,11 @@ ou concede tokens. Falha publicada permanece reprovada; execução incerta não
 é repetida automaticamente. Outros consoles/plataformas conservam o fluxo
 existente até haver adapter validado. Todos os gates e o merge seguem exigidos.
 
+O argumento `--base` conserva a referência configurada, cujo nome o script
+compara com o destino do PR. Seu SHA local deve corresponder à base remota
+conferida antes e depois da execução; divergência exige sincronização explícita,
+sem trocar o nome do branch por um hash nem aprovar uma base diferente.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos

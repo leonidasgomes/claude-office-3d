@@ -17,6 +17,7 @@ class Gates(unittest.TestCase):
             p=root/self.script;p.parent.mkdir(parents=True);p.write_text('print("gate")\n',encoding='utf-8')
             (root/'CLAUDE.md').write_text('python '+self.script+' --pr <n> --publish',encoding='utf-8')
         self.git('add','.');self.git('commit','-m','Script autorizado');self.base=self.git('rev-parse','HEAD')
+        self.git('update-ref','refs/remotes/origin/main',self.base)
         (self.trabalho/'codigo.py').write_text('valor = 3\n',encoding='utf-8')
         self.git('add','.');self.git('commit','-m','Entrega')
         self.cfg.update(ciclo={'ativo':True,'base':'origin/main'},kanban={'repo':'owner/repo'},
@@ -110,6 +111,9 @@ class Gates(unittest.TestCase):
         self.assertIsNone(g.comando_script(self.repo,self.cfg))
         (self.repo/'CLAUDE.md').write_text('python '+self.script+' --pr <n> --publish\npython .agents/skills/a/scripts/review_pr.py --pr <n> --publish',encoding='utf-8')
         with self.assertRaisesRegex(ValueError,'ambíguos'):g.comando_script(self.repo,self.cfg)
+    def test_ref_da_base_deve_corresponder_ao_sha_remoto(self):
+        self.git('update-ref','refs/remotes/origin/main',self.rel['sha'])
+        with self.assertRaisesRegex(ValueError,'base diverge'):self.preparar()
     def test_comando_nativo_fixo_perfil_restrito_sem_inferencia(self):
         import subprocess
         e=self.preparar();pasta=self.dados/'logs';pasta.mkdir()
@@ -133,7 +137,7 @@ class Gates(unittest.TestCase):
         self.assertEqual(profile['network']['domains'],{'api.github.com':'allow','github.com':'allow'})
         self.assertIn('features.network_proxy=true',args)
         self.assertEqual(args[args.index('--')+1:],[sys.executable,str(self.trabalho/self.script),
-            '--base',self.base,'--pr','42','--publish'])
+            '--base','origin/main','--pr','42','--publish'])
         self.assertFalse(r['inferencia']);self.assertNotIn('danger-full-access',' '.join(args))
 
 
