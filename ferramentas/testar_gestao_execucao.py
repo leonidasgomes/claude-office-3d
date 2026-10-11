@@ -23,12 +23,12 @@ class GestaoExecucao(unittest.TestCase):
         from gestao_painel import resumo
         with tempfile.TemporaryDirectory() as tmp:
             raiz=Path(tmp);(raiz/'.office').mkdir()
-            cfg={'revisao':{'ativo':True,'revisores':[
+            cfg={'revisao':{'ativo':True,'clouds_distintas':1,'separar_autor':False,'revisores':[
                 {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
                 {'nome':'QA Codex','executor':{'console':'codex'}}]}}
             arq=raiz/'.office/projeto.json';arq.write_text(json.dumps(cfg),encoding='utf-8');antes=arq.read_bytes()
             r=resumo([raiz])['projetos'][0]['revisao']
-            self.assertTrue(r['ativo']);self.assertEqual(r['clouds_distintas'],2)
+            self.assertTrue(r['ativo']);self.assertEqual(r['clouds_distintas'],1)
             self.assertEqual(r['revisores'],[{'nome':'QA Claude','console':'claude','ativo':False},
                                             {'nome':'QA Codex','console':'codex','ativo':True}])
             self.assertEqual(arq.read_bytes(),antes)
