@@ -30,8 +30,12 @@ def preparar(projeto,cfg,pr,dados,k):
     from fila_prs import checks_atuais
     if not (cfg['ativo'] and cfg['ciclo']['ativo'] and cfg['revisao']['ativo'] and CHECK in cfg['merge']['checks']):return None
     if pr.get('state')!='open' or pr.get('draft') is not False or any(x.get('name') in cfg['merge']['rotulos_manuais'] for x in pr.get('labels',[])):return None
-    repo=cfg['kanban']['repo'];sha=pr.get('head',{}).get('sha');base=pr.get('base',{}).get('sha');n=pr.get('number')
-    if type(n) is not int or not re.fullmatch('[0-9a-f]{40}',sha or '') or not re.fullmatch('[0-9a-f]{40}',base or ''):raise ValueError('PR/head/base de gate inválido')
+    repo=cfg['kanban']['repo'];sha=pr.get('head',{}).get('sha');base_pr=pr.get('base',{}).get('sha');n=pr.get('number')
+    if type(n) is not int or not re.fullmatch('[0-9a-f]{40}',sha or '') or not re.fullmatch('[0-9a-f]{40}',base_pr or ''):raise ValueError('PR/head/base de gate inválido')
+    nome_base=cfg['ciclo']['base'].removeprefix('origin/')
+    if pr.get('base',{}).get('ref')!=nome_base:raise ValueError('Destino do gate diverge da política')
+    base=k.chamar(f'repos/{repo}/git/ref/heads/{nome_base}').get('object',{}).get('sha')
+    if not re.fullmatch('[0-9a-f]{40}',base or ''):raise ValueError('Referência remota de gate inválida')
     estado=checks_atuais(k,repo,sha,[CHECK])
     gate=next(g for g in estado['gates'] if g['nome']==CHECK)
     if gate['estado']=='success':return None
@@ -60,6 +64,9 @@ def preparar(projeto,cfg,pr,dados,k):
     if (git['sha']!=sha or git['branch']!=ctx['branch'] or pr['head'].get('ref')!=ctx['branch']
         or pr['head'].get('repo',{}).get('full_name')!=repo or pr['base'].get('repo',{}).get('full_name')!=repo
         or pr['base'].get('ref')!=cfg['ciclo']['base'].removeprefix('origin/')):raise ValueError('Worktree/branch/PR/base de gate divergem')
+    base_ref=cfg['ciclo']['base']
+    ref_sha=subprocess.run(['git','-C',str(trabalho),'rev-parse','--verify',base_ref+'^{commit}'],capture_output=True,text=True,check=True,timeout=30).stdout.strip()
+    if ref_sha!=base:return None  # Conserva fluxo existente até sincronização autorizada.
     criados=[]
     for arq in (RAIZ/'dados/worktrees').glob('*.json'):
         r=ler(arq)
@@ -74,7 +81,7 @@ def preparar(projeto,cfg,pr,dados,k):
     if protegidos.strip():raise ValueError('PR altera regras/skills; gate exige revisão protegida')
     equipes=[r for r in revisores(cfg,pacote['executor']) if r['executor']['console']=='codex']
     if not equipes or sys.platform!='win32':return None  # Adapter nativo verificado nesta plataforma.
-    return {'cartao':int(row['cartao']),'token':row['token'],'equipe':row['equipe'],'pr':n,'sha':sha,'base':base,
+    return {'cartao':int(row['cartao']),'token':row['token'],'equipe':row['equipe'],'pr':n,'sha':sha,'base':base,'base_pr':base_pr,'base_ref':base_ref,
             'worktree':str(trabalho),'branch':ctx['branch'],'politica':assinatura(cfg),'regra':regra,
             'revisor':equipes[0],'revisao_sha256':assinatura(relatorio),'check':CHECK}
 
@@ -101,7 +108,7 @@ def executar(e,pasta,ao_processo=None):
     perfil='{office-gate={extends=":workspace",filesystem={'+json.dumps(pasta.as_posix())+'="write"},network={enabled=true,domains={"api.github.com"="allow","github.com"="allow"}}}}'
     args=cmd+['sandbox','--permission-profile','office-gate','-c','permissions='+perfil,
         '-c','features.network_proxy=true','-c','windows.sandbox="unelevated"','-C',e['worktree'],'--',
-        sys.executable,str(Path(e['worktree'])/e['regra']['script']),'--base',e['base'],'--pr',str(e['pr']),'--publish']
+        sys.executable,str(Path(e['worktree'])/e['regra']['script']),'--base',e['base_ref'],'--pr',str(e['pr']),'--publish']
     with subprocess.Popen(args,cwd=e['worktree'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=subprocess.CREATE_NO_WINDOW) as p:
         if ao_processo:ao_processo(p.pid)
         try:stdout,stderr=p.communicate(timeout=900)
@@ -163,15 +170,18 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,chamar=None,rodar=executar,ao_etapa=
             atual=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{e["pr"]}')
             from gestao_cli import estado_git,worktree_sujo
             git=estado_git(e['worktree'])
+            ref_sha=subprocess.run(['git','-C',e['worktree'],'rev-parse','--verify',e['base_ref']+'^{commit}'],capture_output=True,text=True,check=True,timeout=30).stdout.strip()
             # O GitHub pode confirmar o auto-merge imediatamente após o status.
             merge_confirmado=(atual.get('state')=='closed' and atual.get('merged') is True
                 and isinstance(atual.get('merged_at'),str)
                 and re.fullmatch('[0-9a-f]{40}',atual.get('merge_commit_sha') or ''))
-            if (carregar(projeto)!=cfg or git['sha']!=e['sha'] or git['branch']!=e['branch'] or worktree_sujo(e['worktree'])
+            base_atual=k.chamar(f'repos/{cfg["kanban"]["repo"]}/git/ref/heads/{cfg["ciclo"]["base"].removeprefix("origin/")}').get('object',{}).get('sha')
+            if (carregar(projeto)!=cfg or ref_sha!=e['base'] or git['sha']!=e['sha'] or git['branch']!=e['branch'] or worktree_sujo(e['worktree'])
+                or (base_atual!=e['base'] and not (merge_confirmado and base_atual==atual['merge_commit_sha']))
                 or atual.get('head',{}).get('sha')!=e['sha']
                 or atual.get('base',{}).get('repo',{}).get('full_name')!=cfg['kanban']['repo']
                 or atual.get('base',{}).get('ref')!=cfg['ciclo']['base'].removeprefix('origin/')
-                or (atual.get('base',{}).get('sha')!=e['base'] and not merge_confirmado)):
+                or (atual.get('base',{}).get('sha')!=e['base_pr'] and not merge_confirmado)):
                 raise ValueError('Contexto mudou durante gate; conferir publicação')
             statuses=k._paginas(f'repos/{cfg["kanban"]["repo"]}/commits/{e["sha"]}/statuses')
             recentes=[s for s in statuses if s.get('context')==CHECK]
