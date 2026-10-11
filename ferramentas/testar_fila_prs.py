@@ -273,6 +273,13 @@ class Fila(unittest.TestCase):
             consulta.assert_not_called()
         criar.assert_not_called()
 
+    def test_aguardar_implementacao_ainda_consulta_preparacao_uma_vez(self):
+        self.preparar_fixture();self.d['acao']='aguardar';consulta=Mock(return_value='{"subtarefa":null}');criar=Mock()
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[{'pr':3,'cartao':1}]):
+            for _ in range(2):
+                self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta))
+        consulta.assert_called_once();criar.assert_not_called()
+
     def test_subissue_mudou_durante_decisao_nao_cria(self):
         s=self.preparar_fixture();criar=Mock();self.d['acao']='correcao'
         def consultar(_):

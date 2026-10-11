@@ -42,7 +42,7 @@ def preparar_fila(projeto,cfg,prs,fila,docs,dados,k,criar,chamar=None,ao_consult
     for pr in prs:
         d=next((d for d in fila['encaminhamentos'] if d['pr']==pr['number'] and d['head']==pr['head']['sha']),None)
         esgotado=esgotados.get(pr['number'])
-        if not d or d['acao'] not in (('etapa','correcao') if esgotado else ('etapa',)) or pr.get('draft'):continue
+        if not d or d['acao'] not in (('etapa','correcao','aguardar') if esgotado else ('etapa',)) or pr.get('draft'):continue
         pais=sorted(set(map(int,re.findall(r'(?im)\b(?:Parte de|Closes|Fixes|Resolves)\s+#(\d+)\b',pr.get('body') or ''))))
         if len(pais)!=1:continue
         pai=pais[0]
