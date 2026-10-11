@@ -2163,6 +2163,15 @@ operacional privada por projeto (`delegacao_correcoes.json`). O contrato transac
 em `controle_tarefas.contratar_correcao` arquiva reserva e entrega anteriores em
 `contrato_correcao`, preserva histórico e limita a uma concessão por delegação/PR.
 
+Uma delegação estruturalmente válida de outra política gera `PoliticaDivergente`.
+`pendentes` e `contexto_continuacao` não disponibilizam concessões incompatíveis;
+`contexto_delegacao` informa ao diretor os limites originais/atuais, sem autorização.
+`contexto_esgotamento` continua conferindo a cadeia, encerramento e metas originais
+como histórico somente leitura. Alterar metas não renova concessões e não derruba
+as outras ações da fila. Erros de estrutura e processos incertos permanecem erros.
+Regressões: `testar_correcoes_prs` e `testar_fila_prs`, incluindo mudança de metas
+com delegação antiga, ausência de despacho/escrita e prova de esgotamento preservada.
+
 `finalizacao_publicada` conserva token, tentativa, PR e registro completo da
 conciliação de uma publicação confirmada antes do limite do autor. Uma revisão
 nova, encaminhada pelo diretor e aceita pelo CEO, pode registrar a entrega em
