@@ -64,6 +64,53 @@ class Ciclo(unittest.TestCase):
         c.atomico(c.caminho_estado(self.p),{'estado':'erro'})
         with self.assertRaisesRegex(ValueError,'existente/incerto'):c.iniciar(self.p)
 
+    def test_conciliacao_preserva_tarefas_e_historico_sem_despachar(self):
+        registro={'id':'a'*32,'estado':'erro','limite':200,'resultados':[]}
+        p=c.caminho_estado(self.p);c.atomico(p,registro);bruto=p.read_bytes()
+        dados={'versao':c.hashlib.sha256(bruto).hexdigest(),'nova_janela':True}
+        with patch.object(c,'processos_do_projeto',return_value=[]),patch.object(c.subprocess,'Popen') as iniciar:
+            resultado=c.conciliar(self.p,dados)
+            self.assertEqual(resultado['estado'],'pausado');iniciar.assert_not_called()
+        self.assertEqual((self.dados/'ciclos'/(dados['versao']+'.json')).read_bytes(),bruto)
+        self.assertFalse(json.loads(p.read_text())['conciliacao']['preservar_janela'])
+        with self.assertRaises(ValueError):c.conciliar(self.p,dados)
+
+    def test_conciliacao_recusa_processos_desconhecidos_e_versao_antiga(self):
+        p=c.caminho_estado(self.p);c.atomico(p,{'estado':'erro'})
+        dados={'versao':c.hashlib.sha256(p.read_bytes()).hexdigest(),'nova_janela':False}
+        for efeito in ([123],ValueError('Inventário indisponível')):
+            with patch.object(c,'processos_do_projeto',**({'side_effect':efeito} if isinstance(efeito,Exception) else {'return_value':efeito})):
+                with self.assertRaises(ValueError):c.conciliar(self.p,dados)
+        with self.assertRaises(ValueError):c.conciliar(self.p,{**dados,'versao':'0'*64})
+        self.assertEqual(c.resumo(self.p)['estado'],'erro')
+
+    def test_conciliacao_recusa_tentativa_ou_lote_pendente(self):
+        from contextlib import closing
+        import sqlite3
+        p=c.caminho_estado(self.p);c.atomico(p,{'estado':'erro','resultados':[]})
+        dados={'versao':c.hashlib.sha256(p.read_bytes()).hexdigest(),'nova_janela':False}
+        with closing(sqlite3.connect(self.dados/'tarefas.db')) as db,db:
+            db.execute('CREATE TABLE execucao_tarefa(fim REAL)');db.execute('INSERT INTO execucao_tarefa VALUES(NULL)')
+        with patch.object(c,'processos_do_projeto',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'incerta'):c.conciliar(self.p,dados)
+        with closing(sqlite3.connect(self.dados/'tarefas.db')) as db,db:db.execute('DELETE FROM execucao_tarefa')
+        c.atomico(p,{'estado':'erro','resultados':[{'id':'a'*32}]})
+        dados['versao']=c.hashlib.sha256(p.read_bytes()).hexdigest()
+        (self.dados/'lotes').mkdir();c.atomico(self.dados/'lotes'/('a'*32+'.json'),{'estado':'executando'})
+        with patch.object(c,'processos_do_projeto',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'encerramento'):c.conciliar(self.p,dados)
+        self.assertFalse(p.with_suffix('.inicio.lock').exists())
+
+    def test_inventario_windows_exclui_shell_de_observacao(self):
+        processos=[{'ProcessId':123,'Name':'powershell.exe','CommandLine':str(self.p)+' codex consulta'},
+                   {'ProcessId':456,'Name':'python.exe','CommandLine':'python ciclo_gdd.py --projeto '+str(self.p)},
+                   {'ProcessId':789,'Name':'codex.exe','CommandLine':'codex -C '+str(self.p)}]
+        with patch.object(c.sys,'platform','win32'),patch.object(c.subprocess,'run',return_value=Mock(returncode=0,stdout=json.dumps(processos))):
+            self.assertEqual(c.processos_do_projeto(self.p),[456,789])
+        processos=[{'ProcessId':789,'Name':'codex.exe','CommandLine':None}]
+        with patch.object(c.sys,'platform','win32'),patch.object(c.subprocess,'run',return_value=Mock(returncode=0,stdout=json.dumps(processos))):
+            with self.assertRaisesRegex(ValueError,'verificável'):c.processos_do_projeto(self.p)
+
     def test_inicio_windows_fecha_lock_e_impede_duplicacao(self):
         with patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)) as criar,patch.object(c,'coordenador_vivo',return_value=False):
             r=c.iniciar(self.p)

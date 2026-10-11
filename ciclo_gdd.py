@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import time
 import uuid
+from contextlib import closing
 
 from gestao_projeto import carregar, executor
 from gestao_cli import pasta_dados, preparar, conferir_disponibilidade, executar_lote
@@ -41,10 +42,89 @@ def resumo(projeto):
 def reservas(projeto):
     arquivo=pasta_dados(projeto)/'tarefas.db'
     if not arquivo.exists():return []
-    with sqlite3.connect(arquivo.resolve().as_uri()+'?mode=ro',uri=True) as db:
+    with closing(sqlite3.connect(arquivo.resolve().as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row
         return [dict(r) for r in db.execute(
             'SELECT cartao,equipe,estado,sessao FROM reserva ORDER BY cartao')]
+
+
+def processos_do_projeto(projeto):
+    """Inventário atual, inclusive coordenador em erro; falha não prova ausência."""
+    raiz=str(Path(projeto).resolve()).casefold()
+    if sys.platform=='win32':
+        r=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command',
+            '@(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId,Name,CommandLine) | ConvertTo-Json -Compress'],
+            capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=15)
+        if r.returncode:raise ValueError('Não foi possível conferir processos; conciliação recusada')
+        itens=json.loads(r.stdout)
+        if not isinstance(itens,list):raise ValueError('Inventário de processos inválido')
+        if any(not i.get('CommandLine') and re.fullmatch(r'(pythonw?|codex|opencode|claude)\.exe',i.get('Name',''),re.I) for i in itens):
+            raise ValueError('Processo de executor sem comando verificável; confira no PC')
+    else:
+        itens=[]
+        for p in Path('/proc').iterdir():
+            if not p.name.isdigit():continue
+            try:cmd=(p/'cmdline').read_bytes().replace(b'\0',b' ').decode(errors='replace')
+            except FileNotFoundError:continue
+            itens.append({'ProcessId':int(p.name),'Name':cmd.split(' ',1)[0].rsplit('/',1)[-1],'CommandLine':cmd})
+    return [i['ProcessId'] for i in itens if i['ProcessId']!=os.getpid()
+            and re.fullmatch(r'(python[0-9.]*|pythonw|codex|opencode|claude|node)(\.exe)?',i.get('Name',''),re.I)
+            and raiz in str(i.get('CommandLine') or '').casefold()
+            and any(nome in str(i.get('CommandLine') or '').casefold()
+                    for nome in ('ciclo_gdd.py','gestao_cli.py','console_provider.py','codex','opencode','claude'))]
+
+
+def conferir_encerramento(projeto,registro):
+    vivos=processos_do_projeto(projeto)
+    if vivos:raise ValueError('Processos do projeto ainda presentes: '+','.join(map(str,vivos)))
+    pasta=pasta_dados(projeto);banco=pasta/'tarefas.db'
+    if banco.exists():
+        with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True,timeout=2)) as db:
+            tabelas={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            for tabela,consulta in (
+                ('reserva',"SELECT 1 FROM reserva WHERE estado IN ('reservado','executando') LIMIT 1"),
+                ('execucao_tarefa','SELECT 1 FROM execucao_tarefa WHERE fim IS NULL LIMIT 1'),
+                ('worktree_ocupado','SELECT 1 FROM worktree_ocupado LIMIT 1')):
+                if tabela in tabelas and db.execute(consulta).fetchone():
+                    raise ValueError('Execução ou ocupação incerta em '+tabela+'; confira a tarefa antes de conciliar')
+    lotes=set((pasta/'lotes').glob('*.json'))
+    for item in registro.get('resultados',[]):
+        ident=item.get('id','')
+        if not re.fullmatch('[0-9a-f]{32}',ident):raise ValueError('Recibo de lote inválido')
+        lotes.add(pasta/'lotes'/(ident+'.json'))
+    for arquivo in lotes:
+        r=json.loads(arquivo.read_text(encoding='utf-8'))
+        if r.get('estado') not in ('processado','interrompido') or r.get('cartao_em_execucao') is not None:
+            raise ValueError('Lote sem encerramento comprovado: '+arquivo.stem)
+    return {'processos':[], 'tentativas_pendentes':False,'lotes_conferidos':len(lotes)}
+
+
+def conciliar(projeto,dados):
+    """Fecha só a coordenação; nunca cancela reservas nem lança outro processo."""
+    if (not isinstance(dados,dict) or set(dados)!={'versao','nova_janela'}
+        or not re.fullmatch('[0-9a-f]{64}',str(dados['versao'])) or type(dados['nova_janela']) is not bool):
+        raise ValueError('Informe versão do estado e escolha explícita de nova janela')
+    p=caminho_estado(projeto);lock=p.with_suffix('.inicio.lock')
+    with lock.open('x',encoding='utf-8'):pass
+    try:
+        bruto=p.read_bytes()
+        if hashlib.sha256(bruto).hexdigest()!=dados['versao']:raise ValueError('Estado mudou; consulte antes de conciliar')
+        r=json.loads(bruto.decode('utf-8'))
+        if r.get('estado') not in ATIVOS|{'erro'}:raise ValueError('Ciclo já encerrado; não conciliar novamente')
+        prova=conferir_encerramento(projeto,r)
+        if p.read_bytes()!=bruto:raise ValueError('Estado mudou durante a conferência')
+        historico=p.parent/'ciclos';historico.mkdir(exist_ok=True)
+        arquivo=historico/(dados['versao']+'.json')
+        try:
+            with arquivo.open('xb') as f:f.write(bruto)
+        except FileExistsError:
+            if arquivo.read_bytes()!=bruto:raise ValueError('Histórico divergente')
+        r.update(estado='pausado',atualizado=time.time(),motivo='Ciclo anterior conciliado; tarefas preservadas',
+            proxima_acao='iniciar nova coordenação explicitamente',
+            conciliacao={'versao':dados['versao'],'preservar_janela':not dados['nova_janela'],**prova})
+        atomico(p,r)
+        return {'estado':'pausado','nova_janela':dados['nova_janela'],**prova}
+    finally:lock.unlink(missing_ok=True)
 
 
 def coordenador_vivo(projeto,registro):
