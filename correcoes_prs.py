@@ -15,6 +15,11 @@ def assinatura(obj):
     return hashlib.sha256(json.dumps(obj,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 
+def identidade_pacote(pacote):
+    from gestao_cli import snapshot_pacote
+    return assinatura(snapshot_pacote(pacote))
+
+
 def ler(arq):
     if arq.is_symlink() or not arq.is_file() or arq.stat().st_size>256000:
         raise ValueError('Registro de correção ausente/inválido')
@@ -113,7 +118,7 @@ def preparar(projeto,cfg,alvo,encaminhamento,d,k):
     evidencia={'delegacao':d['id'],'pr':alvo['pr'],'head':alvo['head'],'cartao':alvo['cartao'],
         'token_anterior':r['token'],'equipe':r['equipe'],'estado_kanban':cartao['status'],
         'politica':assinatura(cfg),'limites':d['limites'],'diretor':encaminhamento,'revisao':revisao,
-        'reserva_sha256':assinatura(r),'pacote_sha256':assinatura(pacote)}
+        'reserva_sha256':assinatura(r),'pacote_sha256':identidade_pacote(pacote)}
     return evidencia,(cfg,provider,exe,k,pacote),r,trabalho
 
 

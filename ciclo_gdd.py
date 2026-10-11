@@ -97,6 +97,20 @@ def conferir_encerramento(projeto,registro):
     for item in registro.get('resultados',[]):
         ident=item.get('id','')
         if not re.fullmatch('[0-9a-f]{32}',ident):raise ValueError('Recibo de lote inválido')
+        if item.get('origem')=='retomada_manual_confirmada':
+            if not banco.exists() or 'acompanhamento_retomada' not in tabelas:
+                raise ValueError('Retomada histórica sem diário confirmado')
+            with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True,timeout=2)) as db:
+                row=db.execute('SELECT a.cartao FROM acompanhamento_retomada a '
+                    'JOIN execucao_tarefa e ON e.id=a.tentativa AND e.token=a.token '
+                    'JOIN atividade_execucao v ON v.execucao=e.id '
+                    'JOIN execucao_resultado x ON x.execucao=e.id '
+                    'WHERE a.id=? AND a.repo=? AND a.estado=\'confirmado\' AND e.fim IS NOT NULL AND e.codigo=0 '
+                    'AND v.estado=\'encerrado\' AND x.resultado IN (\'revisao_aprovada\',\'revisao_desativada\')',
+                    (ident,carregar(projeto)['kanban']['repo'])).fetchone()
+            if not row or item.get('resultados')!=[{'cartao':row[0],'estado':'revisao','codigo':0}]:
+                raise ValueError('Retomada histórica sem encerramento comprovado')
+            continue
         lotes.add(pasta/'lotes'/(ident+'.json'))
     for arquivo in lotes:
         r=json.loads(arquivo.read_text(encoding='utf-8'))

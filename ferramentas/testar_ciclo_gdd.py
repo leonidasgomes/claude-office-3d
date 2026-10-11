@@ -262,6 +262,33 @@ class Ciclo(unittest.TestCase):
         with self.assertRaises(ValueError):c.conciliar(self.p,{**dados,'versao':'0'*64})
         self.assertEqual(c.resumo(self.p)['estado'],'erro')
 
+    def test_conciliacao_retomada_confirmada_nao_confunde_com_lote(self):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(self.dados/'tarefas.db')) as db,db:
+            db.execute('CREATE TABLE acompanhamento_retomada(id TEXT,repo TEXT,cartao INTEGER,token TEXT,tentativa TEXT,estado TEXT)')
+            db.execute('CREATE TABLE execucao_tarefa(id TEXT,token TEXT,fim REAL,codigo INTEGER)')
+            db.execute('CREATE TABLE atividade_execucao(execucao TEXT,estado TEXT)')
+            db.execute('CREATE TABLE execucao_resultado(execucao TEXT,resultado TEXT)')
+            db.execute('INSERT INTO acompanhamento_retomada VALUES (?,?,?,?,?,?)',
+                ('a'*32,self.cfg['kanban']['repo'],1,'token','tentativa','confirmado'))
+            db.execute('INSERT INTO execucao_tarefa VALUES (?,?,1,0)',('tentativa','token'))
+            db.execute("INSERT INTO atividade_execucao VALUES ('tentativa','encerrado')")
+            db.execute("INSERT INTO execucao_resultado VALUES ('tentativa','revisao_aprovada')")
+        item={'id':'a'*32,'origem':'retomada_manual_confirmada','resultados':[{'cartao':1,'estado':'revisao','codigo':0}]}
+        with patch.object(c,'processos_do_projeto',return_value=[]):
+            self.assertEqual(c.conferir_encerramento(self.p,{'resultados':[item]})['lotes_conferidos'],0)
+            with closing(sqlite3.connect(self.dados/'tarefas.db')) as db,db:
+                db.execute("UPDATE atividade_execucao SET estado='interrompido'")
+            with self.assertRaisesRegex(ValueError,'encerramento'):
+                c.conferir_encerramento(self.p,{'resultados':[item]})
+
+    def test_conciliacao_nao_ignora_origem_sem_diario(self):
+        item={'id':'a'*32,'origem':'retomada_manual_confirmada','resultados':[]}
+        with patch.object(c,'processos_do_projeto',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'diário'):
+                c.conferir_encerramento(self.p,{'resultados':[item]})
+
     def test_conciliacao_recusa_tentativa_ou_lote_pendente(self):
         from contextlib import closing
         import sqlite3
