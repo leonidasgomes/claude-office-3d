@@ -25,9 +25,10 @@ class Inicio(unittest.TestCase):
             raiz=Path(tmp);saida=raiz/'args.json';fake=raiz/'fake.py'
             fake.write_text('import sys,json\nfrom pathlib import Path\nPath('+repr(str(saida))+').write_text(json.dumps(sys.argv[1:]))',encoding='utf-8')
             with patch('providers_console.comando_nativo',return_value=[sys.executable,str(fake)]):
-                self.assertEqual(executar(PROVIDERS['codex'],'codex',raiz,'CEO',banco=raiz/'banco.db',sandbox='workspace-write',prompt_inicial='Comece agora'),0)
+                self.assertEqual(executar(PROVIDERS['codex'],'codex',raiz,'CEO',banco=raiz/'banco.db',sandbox='workspace-write',prompt_inicial='Comece agora',diretorios_escrita=[raiz]),0)
             args=json.loads(saida.read_text())
             self.assertIn('workspace-write',args);self.assertEqual(args[-1],'Comece agora')
+            self.assertIn('--add-dir',args);self.assertIn(str(raiz.resolve()),args)
             self.assertNotIn('exec',args);self.assertNotIn('--json',args)
     def test_prompt_inicial_rejeita_modo_errado_antes_de_lancar(self):
         with self.assertRaises(ValueError):executar(PROVIDERS['claude'],'claude',Path('.'),'CEO',prompt_inicial='tarefa')

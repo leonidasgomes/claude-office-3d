@@ -40,18 +40,25 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
         prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
+    if diretorios_escrita and (prompt_inicial is None or sandbox!='workspace-write'):
+        raise ValueError('Diretórios adicionais exigem início interativo Codex workspace-write')
     args = provider.comando(exe, projeto, prompt, modelo, sessao, agente, **({'sandbox':sandbox} if sandbox is not None else {}))
     if prompt_inicial is not None:
         if provider.nome != 'codex' or prompt is not None or sessao or politica_local:
             raise ValueError('Prompt inicial exige Codex interativo novo, sem execução estruturada/local')
         if not isinstance(prompt_inicial,str) or not prompt_inicial.strip() or len(prompt_inicial)>6000:
             raise ValueError('Prompt inicial exige texto entre 1 e 6000 caracteres')
+        if diretorios_escrita:
+            for diretorio in diretorios_escrita:
+                pasta=Path(diretorio).resolve()
+                if not pasta.is_dir():raise ValueError('Diretório de escrita não existe')
+                args += ['--add-dir',str(pasta)]
         args.append(prompt_inicial)
     entrada = None
     if provider.nome == "codex" and prompt is not None:

@@ -59,9 +59,11 @@ def main(argv=None):
         if args.verificar:
             print(prompt);return 0
         provider,exe=selecionar('codex')
+        worktrees=office.parent/'worktrees'
+        worktrees.mkdir(exist_ok=True)
         print('CEO: iniciando coordenação do Kanban; equipes executam em worktrees. Limite:',args.max_cartoes,flush=True)
         return executar(provider,exe,projeto,'CEO',modelo=cfg['ceo']['modelo'],
-                        sandbox='workspace-write',prompt_inicial=prompt)
+                        sandbox='workspace-write',prompt_inicial=prompt,diretorios_escrita=[office,worktrees])
     except (OSError,ValueError) as exc:
         print('Equipe não iniciou: '+str(exc),file=sys.stderr);return 2
 

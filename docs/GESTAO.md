@@ -1566,7 +1566,8 @@ até dois cartões preparáveis e delegar pelo controlador `gestao_cli.py lote`.
 A base é explícita e depende das regras de cada projeto. `--verificar` mostra
 a tarefa sem consumir modelo. O padrão é um cartão; execução sequencial.
 
-A sessão usa `workspace-write` e continua aberta depois do lote. O CEO precisa
+A sessão usa `workspace-write`, acrescenta a pasta do escritório e a pasta
+irmã `worktrees` às permissões de escrita, e continua aberta depois do lote. O CEO precisa
 conseguir executar Git, Python e GitHub CLI; permissões/login pendentes aparecem
 no próprio console. Não é uma garantia de execução autônoma: bloqueios, falta
 de cartões preparáveis ou erro do modelo interrompem o lote. Reservas antigas
