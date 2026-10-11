@@ -1936,3 +1936,7 @@ O motivo mostrado pertence à etapa atual. Ao sair da espera para consultar, pre
 No ciclo, uma entrega de planejamento também exige registro versionado e PR do cartão. Comentários e sub-issues são evidências úteis, mas não substituem a entrega por merge. O registro documenta fontes, decisões, limites e próximos cartões, sem implementar o pai ou alterar seu aceite. Se a publicação falhar, os registros existentes são preservados e a reserva fica bloqueada para recuperação assistida.
 
 Próximos cartões criados durante planejamento devem usar os campos canônicos de objetivo, aceite, escopo, skills, dependências explícitas e objetivo GDD, além de equipe, prioridade e etapa no Kanban. Dependência escrita apenas em prosa não deve substituir a declaração processável. O controlador não presume aceite ou classificação ausentes.
+
+A classificação dos PRs recebe a preparação vinculada já registrada pelo host e as sub-issues reais do pai. Uma preparação concluída por merge é contexto histórico; não comprova o aceite do pai, mapa ou benchmark. Reservas bloqueadas e campos canônicos ausentes aparecem como lacunas, sem autorizar retomada. Vínculo, política, fonte ou head divergentes não são reaproveitados como prova.
+
+Quando há prova de entrega da preparação, seus documentos Markdown em docs/ são lidos no commit exato, com origem e hash. Conteúdo, tamanho e blob Git são conferidos; arquivos sem extrato são inventariados. O limite exige seleção explícita em vez de truncar evidências.

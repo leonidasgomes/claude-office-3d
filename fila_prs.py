@@ -1,8 +1,9 @@
 """Classificação do diretor para PRs pendentes; não autoriza retomada ou merge."""
-import hashlib,json,re
+import hashlib,json,re,base64
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from urllib.parse import quote
 
 
 def versao_politica(cfg):
@@ -198,6 +199,108 @@ def validar(texto,prs,cfg):
     return dados['encaminhamentos']
 
 
+def contexto_preparacao(cfg,pr,docs,dados,k):
+    """Evidências de preparação e cartões vinculados; não autoriza despacho ou merge."""
+    arq=Path(dados)/'preparacoes_prs'/(str(pr['number'])+'.json')
+    if not arq.exists():return None
+    if arq.is_symlink() or arq.stat().st_size>128000:raise ValueError('Recibo de preparação inválido')
+    r=json.loads(arq.read_text(encoding='utf-8'));ident=r.get('identidade') or {}
+    if r.get('estado')!='criado':return None
+    fontes=[{'caminho':d['caminho'],'sha256':d['sha256']} for d in docs]
+    pai=ident.get('pai');n=r.get('numero');repo=cfg['kanban']['repo']
+    if (ident.get('repo')!=repo or ident.get('pr')!=pr['number'] or ident.get('head')!=pr['head']['sha']
+        or ident.get('politica')!=versao_politica(cfg) or ident.get('fontes')!=fontes
+        or type(pai) is not int or pai<1 or type(n) is not int or n<1
+        or not re.search(rf'\b(?:Parte de|Closes|Fixes|Resolves)\s+#{pai}\b',pr.get('body') or '',re.I)):
+        return {'estado':'vinculo_desatualizado','somente_contexto':True}
+    vinculo=Path(dados)/'desbloqueios'/(str(pai)+'.json')
+    if not vinculo.is_file() or vinculo.is_symlink() or vinculo.stat().st_size>128000:
+        raise ValueError('Vínculo de preparação não comprovado')
+    v=json.loads(vinculo.read_text(encoding='utf-8'))
+    if (v.get('estado')!='criado' or v.get('numero')!=n or v.get('pai')!=pai
+        or v.get('origem_pr')!=pr['number'] or v.get('proposta')!=r.get('proposta')):
+        raise ValueError('Vínculo de preparação divergente')
+    from gestao_cli import instrucoes_cartao,campo
+    def issue(numero):
+        i=k.issue(numero)
+        if (not isinstance(i,dict) or i.get('number')!=numero or i.get('pull_request')
+            or i.get('html_url')!=f'https://github.com/{repo}/issues/{numero}'
+            or i.get('state') not in ('open','closed')):
+            raise ValueError('Cartão vinculado não comprova identidade')
+        return {key:i.get(key) for key in ('number','title','body','state','html_url')}
+    filho=issue(n);instrucoes=instrucoes_cartao(filho);s=v['proposta']
+    if (filho['title']!=s.get('titulo') or instrucoes['objetivo']!=s.get('objetivo')
+        or instrucoes['aceite']!=s.get('aceite') or instrucoes['skills']!=s.get('skills')
+        or instrucoes['escopo']!='Planejamento/investigação deste bloqueio; não implementar o pai.'):
+        return {'estado':'preparacao_alterada','cartao':n,'somente_contexto':True}
+    filho['reserva']='sem_registro';filho['entrega_por_merge']=None
+    banco=Path(dados)/'tarefas.db'
+    if banco.is_file():
+        with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+            tabelas={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if 'reserva' in tabelas:
+                row=db.execute('SELECT estado FROM reserva WHERE projeto=? AND cartao=?',(repo,str(n))).fetchone()
+                if row:filho['reserva']=row[0]
+            if {'reserva','conclusao'}<=tabelas:
+                row=db.execute('SELECT c.evidencia FROM reserva r JOIN conclusao c ON c.token=r.token '
+                    "WHERE r.projeto=? AND r.cartao=? AND r.estado='concluido'",(repo,str(n))).fetchone()
+                if row:
+                    if not isinstance(row[0],str) or len(row[0])>64000:raise ValueError('Prova de conclusão excessiva ou inválida')
+                    ev=json.loads(row[0]);gates=(ev.get('checks') or {}).get('gates')
+                    if (ev.get('repo')==repo and type(ev.get('cartao')) is int and ev['cartao']==n and type(ev.get('pr')) is int
+                        and ev['pr']>0 and ev.get('politica_sha256')==versao_politica(cfg)
+                        and (not cfg['revisao']['ativo'] or ev.get('revisao') is True)
+                        and all(re.fullmatch('[0-9a-f]{40}',str(ev.get(key,''))) for key in ('head','merge_commit'))
+                        and isinstance(gates,list) and gates
+                        and {g.get('nome') for g in gates}==set(cfg['merge']['checks'])
+                        and all(g.get('estado')=='success' for g in gates)
+                        and isinstance(ev.get('merged_at'),str) and ev['merged_at']):
+                        filho['entrega_por_merge']={key:ev[key] for key in ('pr','head','merge_commit','merged_at')}
+    if filho['entrega_por_merge']:
+        prova=filho['entrega_por_merge']
+        arquivos=k._paginas(f'repos/{repo}/pulls/{prova["pr"]}/files?per_page=100')
+        if not isinstance(arquivos,list) or len(arquivos)>50:raise ValueError('Selecionar explicitamente artefatos da preparação')
+        extratos=[];outros=[];tamanho=0
+        for arquivo in arquivos:
+            nome=arquivo.get('filename','')
+            if (not isinstance(nome,str) or not nome or nome.startswith('/') or '\\' in nome
+                or any(p in ('','..','.') for p in nome.split('/'))):raise ValueError('Artefato com caminho inválido')
+            if not nome.startswith('docs/') or not nome.endswith('.md') or arquivo.get('status')=='removed':
+                outros.append(nome);continue
+            conteudo=k.chamar(f'repos/{repo}/contents/{quote(nome,safe="/")}?ref={prova["head"]}')
+            if (not isinstance(conteudo,dict) or conteudo.get('type')!='file' or conteudo.get('path')!=nome
+                or conteudo.get('encoding')!='base64' or type(conteudo.get('size')) is not int
+                or not 0<=conteudo['size']<=60000 or not isinstance(conteudo.get('content'),str)
+                or len(conteudo['content'])>85000):raise ValueError('Artefato de preparação inválido ou excessivo')
+            bruto=base64.b64decode(''.join(conteudo['content'].split()),validate=True);tamanho+=len(bruto)
+            sha=hashlib.sha1(b'blob '+str(len(bruto)).encode()+b'\0'+bruto).hexdigest()
+            if (len(bruto)!=conteudo['size'] or sha!=conteudo.get('sha') or sha!=arquivo.get('sha')
+                or tamanho>60000):raise ValueError('Artefato divergente ou pacote excessivo; sem truncar')
+            extratos.append({'caminho':nome,'head':prova['head'],'sha256':hashlib.sha256(bruto).hexdigest(),
+                             'conteudo':bruto.decode('utf-8-sig')})
+        filho['artefatos_versionados']=extratos;filho['arquivos_sem_extrato']=outros
+    subs=k._paginas(f'repos/{repo}/issues/{pai}/sub_issues?per_page=100')
+    if not isinstance(subs,list) or len(subs)>20:raise ValueError('Selecionar explicitamente as sub-issues do pacote; sem truncar')
+    numeros=[]
+    for i in subs:
+        numero=i.get('number') if isinstance(i,dict) else None
+        if type(numero) is not int or numero<1 or numero in numeros:
+            raise ValueError('Lista de sub-issues inválida ou duplicada')
+        if i.get('html_url')!=f'https://github.com/{repo}/issues/{numero}':raise ValueError('Sub-issue de outro repositório')
+        numeros.append(numero)
+    quadro=k.cartoes(ao_vivo=True);proximos=[]
+    for numero in sorted(numeros):
+        if numero==n:continue
+        i=issue(numero);cartoes=[c for c in quadro if c['numero']==numero]
+        if len(cartoes)>1:raise ValueError('Cartão duplicado no Kanban')
+        i['kanban']={key:cartoes[0].get(key) for key in ('equipe','status','prioridade','etapa')} if cartoes else None
+        i['campos_canonicos']={'aceite':bool(campo(i.get('body') or '', 'Aceite')),
+                              'dependencias':bool(campo(i.get('body') or '', 'Dependências')),
+                              'objetivo_gdd':bool(campo(i.get('body') or '', 'Objetivo GDD'))}
+        proximos.append(i)
+    return {'estado':'vinculado','pai':pai,'preparacao':filho,'sub_issues_do_pai':proximos,'somente_contexto':True}
+
+
 def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     from controlador_local import atomico
     from gestao_projeto import executor
@@ -217,6 +320,7 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
         for n in sorted(set(map(int,vinculos))):
             issue=k.issue(n)
             item['cartoes'].append({key:issue.get(key) for key in ('number','title','body','state','updated_at')})
+        item['preparacao_vinculada']=contexto_preparacao(cfg,p,docs,dados,k)
         item['diagnosticos']=[]
         for arq in sorted((Path(dados)/'diagnosticos').glob(f'pr{p["number"]}-*.json')):
             if arq.is_symlink() or arq.stat().st_size>64000:continue
@@ -242,6 +346,12 @@ build aprovado com prova de benchmark, Drive ou Validate que não foram apresent
 Uma entrega parcial pode exigir uma etapa real vinculada: preserve o aceite do pai e
 identifique objetivo/aceite próprios e evidências. Correção atualiza o PR existente;
 etapa distinta exige vínculo formal e validação antes de qualquer despacho.
+preparacao_vinculada descreve trabalho já registrado e sub-issues reais do pai.
+Não peça novamente uma preparação já entregue por merge; confira a etapa futura existente.
+Reserva bloqueada continua bloqueada, mesmo se a investigação produziu comentários.
+Os campos canônicos e cadastro podem estar incompletos: indique essa lacuna, sem inventar valores.
+Entrega do planejamento não comprova implementação, mapa, benchmark ou aceite do pai.
+Esses dados não autorizam retomar sessões, criar tarefas duplicadas, aprovar PR ou dispensar gates.
 Fontes citadas por hash não foram carregadas: não invente objetivos do GDD nem medições.
 Escolha equipe cadastrada. Revisar significa conferir evidências, não aprovar o commit.
 Retorne JSON {"encaminhamentos":[{"pr":1,"head":"sha exato","equipe":"nome",
