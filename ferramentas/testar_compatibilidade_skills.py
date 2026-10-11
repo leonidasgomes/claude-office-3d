@@ -11,6 +11,20 @@ import funcionarios
 
 
 class Skills(unittest.TestCase):
+    def test_contexto_do_despacho_omite_skills_alheias_sem_alterar_catalogo(self):
+        self.escrever()
+        outra=self.p/'.claude/skills/outra';outra.mkdir()
+        (outra/'SKILL.md').write_text('---\nname: outra\ndescription: Descrição alheia\n---\nTexto',encoding='utf-8')
+        completo=contexto(self.p,'codex')
+        self.assertIn('Descrição alheia',completo)
+        limitado=contexto(self.p,'codex',selecionadas=['teste'])
+        self.assertIn('- teste:',limitado);self.assertNotIn('Descrição alheia',limitado)
+        vazio=contexto(self.p,'codex',selecionadas=[])
+        self.assertNotIn('- teste:',vazio);self.assertIn('regras',vazio)
+        self.assertEqual(len(catalogo(self.p)),2)
+        for nomes in ('teste',['inexistente'],[None]):
+            with self.assertRaises(ValueError):contexto(self.p,'codex',selecionadas=nomes)
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.p=Path(self.tmp.name)
         self.dir=self.p/'.claude/skills/teste';self.dir.mkdir(parents=True)

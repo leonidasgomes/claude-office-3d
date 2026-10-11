@@ -170,7 +170,7 @@ def preparar_compartilhados(projeto, aplicar=False):
 preparar_codex = preparar_compartilhados
 
 
-def contexto(projeto, provider=None):
+def contexto(projeto, provider=None, selecionadas=None):
     from gestao_projeto import carregar
     projeto = Path(projeto).resolve()
     cfg = carregar(projeto)
@@ -189,8 +189,17 @@ def contexto(projeto, provider=None):
         if not regras.resolve().is_relative_to(projeto) or not regras.is_dir():
             raise ValueError('Regras por escopo fora do projeto ou pasta inválida')
         linhas.append(REGRAS_PASTA)
+    disponiveis=catalogo(projeto,cfg)
+    if selecionadas is not None:
+        if not isinstance(selecionadas,list) or any(not isinstance(n,str) or not n.strip() for n in selecionadas):
+            raise ValueError('Skills de contexto exigem uma lista de nomes')
+        resolver(projeto,selecionadas,cfg,provider)
+        disponiveis=[s for s in disponiveis if s['nome'] in selecionadas]
+        linhas.append('Catálogo abaixo limitado às skills selecionadas no despacho. '
+                      'Outras skills exigidas pelas regras continuam disponíveis na fonte canônica '
+                      +cfg['fontes']['skills']+'. Consulte-as quando necessárias; não carregue todo o catálogo.')
     linhas.append("Skills compartilhadas (leia SKILL.md no caminho original antes de usar):")
-    for skill in catalogo(projeto, cfg):
+    for skill in disponiveis:
         if not skill["problemas"]:
             if provider:
                 from compatibilidade_skills import diagnostico

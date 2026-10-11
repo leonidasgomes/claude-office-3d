@@ -17,6 +17,11 @@ from revisao_cruzada import revisar
 
 
 class DespachoRevisao(unittest.TestCase):
+    def test_despacho_novo_provider_recebe_apenas_skills_selecionadas(self):
+        vistos=[]
+        self.executar(lambda *a,**kw:self.relatorio(),rodar=lambda *a,**kw:vistos.append(kw) or 0)
+        self.assertEqual(vistos[0]['skills_contexto'],[])
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.pasta=Path(self.tmp.name); (self.pasta/'.office').mkdir()

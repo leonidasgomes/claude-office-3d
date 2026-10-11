@@ -1665,6 +1665,13 @@ Em Engrenagem → Gestão → CEO e diretor, **Configurar duração do ciclo** s
 
 ### Metas por cartão: tempo e tokens
 
+Despachos cloud Codex, OpenCode e Gemini recebem descrições somente das skills
+selecionadas e validadas no cartão, consultadas na raiz canônica. As demais
+skills continuam disponíveis para exigências das regras, sem inserir todo o
+catálogo no prompt de cada tentativa. Instruções canônicas, hashes, limites e
+ativação obrigatória permanecem. Consoles sem despacho e Claude preservam o
+contexto anterior.
+
 Em Engrenagem → Gestão → CEO e diretor → **Configurar metas por cartão**, habilite as metas e escolha o tempo por tentativa do agente (1..240 minutos) e os tokens observados (1.000..10.000.000). Salve com ciclo e tarefas parados. A política `metas` é única em `.office/projeto.json`, desligada por padrão no instalador; não inicia trabalho ao salvar. Limites valem para novos despachos, sem modificar reservas ou tentativas anteriores. Revisão independente preserva seus gates e não utiliza a janela do agente autor.
 
 O cartão mantém objetivo, escopo, aceite, Time e dependências. A fonte `fontes.produto` deve conter seções `#### Objetivo N — descrição` e referências `#numero` aos cartões; um cartão novo pode declarar `**Objetivo GDD:** N` (ou `Objetivo N`, ou o título exato da seção). Vínculo ausente, ambíguo ou divergente bloqueia a preparação: o diretor deve esclarecer o cartão, sem inventar metas. O despacho guarda hashes do cartão/GDD e o trecho do objetivo; mudanças passam pela conferência existente.
