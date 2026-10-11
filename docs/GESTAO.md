@@ -2250,3 +2250,8 @@ a origem HTTPS do repositório configurado e conferindo o SHA remoto antes e dep
 do fetch. Uma atualização concorrente impede a troca da referência. HEAD, arquivos
 e branches da equipe permanecem intactos; a elegibilidade completa é refeita antes
 da decisão do CEO. Origens não reconhecidas exigem conferência explícita.
+
+O pacote do diretor distingue gates elegíveis de recibos já existentes no mesmo
+contexto. Reprovação, espera ou execução incerta entram como pendência com estado,
+hash do recibo e resultado observado, não como convite para repetir a execução.
+A deduplicação do executor permanece ativa.

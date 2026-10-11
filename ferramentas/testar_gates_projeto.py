@@ -91,6 +91,20 @@ class Gates(unittest.TestCase):
         self.cfg['merge']['checks'].append('outro-check')
         with self.assertRaisesRegex(g.ContextoIncompativel,'além'):self.preparar()
 
+    def test_diretor_recebe_gate_registrado_em_vez_de_candidato_repetido(self):
+        e=self.preparar();pasta=self.dados/'gates_projeto';pasta.mkdir()
+        arq=pasta/(g.assinatura(e)+'.json')
+        for estado in ('reprovado','aguardando','executando','consultando','publicado'):
+            r={'estado':estado,'evidencia':e,'resultado':{'codigo':1,'inferencia':False}}
+            arq.write_text(json.dumps(r),encoding='utf-8');antes=arq.read_bytes();pendencias=[]
+            self.assertEqual(g.candidatos(self.repo,self.cfg,[self.pr],self.dados,self.k,pendencias=pendencias),[])
+            self.assertEqual(pendencias[0]['estado'],estado)
+            self.assertEqual(pendencias[0]['recibo_sha256'],g.assinatura(r))
+            self.assertEqual(arq.read_bytes(),antes)
+        r['evidencia']={};arq.write_text(json.dumps(r),encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'identidade'):
+            g.candidatos(self.repo,self.cfg,[self.pr],self.dados,self.k)
+
     def test_publicacao_nao_reinicia_autor_e_nao_repete(self):
         before=self.ctrl.banco.read_bytes();r=self.encaminhar()
         self.assertEqual(r['estado'],'publicado');self.assertFalse(r['inferencia'])
