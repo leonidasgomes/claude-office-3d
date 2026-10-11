@@ -94,4 +94,66 @@ class Execucao(unittest.TestCase):
         with ocupar_worktree(banco,self.trabalho): pass
 
 
+class Publicacao(unittest.TestCase):
+    setUp=Execucao.setUp
+    def preparar_publicacao(self):
+        import copy
+        self.cfg['merge']={'modo':'automatico','checks':['revisor-ia']}
+        (self.repo/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        cfg=re.gestao_projeto.carregar(self.repo)
+        relatorio=re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',
+            lambda *_: {'veredito':'aprovado','achados':[]})
+        self.pr={'number':42,'state':'open','draft':False,
+                 'head':{'sha':relatorio['sha'],'repo':{'full_name':cfg['kanban']['repo']}},
+                 'base':{'sha':self.base,'repo':{'full_name':cfg['kanban']['repo']}}}
+        self.chamadas=[]
+        def api(caminho,metodo='GET',dados=None):
+            self.chamadas.append((caminho,metodo,dados))
+            if metodo=='GET':return copy.deepcopy(self.pr)
+            if caminho.endswith('/reviews'):return {'id':123,'commit_id':relatorio['sha']}
+            return {'state':'success','context':'revisor-ia'}
+        return cfg,relatorio,copy.deepcopy(self.pr),api
+
+    def test_publica_revisao_real_e_status_uma_vez(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        primeiro=publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.assertEqual(primeiro['estado'],'publicado')
+        self.assertEqual(publicar_revisao_gestao(self.repo,cfg,pr,r,api),primeiro)
+        posts=[c for c in self.chamadas if c[1]=='POST']
+        self.assertEqual(len(posts),2)
+        self.assertEqual(posts[0][2]['commit_id'],r['sha'])
+        self.assertIn('QA Codex',posts[0][2]['body'])
+        self.assertEqual(posts[1][2]['context'],'revisor-ia')
+
+    def test_head_mudou_impede_status_e_repeticao(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        def mudou(caminho,metodo='GET',dados=None):
+            resultado=api(caminho,metodo,dados)
+            if metodo=='POST':self.pr['head']['sha']='a'*40
+            return resultado
+        with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,mudou)
+        self.pr=pr
+        with self.assertRaisesRegex(ValueError,'incerta'):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.assertEqual(len([c for c in self.chamadas if c[1]=='POST']),1)
+
+    def test_sem_recibo_ou_pr_divergente_nao_publica(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        self.pr['draft']=True
+        with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.pr=pr
+        (gestao_cli.pasta_dados(self.repo)/'revisoes'/(r['sha']+'.json')).unlink()
+        with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.assertFalse(any(c[1]=='POST' for c in self.chamadas))
+
+    def test_relatorio_reprovado_nao_publica_sucesso(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        r['revisoes'][0]['resposta']['veredito']='reprovado'
+        with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.assertEqual(self.chamadas,[])
+
+
 if __name__=='__main__': unittest.main()

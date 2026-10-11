@@ -1746,3 +1746,21 @@ pela preparação comum, incluindo reservas, recursos, skills e meta. A resposta
 executar com recurso leve; usa os mesmos worktrees, lote, limite de dois cartões
 e gates. Não encadeia criação de subtarefas nem retoma reservas bloqueadas.
 Investigações despachadas aparecem com essa etapa real no acompanhamento.
+
+### Publicação da revisão dos providers
+
+Quando o projeto usa merge automático e exige `revisor-ia`, o despacho publica
+a revisão independente aprovada antes de encaminhar o cartão para revisão no
+Kanban. Usa o relatório já produzido pelos revisores cadastrados, sem uma nova
+chamada de modelo. Exige recibo local, cobertura da política atual, commit e base
+exatos, PR aberto sem rascunho e repositório do projeto. Publica um comentário
+de revisão com os achados e o status `revisor-ia` somente após essas conferências.
+Não faz merge nem substitui outros checks obrigatórios.
+
+O recibo fica em `dados/gestao/ID/revisoes_github`. Mudança de commit, base,
+política ou relatório interrompe a publicação. Falha depois de iniciar uma
+operação externa deixa o recibo incerto e bloqueia o despacho; confira no GitHub
+antes de conciliar, sem repetir automaticamente. Uma publicação confirmada não
+duplica comentários. Revisão desativada não publica sucesso. Projetos com merge
+manual ou sem esse check preservam o fluxo anterior, assim como o revisor Claude
+legado configurado em `config.json`. Reservas antigas não são retomadas.
