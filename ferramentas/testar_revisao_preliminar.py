@@ -54,6 +54,12 @@ class Fluxo(unittest.TestCase):
         for alvo,valor in [('gestao_projeto.carregar',self.cfg),('ciclo_gdd.documentos',[])]:
             p=patch(alvo,return_value=valor);p.start();self.addCleanup(p.stop)
     def executar(self):return r.encaminhar(self.p,self.cfg,[copy.deepcopy(self.pr)],self.fila,[],self.p,self.k,chamar=self.consulta)
+    def test_contexto_explica_politica_sem_inventar_separacao(self):
+        pacote,_=r.preparar(self.p,self.cfg,self.pr,[],self.k)
+        self.assertEqual(pacote['politica_revisao'],{'ativo':True,'clouds_distintas':1,
+            'separar_autor':False,'auditor_ativo':False})
+        self.assertEqual(pacote['autoria'],'não comprovada')
+
     def test_publica_comentario_uma_vez_sem_mudar_rascunho(self):
         self.assertEqual(self.executar()['estado'],'publicado');self.assertIsNone(self.executar())
         self.assertEqual(self.calls,['ceo','revisor_preliminar']);self.assertEqual(len(self.posts),1)

@@ -2271,3 +2271,8 @@ o fluxo se houver exigência de separação do autor ou auditor ativo. O resulta
 vira comentário e recibo próprio, sem status de gate nem conclusão de cartão.
 O controlador reconfere o contexto antes da publicação e não repete inferência
 ou publicação incerta. O diretor recebe o estado e os achados registrados.
+
+O pacote preliminar explicita número de fornecedores, separação do autor e auditor.
+Contexto independente não implica fornecedor diferente quando a política dispensa
+essa separação. O contrato 2 preserva os recibos anteriores e permite nova decisão
+com essas regras explícitas; não transforma uma espera antiga em aprovação.
