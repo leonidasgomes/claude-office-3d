@@ -2182,6 +2182,12 @@ O snapshot de base armazenado no PR é preservado separadamente; ele não
 substitui a consulta à referência atual do branch. Uma referência local antiga
 mantém o fluxo existente, sem executar esse adapter nem interromper outros PRs.
 
+A consulta ao CEO é somente decisória, sem ferramentas. O pacote identifica o
+revisor no controlador host como executor e lista as conferências prévias reais.
+O CEO não precisa ler o worktree no seu próprio ambiente para autorizar esse
+encaminhamento. Pode aguardar por motivo concreto nas evidências; autorização
+não comprova sucesso do worker nem concede acesso adicional ao projeto.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos
