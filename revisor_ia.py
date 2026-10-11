@@ -297,18 +297,19 @@ def revisar_com_claude(modelo, contexto, cabecalho, diff, anteriores="", mudou=N
 
 
 def publicar_revisao_gestao(projeto,cfg,entrega,relatorio,chamar=None):
-    """Publica o relatório aprovado do despacho; não chama modelo nem executa merge."""
+    """Publica veredito comprovado do despacho; não chama modelo nem executa merge."""
     from gestao_cli import pasta_dados
     from gestao_projeto import carregar
-    from revisao_cruzada import conferir
+    from revisao_cruzada import conferir_cobertura,conferir
     from kanban_gestao import api
     from controlador_local import atomico
     if cfg['merge']['modo']!='automatico' or 'revisor-ia' not in cfg['merge']['checks']:
         return {'estado':'nao_exigido'}
     if not cfg['revisao']['ativo']:raise ValueError('Publicação exige revisão por projeto ativa')
     sha=(entrega.get('head') or {}).get('sha');base=(entrega.get('base') or {}).get('sha');n=entrega.get('number')
-    if type(n) is not int or n<1 or not re.fullmatch('[0-9a-f]{40}',base or '') or not conferir(cfg,relatorio,sha):
-        raise ValueError('Revisão aprovada completa do commit exato é obrigatória')
+    if type(n) is not int or n<1 or not re.fullmatch('[0-9a-f]{40}',base or '') or not conferir_cobertura(cfg,relatorio,sha):
+        raise ValueError('Revisão válida completa do commit exato é obrigatória')
+    aprovado=conferir(cfg,relatorio,sha);estado_status='success' if aprovado else 'failure'
     if relatorio.get('base')!=base or not re.fullmatch('[0-9a-f]{64}',relatorio.get('contexto','')):
         raise ValueError('Revisão sem base/contexto verificados')
     pasta=pasta_dados(projeto);fonte=pasta/'revisoes'/(sha+'.json')
@@ -348,20 +349,24 @@ def publicar_revisao_gestao(projeto,cfg,entrega,relatorio,chamar=None):
                 comentarios.append({'path':achado['arquivo'],'line':achado['linha'],'side':'RIGHT',
                     'body':corpo_comentario({'prioridade':achado['prioridade'],'titulo':revisao['nome'],
                                              'texto':achado['evidencia']},executor.get('modelo',''))})
-        registro={'estado':'publicando','pr':n,'sha':sha,'base':base,'relatorio_sha256':digest,'contexto':relatorio['contexto']}
+        registro={'estado':'publicando','pr':n,'sha':sha,'base':base,'relatorio_sha256':digest,
+                  'contexto':relatorio['contexto'],'veredito':'aprovado' if aprovado else 'reprovado','status':estado_status}
         atomico(recibo,registro)
         try:
             revisao=chamada(f'repos/{repo}/pulls/{n}/reviews','POST',
                 {'commit_id':sha,'event':'COMMENT','body':MARCA+' Revisão independente do despacho.\n'+
-                 '\n'.join('- '+nome for nome in nomes)+'\nSem P0/P1 no relatório verificado.','comments':comentarios})
+                 '\n'.join('- '+nome for nome in nomes)+
+                 ('\nSem P0/P1 no relatório verificado.' if aprovado else '\nRevisão reprovada; corrigir e conferir novamente antes do merge.'),
+                 'comments':comentarios})
             if type(revisao.get('id')) is not int or revisao.get('commit_id')!=sha:
                 raise ValueError('Publicação da revisão não comprovada')
             registro['review_id']=revisao['id'];atomico(recibo,registro)
             atual()
             status=chamada(f'repos/{repo}/statuses/{sha}','POST',
-                {'state':'success','context':'revisor-ia','description':'Revisão do despacho aprovada, sem P0/P1',
+                {'state':estado_status,'context':'revisor-ia',
+                 'description':'Revisão do despacho aprovada, sem P0/P1' if aprovado else 'Revisão do despacho reprovada',
                  'target_url':f'https://github.com/{repo}/pull/{n}#pullrequestreview-{revisao["id"]}'})
-            if status.get('state')!='success' or status.get('context')!='revisor-ia':
+            if status.get('state')!=estado_status or status.get('context')!='revisor-ia':
                 raise ValueError('Status da revisão não comprovado')
             atual();registro['estado']='publicado';atomico(recibo,registro)
             return registro
@@ -374,6 +379,43 @@ def publicar_revisao_gestao(projeto,cfg,entrega,relatorio,chamar=None):
 def corpo_comentario(a, modelo):
     return (f"**{a['prioridade']} — {a['titulo'][:90]}**\n\n{a['texto'][:800]}\n\n"
             f"<sub>{MARCA} revisão automática ({modelo}); trate pelo `sugestoes_bot.py`.</sub>")
+
+
+def reconciliar_reprovacoes_gestao(projeto,cfg,prs):
+    """Repõe somente falhas comprovadas; não adota aprovação, reserva ou entrega."""
+    from gestao_cli import pasta_dados
+    from fila_prs import autor_encerrado
+    from revisao_cruzada import conferir_cobertura,conferir
+    from contextlib import closing
+    import sqlite3
+    if not cfg['ativo'] or not cfg['revisao']['ativo'] or cfg['merge']['modo']!='automatico' or 'revisor-ia' not in cfg['merge']['checks']:return []
+    dados=pasta_dados(projeto);banco=dados/'tarefas.db'
+    if not banco.is_file():return []
+    saida=[];repo=cfg['kanban']['repo']
+    with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        for pr in prs:
+            n=pr.get('number');sha=pr.get('head',{}).get('sha')
+            if (type(n) is not int or n<1 or pr.get('state')!='open' or pr.get('draft') is not False
+                or not re.fullmatch('[0-9a-f]{40}',sha or '')
+                or any(x.get('name') in cfg['merge']['rotulos_manuais'] for x in pr.get('labels',[]))):continue
+            pais=set(map(int,re.findall(r'(?im)\b(?:Parte de|Closes|Fixes|Resolves)\s+#(\d+)\b',pr.get('body') or '')))
+            if len(pais)!=1:continue
+            pai=next(iter(pais))
+            if not autor_encerrado(dados,repo,pai):continue
+            conhecido=db.execute('SELECT r.pacote,r.equipe FROM reserva r JOIN entrega e ON e.token=r.token '
+                'WHERE r.projeto=? AND r.cartao=? AND e.pr=? AND e.sha=? AND e.aprovado=0',
+                (repo,str(pai),n,sha)).fetchone()
+            if not conhecido:continue
+            fonte=dados/'revisoes'/(sha+'.json')
+            if fonte.is_symlink() or not fonte.is_file() or fonte.stat().st_size>128000:continue
+            relatorio=json.loads(fonte.read_text(encoding='utf-8'))
+            pacote=json.loads(conhecido[0])
+            if (not conferir_cobertura(cfg,relatorio,sha) or conferir(cfg,relatorio,sha)
+                or relatorio.get('base')!=pr.get('base',{}).get('sha')
+                or conhecido[1] not in {e['nome'] for e in cfg['equipes']}
+                or pacote.get('executor')!=relatorio.get('autor')):continue
+            saida.append(publicar_revisao_gestao(projeto,cfg,pr,relatorio))
+    return saida
 
 
 def publicar_status(cfg, repo, sha, graves):

@@ -633,6 +633,10 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                         controle.transicao(token, 'bloqueado')
                         controle.registrar_resultado(medicao,'revisao_reprovada');resultado_registrado=True
                         if meta_execucao:meta_execucao.finalizar('bloqueado','Revisão reprovada',entrega.get('number'))
+                        from revisao_cruzada import conferir_cobertura
+                        if conferir_cobertura(cfg,relatorio,sha):
+                            from revisor_ia import publicar_revisao_gestao
+                            publicar_revisao_gestao(projeto,cfg,atual_pr,relatorio)
                         devolutiva=revisao_execucao.devolutiva(cfg,pacote['executor'],relatorio,sha,entrega['number'],equipe)
                         rodada=correcao['rodada'] if correcao else 0
                         if (cfg['ciclo']['ativo'] and meta_execucao and provider.nome in ('codex','opencode')
