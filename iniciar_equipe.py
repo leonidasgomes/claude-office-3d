@@ -27,8 +27,10 @@ arquivo_utf8 (contendo os candidatos e pedido de classificação/aceite, sem exe
 Se a consulta falhar, pare e explique; não substitua silenciosamente o diretor.
 Escolha até max_cartoes preparáveis, pela ordem de prioridade, preferindo equipes diferentes.
 Não crie tarefas artificiais para ocupar mesas. Respeite dependências, recursos e escopo/aceite.
-3. Confira a base configurada com Git. Crie worktree e branch novos por cartão, fora da raiz de trabalho,
-na pasta worktrees irmã da pasta office, com identificador único. Não use/limpe worktrees existentes.
+3. Salve JSON UTF-8 com {"base":base_configurada,"cartoes":[numeros_aprovados]} e envie ao host:
+controlador_local.py --projeto RAIZ --acao worktrees --arquivo pedido_worktrees_utf8.
+O host confirma a base remota e cria branches/worktrees novos. Não execute git worktree add no sandbox.
+Use o plano retornado; se houver falha parcial, confira o recibo e pare, sem repetir/limpar/reutilizar.
 Não altere arquivos do checkout principal, política, credenciais, hooks ou regras para permitir execução.
 4. Gere um plano UTF-8 local com {"paralelismo":1,"cartoes":[{"cartao":numero,"worktree":caminho_absoluto}]}.
 Valide pelo comando controlador_local.py --projeto RAIZ --acao lote --arquivo plano_utf8 (sem --executar). A divisão segue o campo Time do Kanban.

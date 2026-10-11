@@ -1,4 +1,4 @@
-import sys,tempfile,unittest
+import sys,tempfile,unittest,subprocess,json
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
@@ -49,5 +49,67 @@ class Controlador(unittest.TestCase):
         with patch.object(c,'FILA',fila):
             self.assertEqual(c.main(['--projeto',str(self.projeto),'--acao','diretor','--arquivo',str(arquivo)]),2)
         self.assertEqual(list(fila.glob('*.pedido.json')),[])
+
+    def git(self,*args):
+        return subprocess.run(['git',*map(str,args)],check=True,capture_output=True,text=True).stdout.strip()
+
+    def ambiente_git(self):
+        remoto=self.raiz/'remoto.git';self.git('init','--bare',remoto)
+        self.git('init','-b','main',self.projeto)
+        self.git('-C',self.projeto,'config','user.name','Teste')
+        self.git('-C',self.projeto,'config','user.email','teste@example.com')
+        (self.projeto/'arquivo.txt').write_text('base',encoding='utf-8')
+        self.git('-C',self.projeto,'add','.');self.git('-C',self.projeto,'commit','-m','base')
+        self.git('-C',self.projeto,'remote','add','origin',remoto)
+        self.git('-C',self.projeto,'push','origin','main')
+
+    def preparar_mocks(self):
+        kanban=patch('kanban_gestao.Kanban');k=kanban.start();self.addCleanup(kanban.stop)
+        k.return_value.cartoes.return_value=[{'numero':7,'equipe':'Dev'},{'numero':8,'equipe':'QA'}]
+        preparar=patch('gestao_cli.preparar',return_value=({'ativo':True},None,None,None,{}))
+        preparar.start();self.addCleanup(preparar.stop)
+        disp=patch('gestao_cli.conferir_disponibilidade');d=disp.start();self.addCleanup(disp.stop)
+        return d
+
+    def test_cria_git_real_preserva_checkout_e_recusa_repeticao(self):
+        self.ambiente_git();self.preparar_mocks()
+        (self.projeto/'arquivo.txt').write_text('alteração do usuário',encoding='utf-8')
+        pedido=self.pedido('worktrees',{'base':'origin/main','cartoes':[7,8]})
+        r=c.executar_pedido(pedido,[str(self.projeto)])
+        self.assertEqual(r['estado'],'criado');self.assertEqual(len(r['criados']),2)
+        self.assertEqual((self.projeto/'arquivo.txt').read_text(encoding='utf-8'),'alteração do usuário')
+        self.assertEqual(self.git('-C',self.projeto,'branch','--show-current'),'main')
+        for item in r['criados']:
+            self.assertEqual(self.git('-C',item['worktree'],'rev-parse','HEAD'),r['sha'])
+            self.assertEqual(self.git('-C',item['worktree'],'branch','--show-current'),item['branch'])
+        with self.assertRaisesRegex(ValueError,'Criação anterior'):
+            c.executar_pedido(pedido,[str(self.projeto)])
+
+    def test_reserva_bloqueada_impede_criacao(self):
+        self.ambiente_git();d=self.preparar_mocks();d.side_effect=ValueError('Cartão já reservado')
+        with self.assertRaisesRegex(ValueError,'já reservado'):
+            c.criar_worktrees(self.projeto,{'base':'origin/main','cartoes':[7]})
+        self.assertFalse((self.raiz/'worktrees').exists())
+
+    def test_falha_parcial_deixa_recibo_sem_limpar(self):
+        self.ambiente_git();self.preparar_mocks();original=c.subprocess.run
+        def rodar(args,**kwargs):
+            if 'worktree' in args and any('office-8-' in a for a in args):
+                return subprocess.CompletedProcess(args,1,'','falha simulada')
+            return original(args,**kwargs)
+        with patch.object(c.subprocess,'run',side_effect=rodar),self.assertRaisesRegex(ValueError,'não repetir'):
+            c.criar_worktrees(self.projeto,{'base':'origin/main','cartoes':[7,8]})
+        recibos=list((self.office/'dados'/'worktrees').glob('*.json'))
+        r=json.loads(recibos[0].read_text(encoding='utf-8'))
+        self.assertEqual(r['estado'],'incerto');self.assertEqual(len(r['criados']),1)
+        self.assertTrue(Path(r['criados'][0]['worktree']).exists())
+
+    def test_rejeita_base_injetada_cartoes_invalidos_e_destino_interno(self):
+        for base,cartoes in [('main',[7]),('origin/--x',[True]),('origin/main',[7,7]),
+                             ('origin/main',[7,8,9]),('origin/main;echo',[7])]:
+            with self.assertRaises(ValueError):c.criar_worktrees(self.projeto,{'base':base,'cartoes':cartoes})
+        self.ambiente_git()
+        with patch.object(c,'RAIZ',self.projeto/'office'),self.assertRaisesRegex(ValueError,'dentro do checkout'):
+            c.criar_worktrees(self.projeto,{'base':'origin/main','cartoes':[7]})
 
 if __name__=='__main__':unittest.main()

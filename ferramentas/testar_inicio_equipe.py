@@ -10,6 +10,7 @@ class Inicio(unittest.TestCase):
         s=tarefa(Path('projeto'),Path('office'),'origin/main',2)
         self.assertIn('--acao lote --arquivo plano_utf8 --executar',s)
         self.assertIn('--acao diretor --arquivo',s)
+        self.assertIn('--acao worktrees --arquivo',s)
         self.assertIn('"max_cartoes": 2',s)
         self.assertIn('Não retome reserva',s)
         self.assertLess(len(s),6000)
