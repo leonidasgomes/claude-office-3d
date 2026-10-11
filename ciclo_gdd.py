@@ -18,6 +18,7 @@ from controlador_local import atomico, criar_worktrees
 
 RAIZ=Path(__file__).resolve().parent
 TERMINAIS={'concluido','limite','pausado'}
+ATIVOS={'iniciando','consultando','diretor','investigando','preparando','implementando','replanejando','aguardando'}
 
 
 def caminho_estado(projeto):
@@ -41,6 +42,28 @@ def reservas(projeto):
             'SELECT cartao,equipe,estado,sessao FROM reserva ORDER BY cartao')]
 
 
+def coordenador_vivo(projeto,registro):
+    """PID sozinho não comprova identidade: confira executável, projeto e UUID."""
+    if registro.get('estado') not in ATIVOS or not re.fullmatch('[0-9a-f]{32}',str(registro.get('id',''))):return False
+    try:
+        recibo=json.loads(caminho_estado(projeto).with_suffix('.processo.json').read_text(encoding='utf-8'))
+        pid=recibo['pid']
+        if recibo['id']!=registro['id'] or type(pid) is not int or pid<1 or registro.get('pid') not in (None,pid):return False
+        argumentos=[str(RAIZ/'ciclo_gdd.py'),'--projeto',str(Path(projeto).resolve()),'--sessao',registro['id']]
+        if sys.platform=='win32':
+            resultado=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command',
+                f'Get-CimInstance Win32_Process -Filter "ProcessId={pid}" | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress'],
+                capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=5)
+            if resultado.returncode or not resultado.stdout.strip():return False
+            processo=json.loads(resultado.stdout)
+            return (processo['ProcessId']==pid and Path(processo['ExecutablePath']).resolve()==Path(sys.executable).resolve()
+                and processo['CommandLine'].casefold().endswith((' '+subprocess.list2cmdline(argumentos)).casefold()))
+        proc=Path('/proc')/str(pid)
+        cmd=[x.decode() for x in (proc/'cmdline').read_bytes().split(b'\0') if x]
+        return Path(cmd[0]).resolve()==Path(sys.executable).resolve() and cmd[1:]==argumentos
+    except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return False
+
+
 def iniciar(projeto):
     cfg=carregar(projeto)
     if not cfg['ativo'] or not cfg['ciclo']['ativo']:raise ValueError('Ciclo não habilitado pelo usuário')
@@ -50,6 +73,10 @@ def iniciar(projeto):
     if p.exists():
         anterior=json.loads(p.read_text(encoding='utf-8'))
         if anterior['estado'] not in TERMINAIS:
+            if coordenador_vivo(projeto,anterior):
+                atual=json.loads(p.read_text(encoding='utf-8'))
+                if atual['id']==anterior['id'] and atual['estado'] in ATIVOS:
+                    return {'id':atual['id'],'estado':atual['estado'],'pid':anterior.get('pid'),'existente':True}
             raise ValueError('Ciclo existente/incerto; confira estado antes de iniciar outro')
         if anterior.get('conciliacao',{}).get('preservar_janela') is True:
             limite_anterior=anterior['limite']

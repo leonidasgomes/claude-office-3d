@@ -10,8 +10,11 @@ por exemplo P0/P1/P2/P3. O GDD define o objetivo, o Kanban o estado vivo,
 e a passagem de turno fornece contexto histórico.
 
 O atalho com `iniciar_equipe.py` inicia o ciclo pelo host e abre um console de
-acompanhamento. O CEO não duplica o lote que o host está conduzindo. A área
-Trabalho e indicadores mostra estado, objetivo, cartões, causa e próxima ação.
+acompanhamento. O CEO não duplica o lote que o host está conduzindo.
+Se o ciclo já estiver ativo, o atalho verifica o processo, projeto e sessão e
+abre seu acompanhamento, sem novo despacho ou extensão do prazo. PID ausente,
+reutilizado, identidade divergente ou estado incerto continuam exigindo conciliação.
+A área Trabalho e indicadores mostra estado, objetivo, cartões, causa e próxima ação.
 Após duas horas, nenhuma tarefa nova começa; o despacho em curso termina.
 Sem mudança no quadro, PRs, fontes, reservas ou disponibilidade da bancada,
 a espera de cinco minutos não chama IA.

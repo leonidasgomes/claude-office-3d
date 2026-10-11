@@ -78,7 +78,10 @@ def main(argv=None):
         provider,exe=selecionar('codex')
         worktrees=office.parent/'worktrees'
         worktrees.mkdir(exist_ok=True)
-        print('CEO: iniciando coordenação do Kanban; equipes executam em worktrees. Limite:',args.max_cartoes,flush=True)
+        if ciclo.get('ativo'):
+            print('CEO: abrindo acompanhamento do ciclo host; equipes continuam nas worktrees.',flush=True)
+        else:
+            print('CEO: iniciando coordenação do Kanban; equipes executam em worktrees. Limite:',args.max_cartoes,flush=True)
         return executar(provider,exe,projeto,'CEO',modelo=cfg['ceo']['modelo'],
                         sandbox='workspace-write',prompt_inicial=prompt,diretorios_escrita=[office,worktrees])
     except (OSError,ValueError) as exc:

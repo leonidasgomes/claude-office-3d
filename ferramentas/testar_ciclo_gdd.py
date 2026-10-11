@@ -58,7 +58,7 @@ class Ciclo(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'existente/incerto'):c.iniciar(self.p)
 
     def test_inicio_windows_fecha_lock_e_impede_duplicacao(self):
-        with patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)) as criar:
+        with patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)) as criar,patch.object(c,'coordenador_vivo',return_value=False):
             r=c.iniciar(self.p)
             self.assertEqual(r['pid'],123)
             self.assertFalse(c.caminho_estado(self.p).with_suffix('.inicio.lock').exists())
@@ -70,6 +70,31 @@ class Ciclo(unittest.TestCase):
         with patch.object(c.time,'time',return_value=100),patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)):
             c.iniciar(self.p)
         self.assertEqual(c.resumo(self.p)['limite'],200)
+
+    def test_reabrir_ciclo_vivo_nao_cria_processo_nem_muda_prazo(self):
+        registro={'id':'a'*32,'estado':'implementando','pid':123,'limite':200,'cartoes':[{'cartao':1}]}
+        c.atomico(c.caminho_estado(self.p),registro)
+        with patch.object(c,'coordenador_vivo',return_value=True),patch.object(c.subprocess,'Popen') as criar:
+            r=c.iniciar(self.p)
+        self.assertTrue(r['existente']);criar.assert_not_called()
+        self.assertEqual(json.loads(c.caminho_estado(self.p).read_text(encoding='utf-8')),registro)
+
+    def test_pid_exige_projeto_sessao_executavel_e_recibo(self):
+        registro={'id':'a'*32,'estado':'implementando','pid':123}
+        recibo=c.caminho_estado(self.p).with_suffix('.processo.json')
+        c.atomico(recibo,{'id':registro['id'],'pid':123})
+        argumentos=[str(c.RAIZ/'ciclo_gdd.py'),'--projeto',str(self.p.resolve()),'--sessao',registro['id']]
+        processo={'ProcessId':123,'ExecutablePath':sys.executable,'CommandLine':sys.executable+' '+c.subprocess.list2cmdline(argumentos)}
+        with patch.object(c.sys,'platform','win32'),patch.object(c.subprocess,'run') as consultar:
+            consultar.return_value=Mock(returncode=0,stdout=json.dumps(processo))
+            self.assertTrue(c.coordenador_vivo(self.p,registro))
+            for campo,valor in [('CommandLine','outro projeto'),('ExecutablePath',str(self.raiz/'outro.exe')),('ProcessId',321)]:
+                consultar.return_value=Mock(returncode=0,stdout=json.dumps({**processo,campo:valor}))
+                self.assertFalse(c.coordenador_vivo(self.p,registro))
+            consultar.return_value=Mock(returncode=0,stdout=json.dumps(processo))
+            self.assertFalse(c.coordenador_vivo(self.p,{**registro,'estado':'erro'}))
+            c.atomico(recibo,{'id':'b'*32,'pid':123})
+            self.assertFalse(c.coordenador_vivo(self.p,registro))
 
     def test_paginas_20_encontra_cartao_25_e_respeita_limite(self):
         itens=[self.item(n) for n in range(1,26)];tempo=[0];consultados=[];despachos=[]
