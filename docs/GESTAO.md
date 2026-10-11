@@ -1587,3 +1587,5 @@ Não há downgrade automático no instalador. Ao usar uma instalação isolada,
 selecione seu binário pelo PATH e defina `OFFICE_CODEX_SEM_DAEMON=1` para não
 reutilizar o daemon de outra versão; modelos, política e credenciais permanecem
 as configuradas. Verifique com `codex --version` e um comando real antes de despachar.
+
+Para operação autorizada sem perguntas do Codex, defina `OFFICE_CODEX_AUTONOMO=1` no ambiente do launcher. Ele usa aprovação `never` e permite rede no `workspace-write` (necessária para GitHub), mantendo os limites de escrita. Comandos fora desses limites falham; não são escalados. Política do projeto, reservas, aceite, revisores e merge continuam passando pelos gates existentes. Não altera a configuração global do Codex. Reabra a sessão para aplicar.

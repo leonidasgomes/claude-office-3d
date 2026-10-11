@@ -2,6 +2,8 @@
 
 ## Próxima versão
 
+- Autonomia Codex opt-in por launcher: rede no workspace e comandos sem confirmação, preservando sandbox e gates.
+
 - Opção de iniciar Codex sem daemon compartilhado para instalações isoladas; diagnóstico do erro 32 no sandbox Windows.
 
 - Início da equipe Codex com tarefa de coordenação no Kanban e limite de cartões; CEO e diretor dividem a sala em mesas distintas.

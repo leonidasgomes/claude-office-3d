@@ -36,6 +36,12 @@ class Inicio(unittest.TestCase):
             self.assertEqual(args,['codex','--disable','daemon_auto_start','--sandbox','workspace-write'])
             self.assertNotIn('--disable',PROVIDERS['claude'].comando('claude',Path('.')))
             self.assertNotIn('--disable',PROVIDERS['opencode'].comando('opencode',Path('.')))
+    def test_autonomia_explicitamente_autorizada_preserva_sandbox(self):
+        with patch.dict('os.environ',{'OFFICE_CODEX_AUTONOMO':'1'}),patch('providers_console.comando_nativo',side_effect=lambda exe,nome:[exe]):
+            args=PROVIDERS['codex'].comando('codex',Path('.'),sandbox='workspace-write')
+            self.assertIn('never',args);self.assertIn('sandbox_workspace_write.network_access=true',args)
+            self.assertIn('workspace-write',args);self.assertNotIn('danger-full-access',args)
+            self.assertNotIn('never',PROVIDERS['claude'].comando('claude',Path('.')))
     def test_prompt_inicial_rejeita_modo_errado_antes_de_lancar(self):
         with self.assertRaises(ValueError):executar(PROVIDERS['claude'],'claude',Path('.'),'CEO',prompt_inicial='tarefa')
         with self.assertRaises(ValueError):executar(PROVIDERS['codex'],'codex',Path('.'),'CEO',prompt='exec',prompt_inicial='tarefa')
