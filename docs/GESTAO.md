@@ -1747,6 +1747,18 @@ executar com recurso leve; usa os mesmos worktrees, lote, limite de dois cartõe
 e gates. Não encadeia criação de subtarefas nem retoma reservas bloqueadas.
 Investigações despachadas aparecem com essa etapa real no acompanhamento.
 
+### Proteção contra orçamento insuficiente
+
+No ciclo automático, um primeiro despacho encerrado por limite de tempo ou tokens
+pode ser seguido por trabalho independente. Dois despachos consecutivos com
+retorno confirmado `124` e motivo `limite_tempo` ou `limite_tokens` encerram o
+ciclo em erro, com os recibos preservados e uma ação para ajustar as metas no
+painel. Um retorno diferente zera essa sequência. A proteção não muda o orçamento,
+não cria sub-issues para contorná-lo e não retoma reservas. Depois de conferir a
+causa, salve a configuração com tarefas paradas e inicie explicitamente outro
+ciclo. Tokens de entrada em cache também contam: contexto grande pode consumir
+o orçamento em poucas chamadas, mesmo com pouca saída.
+
 ### Publicação da revisão dos providers
 
 Quando o projeto usa merge automático e exige `revisor-ia`, o despacho publica
