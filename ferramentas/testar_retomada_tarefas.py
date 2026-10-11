@@ -92,6 +92,58 @@ class Retomada(unittest.TestCase):
     def retomar(self,hash=None):
         with redirect_stdout(io.StringIO()):return gc.retomar(self.projeto,42,self.trabalho,hash or self.previa()['confirmacao'],kanban=self.f.k,rodar=self.rodar,agentes_conciliados=True)
 
+    def test_retomada_manual_com_pr_entra_no_acompanhamento_uma_vez(self):
+        from conclusao_tarefas import incorporar_retomadas_confirmadas,pendencias_sessao
+        self.f.k.chamar=self.f.api
+        r=self.retomar();self.assertEqual(r['estado'],'revisao')
+        registro={};incorporar_retomadas_confirmadas(self.projeto,registro)
+        self.assertEqual(registro['vinculos_conclusao'],[{'cartao':42,'token':r['token']}])
+        self.assertEqual(registro['resultados'][0]['origem'],'retomada_manual_confirmada')
+        incorporar_retomadas_confirmadas(self.projeto,registro)
+        self.assertEqual(len(registro['resultados']),1)
+        self.assertEqual(pendencias_sessao(self.projeto,registro)[0]['pr'],142)
+        # Um erro posterior de conclusão não é apagado a cada rodada/reinício.
+        registro['conclusoes']=[{'token':r['token'],'estado':'bloqueado','motivo':'gate pendente'}]
+        from ciclo_gdd import preservar_entregas
+        reinicio=preservar_entregas(registro)
+        incorporar_retomadas_confirmadas(self.projeto,reinicio)
+        self.assertEqual(reinicio['conclusoes'],registro['conclusoes'])
+        with closing(sqlite3.connect(self.db)) as db,db:
+            entrega=db.execute('SELECT aprovado,relatorio FROM entrega WHERE token=?',(r['token'],)).fetchone()
+            self.assertEqual(entrega,(0,'{"revisao": "dispensada_pela_politica"}'))
+            db.execute('UPDATE entrega SET sha=? WHERE token=?',('f'*40,r['token']))
+        novo={};incorporar_retomadas_confirmadas(self.projeto,novo);self.assertEqual(novo,{})
+
+    def test_confirmacao_manual_nova_preserva_bloqueio_anterior_sem_repetir(self):
+        from conclusao_tarefas import incorporar_retomadas_confirmadas
+        self.f.k.chamar=self.f.api;r=self.retomar()
+        bloqueio={'token':r['token'],'estado':'bloqueado','motivo':'conclusão anterior falhou'}
+        registro={'vinculos_conclusao':[{'cartao':42,'token':r['token']}],
+            'resultados':[{'resultados':[{'cartao':42,'estado':'revisao','codigo':0}]}],
+            'conclusoes':[bloqueio]}
+        incorporar_retomadas_confirmadas(self.projeto,registro)
+        self.assertEqual(registro['conclusoes'],[])
+        self.assertEqual(registro['conclusoes_anteriores'],[bloqueio])
+        incorporar_retomadas_confirmadas(self.projeto,registro)
+        self.assertEqual(len(registro['resultados']),1)
+        self.assertEqual(registro['conclusoes_anteriores'],[bloqueio])
+
+    def test_retomada_sem_pr_nao_e_adotada_como_entrega(self):
+        from conclusao_tarefas import incorporar_retomadas_confirmadas
+        self.retomar();registro={};incorporar_retomadas_confirmadas(self.projeto,registro)
+        self.assertEqual(registro,{})
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute('SELECT estado FROM acompanhamento_retomada').fetchone()[0],'bloqueado')
+
+    def test_intento_interrompido_nao_adota_entrega_historica(self):
+        from conclusao_tarefas import iniciar_acompanhamento_retomada,incorporar_retomadas_confirmadas
+        reserva=Controle(self.db).listar(self.cfg['kanban']['repo'])[0]
+        iniciar_acompanhamento_retomada(self.projeto,reserva,self.previa()['confirmacao'])
+        with closing(sqlite3.connect(self.db)) as db,db:
+            db.execute("UPDATE reserva SET estado='revisao'")
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?)',(reserva['token'],'a'*40,142,0,'{}',1))
+        registro={};incorporar_retomadas_confirmadas(self.projeto,registro);self.assertEqual(registro,{})
+
     def test_mesma_reserva_sessao_nova_tentativa_sem_mover_kanban(self):
         antes=len([c for c in self.f.fixture.chamadas if c[1]=='PATCH'])
         preview=self.previa();self.assertTrue(preview['apenas_previa']);self.assertEqual(len(self.calls),1)

@@ -97,7 +97,8 @@ class Lotes(unittest.TestCase):
         if '/pulls?' in caminho:
             from urllib.parse import unquote
             n=next(n for n in self.status if 'feat/card-'+str(n) in unquote(caminho))
-            return [{'number':n+100,'head':{'ref':'feat/card-'+str(n)},'body':'Closes #'+str(n),'draft':False}]
+            return [{'number':n+100,'head':{'ref':'feat/card-'+str(n),
+                'sha':self.git(self.work/str(n),'rev-parse','HEAD')},'body':'Closes #'+str(n),'draft':False}]
         raise AssertionError(caminho)
 
     def despacho(self,*args,**kw):

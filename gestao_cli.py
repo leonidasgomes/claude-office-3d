@@ -573,6 +573,13 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                                 'motivo':'revisao_reprovada','devolutiva':devolutiva}
                     from revisor_ia import publicar_revisao_gestao
                     publicar_revisao_gestao(projeto,cfg,atual_pr,relatorio)
+                else:
+                    from revisao_execucao import git
+                    if carregar(projeto)!=cfg:raise ValueError('Política mudou durante a consulta de entrega')
+                    if (entrega.get('head') or {}).get('sha')!=git(trabalho,'rev-parse','--verify','HEAD^{commit}'):
+                        raise ValueError('PR sem revisão diverge do commit local')
+                    controle.registrar_entrega_sem_revisao(token,entrega.get('number'),
+                        (entrega.get('head') or {}).get('sha'),cfg)
                 conferir_cartao(k,numero,projeto,cfg,equipe,pacote,cfg['kanban']['andamento'])
                 k.mover(numero, cfg["kanban"]["revisao"])
                 controle.transicao(token, "revisao")
@@ -669,8 +676,12 @@ def retomar(projeto,numero,worktree,confirmacao,banco=None,kanban=None,rodar=exe
         except (ValueError,OSError,sqlite3.Error,subprocess.SubprocessError) as exc:falha_previa=exc
         if falha_previa is None:
             pacote=reserva['pacote'];ctx=pacote['contexto_execucao']
-            return _despachar(projeto,numero,reserva['equipe'],ctx['escopo'],trabalho,banco,rodar,revisar,
+            from conclusao_tarefas import iniciar_acompanhamento_retomada,registrar_acompanhamento_retomada
+            acompanhamento=iniciar_acompanhamento_retomada(projeto,reserva,confirmacao,banco)
+            resultado=_despachar(projeto,numero,reserva['equipe'],ctx['escopo'],trabalho,banco,rodar,revisar,
                 (pacote.get('funcionario') or {}).get('id'),preparado,retomada=reserva,ao_execucao=ao_execucao)
+            registrar_acompanhamento_retomada(projeto,acompanhamento,resultado,banco)
+            return resultado
     raise falha_previa
 
 

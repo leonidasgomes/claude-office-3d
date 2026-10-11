@@ -175,7 +175,8 @@ def preservar_entregas(registro):
         if confirmados:lotes.append({**lote,'resultados':confirmados,'checkpoint':True})
     return {'vinculos_conclusao':vinculos,
             'resultados':lotes,
-            'conclusoes':registro.get('conclusoes',[])}
+            'conclusoes':registro.get('conclusoes',[]),
+            **{key:registro[key] for key in ('retomadas_incorporadas','conclusoes_anteriores') if key in registro}}
 
 
 def iniciar(projeto):
@@ -524,7 +525,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     try:
         while disponivel():
             if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou; iniciar nova sessão após conferir')
-            from conclusao_tarefas import confirmar_sessao
+            from conclusao_tarefas import confirmar_sessao,incorporar_retomadas_confirmadas
+            incorporar_retomadas_confirmadas(projeto,registro)
             conclusoes=confirmar_sessao(projeto,registro)
             if conclusoes:
                 registro.setdefault('conclusoes',[]).extend(conclusoes)

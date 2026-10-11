@@ -6,6 +6,7 @@ específicas do console. Reservas vencidas exigem conciliação, nunca roubo aut
 import json
 import math
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -290,6 +291,18 @@ class Controle:
             pacote.setdefault('dependencias_verificadas',{})[fase] = evidencia
             db.execute('UPDATE reserva SET pacote=?,atualizado=? WHERE token=?',
                        (json.dumps(pacote,ensure_ascii=False),time.time(),token))
+
+    def registrar_entrega_sem_revisao(self,token,pr,sha,cfg):
+        """Vínculo de PR observado; não fabrica aprovação de revisão."""
+        if cfg['revisao']['ativo'] or type(pr) is not int or pr<1 or not re.fullmatch('[0-9a-f]{40}',sha or ''):
+            raise ValueError('Entrega sem revisão exige dispensa explícita e PR/commit válidos')
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT estado FROM reserva WHERE token=?',(token,)).fetchone()
+            if not row or row['estado']!='executando':raise ValueError('Entrega exige reserva em execução')
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET '
+                'sha=excluded.sha,pr=excluded.pr,aprovado=excluded.aprovado,relatorio=excluded.relatorio,atualizado=excluded.atualizado',
+                (token,sha,pr,0,json.dumps({'revisao':'dispensada_pela_politica'}),time.time()))
 
     def registrar_revisao(self, token, pr, relatorio, cfg):
         from revisao_cruzada import conferir
