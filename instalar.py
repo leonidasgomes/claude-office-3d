@@ -84,7 +84,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "recursos_local.py", "memoria_local.py", "executor_local.py", "revisao_cruzada.py", "revisao_execucao.py", "revisores_console.py",
           "rpc_console.py", "uso_providers.py", "consumo_providers.py", "precos_tokens.py", "precos_tokens.exemplo.json", "indicadores_providers.mjs", "EDICAO.json", "iniciar_projeto.py", "compatibilidade_skills.py", "skills_execucao.py", "retorno_console.py", "coordenacao.py", "coordenacao_registro.py", "coordenacoes_painel.mjs",
           "coordenacao_execucao.py", "consumo_coordenacao.py", "triagem_providers.py", "alertas_projetos.py", "auditor_projeto.py", "coordenacao_painel.py", "coordenacao_form.mjs", "retomada_painel.py", "retomada_form.mjs", "configurar_gestao.py", "diagnostico_instalacao.py", "projeto.exemplo.json", "docs/GESTAO.md",
-          "funcionarios_cena.mjs", "agentes_nativos.py", "agentes_nativos_form.mjs",
+          "funcionarios_cena.mjs", "atividade_cena.mjs", "agentes_nativos.py", "agentes_nativos_form.mjs",
           "skills-candidatos/externo/README.md", "docs/SDD.md", "docs/REVISAO-OPCIONAL.md", "VERSION", "CHANGELOG.md", "LICENSE"]
 CDN_THREE = f"https://cdn.jsdelivr.net/npm/three@{configuracao.VERSAO_THREE}/"
 ARQUIVOS_THREE = ["build/three.module.js", "examples/jsm/controls/OrbitControls.js"]

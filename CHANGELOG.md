@@ -1,6 +1,7 @@
 # Changelog
 
 ## Próxima versão
+- Cena distingue cadastros, histórico e atividade observada; falhas de conexão HTTP não ligam a demonstração automaticamente.
 
 ## 2.0.0-dev.3
 - Instalador Windows cria atalho na área de trabalho com ícone próprio, respeitando Desktop redirecionado e preservando atalhos alheios.
