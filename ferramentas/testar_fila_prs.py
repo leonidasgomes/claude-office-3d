@@ -2,7 +2,7 @@ import json,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
-from fila_prs import validar,planejar,projetar,versao_politica
+from fila_prs import validar,planejar,projetar,versao_politica,preparar_fila,autor_encerrado
 from gestao_projeto import validar as politica
 
 class Fila(unittest.TestCase):
@@ -61,5 +61,70 @@ class Fila(unittest.TestCase):
             self.assertEqual(projetar(self.p,self.cfg,[self.pr]),{})
             arq.write_text('{quebrado',encoding='utf-8')
             self.assertEqual(projetar(self.p,self.cfg,[self.pr]),{})
+
+    def preparar_fixture(self):
+        self.cfg['ciclo']['criar_subtarefas']=True;self.cfg['kanban']['prioridades']=['P1']
+        self.k.cartao.return_value={'numero':1,'equipe':'Dev','prioridade':'P1','status':'Em revisão'}
+        self.k.issue.return_value={'number':1,'state':'open','html_url':'https://github.com/o/r/issues/1','body':'aceite do pai'}
+        self.k.chamar.return_value=self.pr
+        return {'titulo':'Formalizar etapa','equipe':'Dev','objetivo':'Planejar validação','aceite':'Documento vinculado ao pai e PR','skills':'nenhuma'}
+
+    def test_preparacao_independente_usa_criador_com_origem_e_preserva_pai(self):
+        s=self.preparar_fixture();consulta=Mock(return_value=json.dumps({'subtarefa':s}));criar=Mock(return_value=9)
+        with patch('gestao_projeto.carregar',return_value=self.cfg):
+            r=preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
+        self.assertEqual(r['numero'],9);self.assertEqual(r['pr'],3)
+        self.assertEqual(criar.call_args.kwargs,{'origem_pr':3})
+        self.assertIsNone(criar.call_args.args[3]['objetivo_gdd'])
+        self.assertIn('PR #3',criar.call_args.args[4]['subtarefa']['objetivo'])
+        self.assertIn('não repita',consulta.call_args.args[0].lower())
+        self.assertTrue(all(len(x.args)==1 for x in self.k.chamar.call_args_list))
+
+    def test_consulta_incerta_nao_cria_nem_repete_e_subissue_existente_impede(self):
+        self.preparar_fixture();criar=Mock();consulta=Mock(side_effect=RuntimeError('rede'))
+        with self.assertRaises(RuntimeError):preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
+        with self.assertRaisesRegex(ValueError,'incerta'):preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
+        consulta.assert_called_once();criar.assert_not_called()
+        self.k._paginas.return_value=[{'state':'open'}]
+        outra=self.p/'outra';outra.mkdir()
+        self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],outra,self.k,criar,consulta))
+        consulta.assert_called_once()
+
+    def test_preparacao_dispensada_nao_consulta_em_loop(self):
+        self.preparar_fixture();consulta=Mock(return_value='{"subtarefa":null}');criar=Mock()
+        for _ in range(2):
+            self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta))
+        consulta.assert_called_once();criar.assert_not_called()
+
+    def test_autor_incerto_e_head_mudado_nao_criam_preparacao(self):
+        s=self.preparar_fixture();consulta=Mock(return_value=json.dumps({'subtarefa':s}));criar=Mock()
+        with patch('fila_prs.autor_encerrado',return_value=False):
+            self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta))
+        consulta.assert_not_called();criar.assert_not_called()
+        self.k.chamar.return_value={**self.pr,'head':{'sha':'b'*40}}
+        with patch('gestao_projeto.carregar',return_value=self.cfg):
+            with self.assertRaisesRegex(ValueError,'mudou'):preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
+        criar.assert_not_called()
+
+    def test_equipes_inventadas_nao_criam_cartao(self):
+        s=self.preparar_fixture();s['equipe']='Inventada';criar=Mock()
+        with self.assertRaisesRegex(ValueError,'inválidos'):
+            preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,lambda _:json.dumps({'subtarefa':s}))
+        criar.assert_not_called()
+
+    def test_autor_sem_retorno_ou_atividade_encerrada_nao_libera_preparacao(self):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:
+            db.executescript('CREATE TABLE reserva(projeto,cartao,token,estado);CREATE TABLE execucao_tarefa(id,token,fim,codigo);CREATE TABLE atividade_execucao(execucao,estado,codigo_console);')
+            db.execute('INSERT INTO reserva VALUES (?,?,?,?)',('o/r','1','token','bloqueado'))
+            db.execute('INSERT INTO execucao_tarefa VALUES (?,?,?,?)',('a','token',None,None))
+        self.assertFalse(autor_encerrado(self.p,'o/r',1))
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:
+            db.execute('UPDATE execucao_tarefa SET fim=1,codigo=124')
+        self.assertFalse(autor_encerrado(self.p,'o/r',1))
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:
+            db.execute('INSERT INTO atividade_execucao VALUES (?,?,?)',('a','encerrado',124))
+        self.assertTrue(autor_encerrado(self.p,'o/r',1))
 
 if __name__=='__main__':unittest.main()

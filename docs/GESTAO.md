@@ -1868,6 +1868,20 @@ para o mesmo commit e política; mudança de commit ou política exige nova
 classificação. É proposta de preparação, sem comprovar despacho ou aprovação.
 Os checks continuam sendo conferidos na seção de evidências do PR.
 
+Com criação de subtarefas habilitada, uma fila cheia pode receber uma preparação
+independente para um PR parcial com encaminhamento `etapa`. O diretor recebe
+fontes completas e precisa aprovar uma entrega útil com aceite próprio; pode
+dispensá-la. O host só cria se houver um pai inequívoco no Kanban, prioridade
+válida, autor com retorno/encerramento registrados e nenhuma sub-issue aberta.
+O cartão usa o criador e as reservas existentes, menciona PR/pai e preserva o
+aceite original. Só essa preparação leve pode passar pela fila; o backlog
+normal permanece em espera. Há nova classificação do diretor antes do lote.
+O despacho usa escopo planejamento, worktree novo, metas e gates normais.
+Não implementa nem regenera o pai, não retoma sua sessão, não troca seu orçamento
+e não aprova o PR parcial. A etapa real continua exigindo validação própria.
+Consulta/criação incerta não é repetida; um recibo criado precisa continuar
+compatível com o cartão, PR e política. Não há criação em cascata nessa passagem.
+
 `memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
 referências estruturadas a entregas com conclusão registrada por merge, do
 mesmo projeto, objetivo e hash do GDD, com ao menos um gate registrado e todos
