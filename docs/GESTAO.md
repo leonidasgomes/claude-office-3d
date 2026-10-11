@@ -1930,3 +1930,9 @@ processo ativo. Marcadores `.trava` de instalações anteriores continuam bloque
 até recuperação assistida: parar os serviços, verificar que não há processo
 usando a caixa, preservar o marcador para diagnóstico e só então removê-lo.
 Nunca remover uma trava apenas pela idade. O protocolo do Claude legado permanece.
+
+O motivo mostrado pertence à etapa atual. Ao sair da espera para consultar, preparar ou executar, o motivo antigo é removido; bloqueios novos continuam explícitos. A criação de worktree aparece como preparação, antes de validar e registrar a execução.
+
+No ciclo, uma entrega de planejamento também exige registro versionado e PR do cartão. Comentários e sub-issues são evidências úteis, mas não substituem a entrega por merge. O registro documenta fontes, decisões, limites e próximos cartões, sem implementar o pai ou alterar seu aceite. Se a publicação falhar, os registros existentes são preservados e a reserva fica bloqueada para recuperação assistida.
+
+Próximos cartões criados durante planejamento devem usar os campos canônicos de objetivo, aceite, escopo, skills, dependências explícitas e objetivo GDD, além de equipe, prioridade e etapa no Kanban. Dependência escrita apenas em prosa não deve substituir a declaração processável. O controlador não presume aceite ou classificação ausentes.

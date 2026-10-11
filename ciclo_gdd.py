@@ -484,6 +484,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     k=Kanban(cfg,pasta_dados(projeto)/'kanban.json');vistos=set();ultima=None
     limites_seguidos=0
     def salvar(estado,**kw):
+        # Motivo pertence à etapa atual; espera anterior não é bloqueio da execução.
+        kw.setdefault('motivo','')
         registro.update(estado=estado,atualizado=relogio(),**kw);atomico(p,registro)
     pausa=False
     def disponivel():
@@ -626,7 +628,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             for c,d in escolhidos:
                 if not disponivel():break
                 if d['recurso']!='leve' and bancada_ocupada(projeto):raise ValueError('Bancada ficou ocupada antes do despacho')
-                salvar('preparando',cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}])
+                salvar('preparando',cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
+                       proxima_acao='criar worktree novo para o cartão aprovado')
                 work=criar(projeto,{'base':cfg['ciclo']['base'],'cartoes':[c['numero']]})
                 itens=work['plano']['cartoes']
                 if len(itens)!=1 or itens[0]['cartao']!=c['numero']:raise ValueError('Worktree não corresponde ao cartão selecionado')

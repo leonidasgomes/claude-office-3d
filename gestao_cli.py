@@ -418,6 +418,20 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
             nome = funcionarios.nome_eventos(atual)
         from skills_compartilhados import instrucoes_ativacao
         prompt += instrucoes_ativacao(pacote['skills_resolvidas'])
+        if cfg['ciclo']['ativo'] and escopo=='planejamento':
+            prompt += ('\nEntrega de planejamento pelo escritório: produza um registro versionado em documentação '
+                'com origem das evidências, decisões, limites e próximos cartões já existentes ou criados no Kanban. '
+                'Comentários e cadastro de sub-issues sozinhos não satisfazem a entrega. '
+                'Publique um PR vinculado ao cartão deste despacho com Closes #'+str(numero)+'. '
+                'A entrega só será concluída após merge confirmado e gates. '
+                'Não implemente o cartão-pai, não altere seu aceite e não crie tarefas duplicadas para obter um PR. '
+                'Ao cadastrar um próximo cartão, use os campos canônicos **Objetivo:**, **Aceite:**, '
+                '**Escopo:**, **Skills:**, **Dependências:** e **Objetivo GDD:**. '
+                'Dependências devem conter referências explícitas a issues/PRs, ou nenhuma; '
+                'não deixe uma dependência bloqueante somente em prosa ou sob outro nome. '
+                'Vincule o cartão ao pai e registre no Kanban a equipe cadastrada, prioridade e etapa '
+                'com origem verificável; não invente esses valores nem crie outra issue se já existir. '
+                'Se não puder versionar o registro ou publicar, explique o bloqueio e preserve o trabalho realizado.\n')
         if cfg['ciclo']['memoria_referencias'] and provider.nome in ('codex','opencode'):
             from memoria_entregas import recuperar
             referencias=recuperar(controle.banco,cfg['kanban']['repo'],pacote,cfg['ciclo']['memoria_referencias'])

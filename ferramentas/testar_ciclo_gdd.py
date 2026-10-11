@@ -65,14 +65,16 @@ class Ciclo(unittest.TestCase):
     def test_etapa_so_avanca_apos_execucao_registrada(self):
         ident='a'*32;item=self.item(1)
         c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
-            'limite':None,'resultados':[],'pausa_configuravel':True})
+            'limite':None,'resultados':[],'pausa_configuravel':True,'motivo':'Limite de PRs pendentes desta sessão'})
         k=Mock();k.quadro.return_value={'campos':[],'itens':[item]};k.cartoes.return_value=[item];k._paginas.return_value=[]
         grupo=[{**item,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]
         def lote(p,plano,ao_execucao=None):
             self.assertEqual(c.resumo(p)['estado'],'preparando')
             self.assertIn('validar',c.resumo(p)['proxima_acao'])
+            self.assertEqual(c.resumo(p)['motivo'],'')
             ao_execucao(1,'token','tentativa')
             self.assertEqual(c.resumo(p)['estado'],'implementando')
+            self.assertEqual(c.resumo(p)['motivo'],'')
             c.solicitar_pausa(p,ident)
             return {'resultados':[{'cartao':1,'estado':'revisao','codigo':0}]}
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo):

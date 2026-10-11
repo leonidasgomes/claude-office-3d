@@ -60,6 +60,21 @@ class Lotes(unittest.TestCase):
             gc.executar_lote(self.raiz,self.plano,self.k,self.despacho,ao_execucao=callback)
         callback.assert_not_called();self.assertFalse(self.consoles)
 
+    def test_planejamento_exige_artefato_versionado_no_ciclo(self):
+        arq=self.raiz/'.office/projeto.json';cfg=json.loads(arq.read_text(encoding='utf-8'))
+        cfg['ciclo']={'ativo':True,'base':'origin/main'};arq.write_text(json.dumps(cfg),encoding='utf-8')
+        self.plano['cartoes']=self.plano['cartoes'][:1]
+        self.plano['cartoes'][0]['escopo']='planejamento'
+        r=gc.executar_lote(self.raiz,self.plano,self.k,self.despacho)
+        self.assertEqual(r['estado'],'processado')
+        prompt=self.prompts[0][1]
+        self.assertIn('Comentários e cadastro de sub-issues sozinhos não satisfazem',prompt)
+        self.assertIn('registro versionado em documentação',prompt)
+        self.assertIn('Closes #42',prompt)
+        self.assertIn('Não implemente o cartão-pai',prompt)
+        self.assertIn('**Dependências:** e **Objetivo GDD:**',prompt)
+        self.assertIn('não deixe uma dependência bloqueante somente em prosa',prompt)
+
     def git(self, pasta, *args):
         return subprocess.run(['git','-C',str(pasta),*args],capture_output=True,text=True,
             encoding='utf-8',check=True,timeout=20).stdout.strip()
