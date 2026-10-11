@@ -383,8 +383,10 @@ def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None
         return _despachar(projeto,numero,equipe,escopo,trabalho,banco,rodar,revisar,funcionario,preparado,ao_execucao=ao_execucao)
 
 
-def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None):
+def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None, saldo_retomada=None):
     cfg, provider, exe, k, pacote = preparado
+    if retomada and pacote.get('meta') and not correcao and saldo_retomada is None:
+        raise ValueError('Retomada com meta exige saldo confirmado; não renovar orçamento')
     from skills_execucao import conferir_worktree
     conferir_worktree(trabalho,pacote['skills_resolvidas'])
     controle = Controle(banco or pasta_dados(projeto) / "tarefas.db")
@@ -470,11 +472,13 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 json.dumps(correcao['devolutiva'],ensure_ascii=False))
         medicao=controle.iniciar_execucao(token,'correcao' if correcao else 'retomada' if retomada else 'despacho')
         if pacote.get('meta'):
-            from metas_cartao import Execucao
+            from metas_cartao import Execucao,antecedentes_retomada
             import banco as banco_modulo
             meta_execucao=Execucao(projeto,pasta_dados(projeto),medicao,pacote['meta'],
                                    banco_modulo.ARQ.parent/'consumo_providers.db',
-                                   **({'antecedentes':correcao['orcamento']} if correcao else {}))
+                                   **({'antecedentes':correcao['orcamento']} if correcao else
+                                      {'antecedentes':antecedentes_retomada(saldo_retomada,pacote['meta'])}
+                                      if saldo_retomada is not None else {}))
         if ao_execucao is not None:ao_execucao(token,medicao)
         inicio_execucao=time.monotonic()
         from atividade_execucao import Acompanhamento
@@ -657,9 +661,17 @@ def preparar_retomada(projeto, numero, worktree, banco=None, kanban=None):
     conferir_worktree(trabalho,pacote['skills_resolvidas'])
     if carregar(projeto)!=cfg:raise ValueError('Política mudou durante a prévia')
     evidencia={'reserva':reserva,'ultima_execucao':dict(ultima),'atividade':dict(atividade),'git':git}
+    saldo=None
+    if pacote.get('meta'):
+        from metas_cartao import saldo_retomada
+        import banco as banco_modulo
+        saldo=saldo_retomada(projeto,pasta_dados(projeto),arq,reserva['token'],pacote['meta'],
+                             banco_modulo.ARQ.parent/'consumo_providers.db')
+        evidencia['saldo_meta']=saldo
     confirmacao=hashlib.sha256(json.dumps(evidencia,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     return {'confirmacao':confirmacao,'cartao':numero,'equipe':equipe,'console':rota['console'],
-            'apenas_previa':True},(cfg,provider,exe,k,pacote),reserva
+            'apenas_previa':True,**({'saldo_meta':{key:v for key,v in saldo.items() if key!='tentativas'}}
+                                  if saldo is not None else {})},(cfg,provider,exe,k,pacote),reserva
 
 
 def retomar(projeto,numero,worktree,confirmacao,banco=None,kanban=None,rodar=executar,revisar=None,banco_execucoes=None,agentes_conciliados=False,ao_execucao=None):
@@ -676,10 +688,19 @@ def retomar(projeto,numero,worktree,confirmacao,banco=None,kanban=None,rodar=exe
         except (ValueError,OSError,sqlite3.Error,subprocess.SubprocessError) as exc:falha_previa=exc
         if falha_previa is None:
             pacote=reserva['pacote'];ctx=pacote['contexto_execucao']
+            saldo_execucao=None
+            if pacote.get('meta'):
+                from metas_cartao import saldo_retomada
+                import banco as banco_modulo
+                saldo_execucao=saldo_retomada(projeto,pasta_dados(projeto),banco or pasta_dados(projeto)/'tarefas.db',
+                    reserva['token'],pacote['meta'],banco_modulo.ARQ.parent/'consumo_providers.db')
+                if {key:v for key,v in saldo_execucao.items() if key!='tentativas'}!=previa['saldo_meta']:
+                    raise ValueError('Saldo da meta mudou; confira nova prévia')
             from conclusao_tarefas import iniciar_acompanhamento_retomada,registrar_acompanhamento_retomada
             acompanhamento=iniciar_acompanhamento_retomada(projeto,reserva,confirmacao,banco)
             resultado=_despachar(projeto,numero,reserva['equipe'],ctx['escopo'],trabalho,banco,rodar,revisar,
-                (pacote.get('funcionario') or {}).get('id'),preparado,retomada=reserva,ao_execucao=ao_execucao)
+                (pacote.get('funcionario') or {}).get('id'),preparado,retomada=reserva,ao_execucao=ao_execucao,
+                saldo_retomada=saldo_execucao)
             registrar_acompanhamento_retomada(projeto,acompanhamento,resultado,banco)
             return resultado
     raise falha_previa

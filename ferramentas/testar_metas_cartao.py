@@ -49,6 +49,51 @@ class Metas(unittest.TestCase):
         self.assertEqual(c.conferir(),'limite_tempo')
         self.assertIsNone(c.orcamento_correcao())
 
+    def historico_retomada(self):
+        self.dados.mkdir();(self.dados/'metas').mkdir()
+        arq=self.dados/'tarefas.db'
+        with closing(sqlite3.connect(arq)) as db,db:
+            db.execute('CREATE TABLE execucao_tarefa (id TEXT,token TEXT,inicio REAL,fim REAL,codigo INTEGER,duracao_seg REAL)')
+            for i,(tempo,anteriores) in enumerate([(5,[]),(12,['a'*32]),(9,[])],1):
+                ident=chr(96+i)*32;duracao=(5,7,9)[i-1]
+                db.execute('INSERT INTO execucao_tarefa VALUES (?,?,?,?,?,?)',(ident,'token',i,i+duracao,0,duracao))
+                (self.dados/'metas'/(ident+'.json')).write_text(json.dumps({'tentativa':ident,'meta':self.meta,
+                    'tempo_seg':tempo,'tentativas_anteriores':anteriores,'fim':i+duracao}),encoding='utf-8')
+        return arq
+
+    def test_retomada_persistida_soma_sem_duplicar_correcao_ou_cobrar_pausa(self):
+        arq=self.historico_retomada();valores={chr(97+i)*32:100*(i+1) for i in range(3)}
+        with patch.object(m,'tokens_observados',side_effect=lambda a,p,i:(valores[i],'observado')):
+            saldo=m.saldo_retomada(self.raiz,self.dados,arq,'token',self.meta,self.ledger)
+        self.assertEqual((saldo['tempo_consumido_seg'],saldo['tokens_consumidos']),(21,600))
+        self.assertEqual((saldo['tempo_restante_seg'],saldo['tokens_restantes']),(39,400))
+        with patch.object(m.time,'monotonic',return_value=21),patch.object(m.time,'time',return_value=10000):
+            antecedentes=m.antecedentes_retomada(saldo,self.meta)
+        valores['d'*32]=100;agora=[21]
+        e=m.Execucao(self.raiz,self.dados,'d'*32,self.meta,self.ledger,antecedentes=antecedentes,
+            relogio=lambda:agora[0],leitor=lambda a,p,i:(valores[i],'observado'))
+        self.assertIsNone(e.conferir());self.assertEqual(e.registro['tokens_observados'],700)
+        agora[0]=60;self.assertEqual(e.conferir(),'limite_tempo')
+
+    def test_retomada_esgotada_ou_consumo_incerto_nao_renova_orcamento(self):
+        arq=self.historico_retomada()
+        for valor,estado in [(None,'parcial'),(400,'observado')]:
+            with patch.object(m,'tokens_observados',return_value=(valor,estado)),self.assertRaises(ValueError):
+                m.saldo_retomada(self.raiz,self.dados,arq,'token',self.meta,self.ledger)
+        registro=self.dados/'metas'/('c'*32+'.json');d=json.loads(registro.read_text());d['tempo_seg']=60
+        registro.write_text(json.dumps(d),encoding='utf-8')
+        with patch.object(m,'tokens_observados',return_value=(1,'observado')),self.assertRaisesRegex(ValueError,'esgotada'):
+            m.saldo_retomada(self.raiz,self.dados,arq,'token',self.meta,self.ledger)
+
+    def test_retomada_sem_meta_persistida_ou_com_antecedente_alheio_rejeitada(self):
+        arq=self.historico_retomada();registro=self.dados/'metas'/('b'*32+'.json')
+        d=json.loads(registro.read_text());d['tentativas_anteriores']=['f'*32];registro.write_text(json.dumps(d),encoding='utf-8')
+        with patch.object(m,'tokens_observados',return_value=(1,'observado')),self.assertRaisesRegex(ValueError,'divergente'):
+            m.saldo_retomada(self.raiz,self.dados,arq,'token',self.meta,self.ledger)
+        registro.unlink()
+        with patch.object(m,'tokens_observados',return_value=(1,'observado')),self.assertRaisesRegex(ValueError,'ausente'):
+            m.saldo_retomada(self.raiz,self.dados,arq,'token',self.meta,self.ledger)
+
     def test_correcao_sem_medicao_completa_nao_ganha_novo_orcamento(self):
         a=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.ledger,leitor=lambda *_:(None,'indisponivel'))
         self.assertIsNone(a.orcamento_correcao())
@@ -195,6 +240,12 @@ class Metas(unittest.TestCase):
 
 
     def test_codex_interrompe_pelo_rollout_antes_de_turn_completed(self):
+        self.caso_rollout(False)
+
+    def test_codex_retomado_mede_incremento_sem_cobrar_historico_do_rollout(self):
+        self.caso_rollout(True)
+
+    def caso_rollout(self,retomado):
         import console_provider,contextlib,io,time
         from providers_console import PROVIDERS
         fake=self.raiz/'fake_codex.py';home=self.raiz/'codex-home'
@@ -202,15 +253,23 @@ class Metas(unittest.TestCase):
             {'type':'turn_context','payload':{'model':'modelo'}},
             {'type':'event_msg','payload':{'type':'token_count','info':{'total_token_usage':{
                 'input_tokens':900,'cached_input_tokens':800,'output_tokens':100,'total_tokens':1000}}}}]
+        if retomado:
+            antigo=copy.deepcopy(registros)
+            antigo[-1]['payload']['info']['total_token_usage']={'input_tokens':450,'cached_input_tokens':400,'output_tokens':50,'total_tokens':500}
+            rollout=home/'sessions/2026/10/11/rollout-s1.jsonl';rollout.parent.mkdir(parents=True)
+            rollout.write_text(''.join(json.dumps(r)+'\n' for r in antigo),encoding='utf-8')
+            registros=registros[2:]
+            registros[-1]['payload']['info']['total_token_usage']={'input_tokens':1350,'cached_input_tokens':1200,'output_tokens':150,'total_tokens':1500}
         fake.write_text('import os,json,time,pathlib,sys\nsys.stdin.read()\n'+
             'p=pathlib.Path(os.environ["CODEX_HOME"])/"sessions/2026/10/11/rollout-s1.jsonl"\n'+
-            'p.parent.mkdir(parents=True,exist_ok=True)\np.write_text('+repr(''.join(json.dumps(r)+'\n' for r in registros))+',encoding="utf-8")\n'+
+            'p.parent.mkdir(parents=True,exist_ok=True)\nwith p.open('+repr('a' if retomado else 'w')+',encoding="utf-8") as f:f.write('+repr(''.join(json.dumps(r)+'\n' for r in registros))+')\n'+
             'print(json.dumps({"type":"thread.started","thread_id":"s1"}),flush=True)\ntime.sleep(60)\n',encoding='utf-8')
         e=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.raiz/'consumo_providers.db')
         inicio=time.monotonic()
         with patch.dict('os.environ',{'CODEX_HOME':str(home)}),patch('providers_console.comando_nativo',return_value=[sys.executable,str(fake)]),contextlib.redirect_stdout(io.StringIO()):
             codigo=console_provider.executar(PROVIDERS['codex'],'fake',self.raiz,'Dev',prompt='teste',
-                banco=self.raiz/'eventos.db',projeto_consumo=self.raiz,tentativa_consumo=self.ident,limites_meta=e)
+                banco=self.raiz/'eventos.db',projeto_consumo=self.raiz,tentativa_consumo=self.ident,limites_meta=e,
+                sessao='s1' if retomado else None)
         self.assertLess(time.monotonic()-inicio,15)
         self.assertNotEqual(codigo,0);self.assertEqual(e.motivo,'limite_tokens')
         self.assertEqual(e.registro['tokens_observados'],1000)

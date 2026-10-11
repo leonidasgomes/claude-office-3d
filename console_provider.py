@@ -130,7 +130,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
     eventos = Eventos(provider.nome, mesa)
     from consumo_providers import Coletor, ColetorRollout
     import banco as banco_modulo
-    codex_incremental = provider.nome=='codex' and stream and limites_meta is not None and not sessao
+    codex_incremental = provider.nome=='codex' and stream and limites_meta is not None
     coletor = Coletor((Path(banco) if banco else banco_modulo.ARQ).parent / 'consumo_providers.db',
                      provider.nome, projeto_medicao, mesa, modelo, rotulo=provider.nome+'_local' if politica_local else None,
                      sessao_claude_nova=ident if provider.nome=='claude' and stream and not sessao and not politica_local else None,

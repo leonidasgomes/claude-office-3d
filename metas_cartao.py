@@ -83,6 +83,54 @@ def tokens_observados(arquivo,projeto,tentativa):
     except (OSError,sqlite3.Error):return None,'indisponivel'
 
 
+def saldo_retomada(projeto,pasta,banco,token,meta,consumo):
+    """Histórico persistido, sem inferência ou renovação do limite por cartão."""
+    with closing(sqlite3.connect(Path(banco).resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        db.row_factory=sqlite3.Row
+        rows=db.execute('SELECT id,fim,codigo,duracao_seg FROM execucao_tarefa WHERE token=? '
+                        'ORDER BY inicio,id LIMIT 1001',(token,)).fetchall()
+    if not rows or len(rows)>1000:raise ValueError('Histórico de meta incompleto; concilie antes de retomar')
+    tempos={};total_tokens=0
+    for r in rows:
+        ident=r['id'];duracao=r['duracao_seg']
+        if (not re.fullmatch('[0-9a-f]{32}',ident) or r['fim'] is None or type(r['codigo']) is not int
+            or type(duracao) not in (int,float) or not math.isfinite(duracao) or duracao<0):
+            raise ValueError('Tentativa de meta sem retorno/tempo confirmado')
+        arq=Path(pasta)/'metas'/(ident+'.json')
+        if not arq.is_file() or arq.is_symlink() or arq.stat().st_size>128000:
+            raise ValueError('Evidência de meta ausente; não renovar orçamento')
+        registro=json.loads(arq.read_text(encoding='utf-8'))
+        if not isinstance(registro,dict):raise ValueError('Registro de meta inválido')
+        tempo=registro.get('tempo_seg');anteriores=registro.get('tentativas_anteriores',[])
+        if (registro.get('tentativa')!=ident or registro.get('meta')!=meta or registro.get('fim') is None
+            or type(tempo) not in (int,float) or not math.isfinite(tempo) or tempo<0
+            or not isinstance(anteriores,list) or any(not isinstance(i,str) for i in anteriores)
+            or len(set(anteriores))!=len(anteriores)
+            or any(i not in tempos for i in anteriores)):
+            raise ValueError('Histórico de tempo/meta divergente; não renovar orçamento')
+        # Correções registram tempo acumulado: descontar os antecedentes evita
+        # cobrar a mesma tentativa duas vezes. Retomadas antigas sem vínculo
+        # conservam seus próprios gastos; não apagam tentativas anteriores.
+        delta=tempo-sum(tempos[i] for i in anteriores)
+        if delta<-.001:raise ValueError('Tempo acumulado regrediu; concilie a meta')
+        tempos[ident]=max(duracao,delta,0)
+        tokens,estado=tokens_observados(consumo,projeto,ident)
+        if estado!='observado' or type(tokens) is not int or tokens<0:
+            raise ValueError('Consumo anterior incompleto; não renovar orçamento')
+        total_tokens+=tokens
+    usados=sum(tempos.values());limites=meta['limites']
+    if usados>=60*limites['tempo_min'] or total_tokens>=limites['tokens']:
+        raise ValueError('Meta do cartão esgotada; retomada não renova tempo ou tokens')
+    return {'tentativas':list(tempos),'tempo_consumido_seg':usados,'tokens_consumidos':total_tokens,
+            'tempo_restante_seg':60*limites['tempo_min']-usados,'tokens_restantes':limites['tokens']-total_tokens}
+
+
+def antecedentes_retomada(saldo,meta):
+    agora=time.time();inicio=agora-saldo['tempo_consumido_seg']
+    return {'tentativas':saldo['tentativas'],'inicio_monotonic':time.monotonic()-saldo['tempo_consumido_seg'],
+            'inicio':inicio,'limite':inicio+60*meta['limites']['tempo_min']}
+
+
 def encerrar_arvore(processo):
     if processo.poll() is not None:return
     if os.name=='nt':
@@ -110,7 +158,7 @@ class Execucao:
         if antecedentes is not None:
             ids=antecedentes.get('tentativas',[])
             inicio=antecedentes.get('inicio_monotonic')
-            if (not isinstance(ids,list) or not 1<=len(ids)<=2 or len(set(ids))!=len(ids)
+            if (not isinstance(ids,list) or not 1<=len(ids)<=1000 or len(set(ids))!=len(ids)
                 or any(not isinstance(i,str) or not re.fullmatch('[0-9a-f]{32}',i) or i==tentativa for i in ids)
                 or type(inicio) not in (int,float) or not math.isfinite(inicio) or inicio>self.inicio
                 or antecedentes.get('limite')!=antecedentes.get('inicio',0)+60*meta['limites']['tempo_min']):
