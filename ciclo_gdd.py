@@ -548,9 +548,13 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 if len(itens)!=1 or itens[0]['cartao']!=c['numero']:raise ValueError('Worktree não corresponde ao cartão selecionado')
                 item=itens[0]
                 planejamento=c.get('pacote',{}).get('escopo')=='Planejamento/investigação deste bloqueio; não implementar o pai.'
-                salvar('investigando' if planejamento else 'implementando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
-                       proxima_acao='aguardar entrega real da equipe')
-                r=lote(projeto,{'paralelismo':1,'cartoes':[item]});vistos.add(item['cartao'])
+                salvar('preparando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
+                       proxima_acao='validar e registrar o despacho da equipe')
+                def execucao_registrada(numero,token,medicao):
+                    if numero!=item['cartao']:raise ValueError('Acompanhamento de cartão divergente')
+                    salvar('investigando' if planejamento else 'implementando',
+                           proxima_acao='acompanhar execução registrada da equipe')
+                r=lote(projeto,{'paralelismo':1,'cartoes':[item]},ao_execucao=execucao_registrada);vistos.add(item['cartao'])
                 registro['resultados'].append(r)
                 from conclusao_tarefas import vincular_despacho
                 vinculo=vincular_despacho(projeto,item)
