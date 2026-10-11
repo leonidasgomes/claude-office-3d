@@ -19,6 +19,7 @@ PADRAO = {
     "diretor": {"console": "claude", "modelo": "", "execucao": "cloud"},
     "equipes": [],
     "rotas": {},
+    "metas": {"ativo": False, "tempo_min": 60, "tokens": 100000},
     "ciclo": {"ativo": False, "duracao_min": 120, "max_cartoes": 2,
               "intervalo_seg": 300, "base": "", "criar_subtarefas": False},
     "sugestoes": {"ativo": False, "bots": [], "triagem": False},
@@ -82,6 +83,11 @@ def _executor(valor, nome):
 
 def validar(dados):
     cfg = _mesclar(PADRAO, dados)
+    metas=cfg['metas']
+    if type(metas['ativo']) is not bool:raise ValueError('Metas: ativo deve ser booleano')
+    for chave,minimo,maximo in [('tempo_min',1,240),('tokens',1000,10000000)]:
+        if type(metas[chave]) is not int or not minimo<=metas[chave]<=maximo:
+            raise ValueError('Metas: limite inválido em '+chave)
     ciclo=cfg['ciclo']
     for chave in ('ativo','criar_subtarefas'):
         if type(ciclo[chave]) is not bool:raise ValueError('Ciclo: flags booleanas obrigatórias')

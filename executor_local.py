@@ -59,7 +59,7 @@ def preparar_comando(provider, args, modelo, env):
     return args
 
 
-def executar(rota, politica, provider, exe, projeto, mesa, prompt=None, sessao=None, agente=None, banco=None, ao_sessao=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None):
+def executar(rota, politica, provider, exe, projeto, mesa, prompt=None, sessao=None, agente=None, banco=None, ao_sessao=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,limites_meta=None):
     from console_provider import executar as console
     from recursos_local import reservar
     modelo = validar_modelo(rota)
@@ -72,4 +72,5 @@ def executar(rota, politica, provider, exe, projeto, mesa, prompt=None, sessao=N
     with reservar(raiz/'dados/local_reservas.db',politica):
         return console(provider,exe,projeto,mesa,prompt,modelo,sessao,agente,banco,
                        adaptar_local=lambda args,env:preparar_comando(provider,args,modelo,env),
-                       politica_local=politica,ao_sessao=ao_sessao,ao_processo=ao_processo,projeto_consumo=projeto_consumo,ao_evento=ao_evento,tentativa_consumo=tentativa_consumo)
+                       politica_local=politica,ao_sessao=ao_sessao,ao_processo=ao_processo,projeto_consumo=projeto_consumo,ao_evento=ao_evento,tentativa_consumo=tentativa_consumo,
+                       **({'limites_meta':limites_meta} if limites_meta else {}))

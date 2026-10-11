@@ -40,7 +40,7 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
@@ -112,6 +112,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         if prompt is None and not (projeto / ".opencode" / "plugins" / "office.js").is_file():
             print("Aviso: instale o plugin com importar_opencode.py --aplicar para telemetria da TUI.", file=sys.stderr)
     stream = provider.capacidades.eventos_json and prompt is not None
+    if limites_meta is not None and not stream:raise ValueError('Meta exige execução estruturada pelo controlador')
     evidencia_skills=None
     if skills_nativas:
         if provider.nome!='claude' or not stream or politica_local:
@@ -164,9 +165,10 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         processo = subprocess.Popen(args, cwd=str(projeto), env=env,
                                     stdout=subprocess.PIPE if stream else None,
                                     stdin=subprocess.PIPE if entrada is not None else None,
-                                    start_new_session=bool(politica_local),
+                                    start_new_session=bool(politica_local or limites_meta),
                                     text=True, encoding="utf-8", errors="replace")
         if ao_processo is not None: ao_processo(processo)
+        if limites_meta is not None:protecao.enter_context(limites_meta.vigiar(processo))
         if politica_local:
             from recursos_local import vigiar
             protecao.enter_context(vigiar(processo, politica_local))
