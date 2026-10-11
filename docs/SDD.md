@@ -2250,3 +2250,14 @@ versionado, sem inferência ou nova tentativa do autor, e verifica status novo
 no mesmo head. Política, fontes, base, worktree e processos encerrados são
 conferidos novamente. Alteração de skills/regras, publicação incerta ou contexto
 divergente impede o encaminhamento; nenhum resultado dispensa outros gates.
+
+### Revisão preliminar de rascunhos
+
+O diretor pode encaminhar um PR em rascunho ao CEO para revisão independente,
+sem retirar o rascunho ou a proteção de merge manual. Revisores cadastrados recebem
+o diff completo e as fontes, em consultas isoladas sem ferramentas; seus achados
+são validados nas linhas do commit. A autoria desconhecida é explícita e impede
+o fluxo se houver exigência de separação do autor ou auditor ativo. O resultado
+vira comentário e recibo próprio, sem status de gate nem conclusão de cartão.
+O controlador reconfere o contexto antes da publicação e não repete inferência
+ou publicação incerta. O diretor recebe o estado e os achados registrados.

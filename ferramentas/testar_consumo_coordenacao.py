@@ -59,6 +59,21 @@ class Consumo(unittest.TestCase):
         gs=Registro(self.db).resumo()['grupos'];self.assertEqual(sum(g['total'] for g in gs),160)
         self.assertEqual({g['agente'] for g in gs},{'CEO','Diretor'})
 
+    def test_revisor_preliminar_contabiliza_apenas_executor_cadastrado(self):
+        from gestao_projeto import validar
+        cfg=validar({'ativo':True,'ciclo':{'ativo':True,'base':'origin/main'},
+            'revisao':{'ativo':True,'separar_autor':False,'clouds_distintas':1,
+            'revisores':[{'nome':'QA','executor':{'console':'codex'}}]}})
+        executor=cfg['revisao']['revisores'][0]['executor']
+        with patch('gestao_projeto.carregar',return_value=cfg):
+            c=ColetorIsolado(self.db,executor,self.p,'revisor_preliminar',equipe='QA')
+            c.consumir({'type':'turn.completed','usage':{'input_tokens':100,'cached_input_tokens':20,'output_tokens':30}})
+            for nome,ex in [('Outro',executor),('QA',dict(executor,modelo='outro'))]:
+                with self.assertRaisesRegex(ValueError,'não cadastrado'):
+                    ColetorIsolado(self.db,ex,self.p,'revisor_preliminar',equipe=nome)
+        g=Registro(self.db).resumo()['grupos'][0]
+        self.assertEqual((g['agente'],g['total']),('Revisão preliminar: QA',130))
+
     def test_opencode_conta_partes_uma_vez(self):
         c=self.coletor('opencode')
         ev={'type':'step_finish','sessionID':'s','part':{'id':'p','sessionID':'s','type':'step-finish','tokens':{
