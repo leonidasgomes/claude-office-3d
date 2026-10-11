@@ -10,6 +10,42 @@ from gestao_projeto import validar
 
 
 class Ciclo(unittest.TestCase):
+    def test_dois_limites_seguidos_param_antes_de_novo_despacho(self):
+        itens=[self.item(1),self.item(25),self.item(50)];despachos=[]
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':600,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.return_value=itens;k._paginas.return_value=[]
+        def candidatos(p,cfg,k,grupo,mapa):
+            return [{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in grupo]
+        def consulta(p,cfg,docs,grupo,prs,ocupada):return [self.decisao(i['numero'],'executar') for i in grupo]
+        def lote(p,plano):
+            n=plano['cartoes'][0]['cartao'];despachos.append(n)
+            return {'resultados':[{'cartao':n,'estado':'bloqueado','codigo':124,'motivo':'limite_tokens'}]}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos):
+            with self.assertRaisesRegex(ValueError,'Dois despachos consecutivos'):
+                c.rodar(self.p,'teste',relogio=lambda:0,consulta=consulta,
+                    criar=lambda p,d:{'plano':{'cartoes':[{'cartao':n,'worktree':'novo'} for n in d['cartoes']]}},lote=lote)
+        self.assertEqual(despachos,[1,25]);estado=c.resumo(self.p)
+        self.assertEqual(estado['estado'],'erro');self.assertEqual(len(estado['resultados']),2)
+        self.assertIn('configure tempo/tokens',estado['motivo'])
+
+    def test_entrega_intermediaria_zera_limites_e_primeiro_nao_impede_independente(self):
+        itens=[self.item(n) for n in (1,25,50,51,52)];despachos=[]
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':600,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.return_value=itens;k._paginas.return_value=[]
+        def candidatos(p,cfg,k,grupo,mapa):
+            return [{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in grupo]
+        def consulta(p,cfg,docs,grupo,prs,ocupada):return [self.decisao(i['numero'],'executar') for i in grupo]
+        def lote(p,plano):
+            n=plano['cartoes'][0]['cartao'];despachos.append(n)
+            return {'resultados':[{'cartao':n,'estado':'revisao' if n==25 else 'bloqueado',
+                                  'codigo':0 if n==25 else 124,'motivo':'' if n==25 else 'limite_tempo'}]}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos):
+            with self.assertRaisesRegex(ValueError,'Dois despachos consecutivos'):
+                c.rodar(self.p,'teste',relogio=lambda:0,consulta=consulta,
+                    criar=lambda p,d:{'plano':{'cartoes':[{'cartao':n,'worktree':'novo'} for n in d['cartoes']]}},lote=lote)
+        self.assertEqual(despachos,[1,25,50,51])
+        self.assertEqual(len(c.resumo(self.p)['resultados']),4)
+
     def test_duracao_futura_nao_muda_politica_efetiva(self):
         import copy
         atual=copy.deepcopy(self.cfg);atual['ciclo']['duracao_min']=60

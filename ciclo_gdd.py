@@ -432,6 +432,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     registro['duracao_futura_configuravel']=True
     cfg=carregar(projeto);docs=documentos(projeto,cfg);mapa=objetivos(docs[0]['conteudo'])
     k=Kanban(cfg,pasta_dados(projeto)/'kanban.json');vistos=set();ultima=None
+    limites_seguidos=0
     def salvar(estado,**kw):
         registro.update(estado=estado,atualizado=relogio(),**kw);atomico(p,registro)
     pausa=False
@@ -544,6 +545,13 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 r=lote(projeto,{'paralelismo':1,'cartoes':[item]});vistos.add(item['cartao'])
                 registro['resultados'].append(r)
                 bloqueado=next((x for x in r.get('resultados',[]) if x['cartao']==item['cartao'] and x['estado']=='bloqueado'),None)
+                limitado=(bloqueado is not None and bloqueado.get('codigo')==124
+                          and bloqueado.get('motivo') in ('limite_tokens','limite_tempo'))
+                limites_seguidos=limites_seguidos+1 if limitado else 0
+                if limites_seguidos>=2:
+                    raise ValueError('Dois despachos consecutivos atingiram o orçamento sem entrega. '
+                                     'Confira os recibos e configure tempo/tokens nas metas por cartão; '
+                                     'novos despachos exigem início explícito. Reservas bloqueadas não serão retomadas.')
                 if bloqueado:
                     salvar('investigando',motivo=bloqueado.get('motivo') or 'Equipe encerrou sem entrega aprovada',
                            proxima_acao='avaliar preparação vinculada; não retomar a reserva')
