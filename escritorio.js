@@ -152,7 +152,7 @@ if (mqMov.addEventListener) mqMov.addEventListener('change', aplicarMovimento);
 
 // Filtros por agente e por tipo de evento (feed "Últimos eventos", lista de agentes e cena), lembrados em office.filtro.
 // Agentes fora do filtro ficam esmaecidos na cena (opacidade dos rótulos, balão, anel e ícone; só quando o filtro muda).
-const CHAVE_FILTRO = 'office.filtro', TIPOS_FILTRO = ['trabalho', 'fala', 'falha'];
+const CHAVE_FILTRO = PROJETO_CENA ? 'office.filtro.'+PROJETO_CENA.id : 'office.filtro', TIPOS_FILTRO = ['trabalho', 'fala', 'falha'];
 const filtro = { agentes: new Set(), tipos: new Set() };
 try {
   const f = JSON.parse(localStorage.getItem(CHAVE_FILTRO) || 'null');

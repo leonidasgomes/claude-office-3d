@@ -1220,6 +1220,7 @@ exigem evento recente ou modo demonstração/replay; cadastro isolado não passe
 Cadastro único da cena: `cadastro_cena.mjs` projeta CEO, diretor e equipes de
 `GET /api/gestao`; funcionários individuais permanecem por ID. `config.js` escolhe
 o projeto pelo parâmetro `projeto` ou preferência `office.projeto_cena` e compartilha
+filtros da cena em `office.filtro.<id>` para evitar filtros de outra equipe/projeto;
 o mesmo `CONFIG.agentes` com os consumidores. Config antigo fornece cores/aliases,
 sem cadastrar equipes. Se a Gestão estiver indisponível (timeout 5 s), a cena de
 compatibilidade é identificada explicitamente. O seletor recarrega a página;
