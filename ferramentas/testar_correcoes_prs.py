@@ -133,5 +133,17 @@ class Correcoes(unittest.TestCase):
         self.assertEqual(dispatcher.call_args.args[-1]['token_anterior'],self.token)
         self.assertNotIn('concluido',json.dumps(r))
 
+    def test_mesa_trabalhando_somente_apos_tentativa_registrada(self):
+        self.gravar_delegacao();etapas=[]
+        def despacho(*args,**kw):
+            self.assertEqual(etapas,['diretor','preparando'])
+            kw['ao_execucao']('token','tentativa')
+            self.assertEqual(etapas[-1],'implementando')
+            return {'codigo':0,'estado':'revisao'}
+        with patch.object(c,'preparar',return_value=(self.e,(),self.reserva,self.p)):
+            c.encaminhar(self.p,self.cfg,[{'number':3}],{'encaminhamentos':[{'pr':3,'acao':'correcao'}]},
+                self.p,Mock(),ao_etapa=lambda etapa,*a,**kw:etapas.append(etapa),
+                chamar=lambda _:json.dumps({'acao':'corrigir','motivo':'sim'}),despachar=despacho)
+
 
 if __name__=='__main__':unittest.main()

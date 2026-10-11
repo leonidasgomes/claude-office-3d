@@ -169,11 +169,12 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,ao_etapa=None,chamar=None,despachar=
         if atual!=evidencia or delegacao(dados,cfg)!=d:
             raise ValueError('Contrato mudou durante a decisão; não despachar')
         contrato={**evidencia,'assinatura':assinatura(decisao),'ceo':decisao['ceo']}
-        if ao_etapa:ao_etapa('executando',alvo,r=reserva)
+        if ao_etapa:ao_etapa('preparando',alvo,r=reserva)
         if despachar is None:
             from gestao_cli import despachar_correcao
             despachar=despachar_correcao
-        resultado=despachar(projeto,preparado,reserva,trabalho,contrato)
+        resultado=despachar(projeto,preparado,reserva,trabalho,contrato,
+            ao_execucao=(lambda token,tentativa:ao_etapa('implementando',alvo,r=reserva)) if ao_etapa else None)
         from controlador_local import atomico
         atomico(Path(dados)/'correcoes_prs'/(contrato['assinatura']+'-resultado.json'),
                 {'contrato':contrato,'resultado':resultado})

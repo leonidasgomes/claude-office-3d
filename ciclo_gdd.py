@@ -562,7 +562,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     ao_etapa=lambda etapa,alvo,r:salvar(etapa,
                         cartoes=[{'cartao':alvo['cartao'],'equipe':r['equipe']}],
                         proxima_acao=('CEO decidindo encaminhamento do revisor' if etapa=='diretor'
-                                      else 'equipe corrigindo o mesmo PR')))
+                            else 'conferir contrato e worktree existentes' if etapa=='preparando'
+                            else 'equipe corrigindo o mesmo PR')))
                 if correcao:
                     registro.setdefault('correcoes_encaminhadas',[]).append(correcao)
                     atomico(p,registro)

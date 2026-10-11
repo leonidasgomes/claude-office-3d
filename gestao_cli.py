@@ -383,7 +383,7 @@ def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None
         return _despachar(projeto,numero,equipe,escopo,trabalho,banco,rodar,revisar,funcionario,preparado,ao_execucao=ao_execucao)
 
 
-def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executar,revisar=None):
+def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executar,revisar=None,ao_execucao=None):
     """Entrada exclusiva do encaminhamento CEO/diretor, com trava compartilhada."""
     falha_previa=None
     with ocupar_worktree(banco_worktrees(trabalho),trabalho):
@@ -410,7 +410,7 @@ def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executa
         if falha_previa is None:
             return _despachar(projeto,int(reserva['cartao']),reserva['equipe'],
                 reserva['pacote']['contexto_execucao']['escopo'],trabalho,None,rodar,revisar,None,
-                preparado,correcao_delegada={'reserva':reserva,'contrato':contrato})
+                preparado,correcao_delegada={'reserva':reserva,'contrato':contrato},ao_execucao=ao_execucao)
     raise falha_previa
 
 
