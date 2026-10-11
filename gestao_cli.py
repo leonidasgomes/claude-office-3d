@@ -268,7 +268,8 @@ def executar_lote(projeto, plano, kanban=None, despacho=None, esperado=None):
         for item in preparado['cartoes']:
             registro.update(estado='executando',cartao_em_execucao=item['cartao']); salvar()
             resultado=despachar_item(item)
-            registro['resultados'].append({'cartao':item['cartao'],'estado':resultado['estado'],'codigo':resultado['codigo']})
+            registro['resultados'].append({'cartao':item['cartao'],'estado':resultado['estado'],'codigo':resultado['codigo'],
+                **({'motivo':resultado['motivo']} if resultado.get('motivo') else {})})
             registro['cartao_em_execucao']=None
             if resultado['estado']!='revisao' or resultado['codigo']:
                 registro['estado']='interrompido'; salvar(); break
@@ -500,7 +501,11 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 controle.transicao(token, "bloqueado")
                 controle.registrar_resultado(medicao,'sem_entrega');resultado_registrado=True
         atual = next(x for x in controle.listar(chave) if x["token"] == token)
-        return {"token": token, "codigo": codigo, "estado": atual["estado"]}
+        retorno={"token": token, "codigo": codigo, "estado": atual["estado"]}
+        if atual['estado']=='bloqueado':
+            retorno['motivo']=('Console encerrou com falha; confira o registro da tentativa' if codigo
+                else 'Console encerrou sem PR vinculado ao cartão e branch; entrega não comprovada')
+        return retorno
     except BaseException:
         atual = next((x for x in controle.listar(chave) if x["token"] == token), None)
         if atual and atual["estado"] in ("reservado", "executando"):

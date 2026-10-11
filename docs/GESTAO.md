@@ -24,6 +24,11 @@ Decide executar, desbloquear ou aguardar. Uma investigação pode virar sub-issu
 com aceite próprio, sem alterar o aceite do pai. A criação grava intenção antes
 de escrever no GitHub: falhas parciais exigem conciliação e não são repetidas.
 Reservas antigas e cartões em andamento não são retomados automaticamente.
+Se uma equipe deste ciclo encerrar com retorno confirmado, mas sem PR, o bloqueio
+volta ao diretor para avaliar preparação vinculada. Essa consulta não retoma o
+cartão bloqueado. Falha do console ou tentativa incerta exige conciliação; a
+exceção de preparação não se aplica a reservas antigas. Gestão mostra os últimos
+resultados e seus motivos, sem transformar retorno 0 em entrega aprovada.
 Criações Git usam `GIT_LFS_SKIP_SMUDGE=1`; conteúdo binário necessário exige
 preparação da equipe, sem download automático para um cartão de documentação.
 Um recibo parcial permanece bloqueado até conciliação explícita. Se for
