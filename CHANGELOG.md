@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Publicação do host atualiza título/corpo no PR reservado, inclusive sem alteração de arquivo, preservando SHA e sem commit artificial.
+
 - Continuação delimitada após tempo/tokens: diretor recebe prova do limite e CEO decide completar correções/evidências no mesmo PR, sem repetir autorização humana nem apagar histórico.
 
 - Observação Codex paginada, deduplicação por chamada e comandos em segundo plano vinculados à tentativa.

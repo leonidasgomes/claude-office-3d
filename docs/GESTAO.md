@@ -2048,3 +2048,11 @@ política divergente ou concessão já utilizada impedem despacho. Histórico e
 consumo anteriores ficam arquivados. O controlador não gera concessões novas
 em loop nem usa esse mecanismo para reservas fora da delegação. Instalações
 existentes continuam sem essa autorização até configuração explícita.
+
+
+A publicação restrita do host também atualiza título/corpo do PR existente.
+Quando a ação autorizada só regulariza o vínculo ou registra evidências no texto,
+não exige alteração de arquivo, commit artificial ou push vazio. Confere reserva
+em execução, recibo do worktree, PR/branch/base/head e confirmação remota do texto.
+O recibo conserva a operação; publicação incerta continua exigindo conciliação.
+A atualização do texto não aprova o código, gates ou aceite integral do cartão.
