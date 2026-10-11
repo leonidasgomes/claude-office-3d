@@ -1,5 +1,5 @@
 """Conferência por equipe: rede/modelos simulados, sem publicar ou aprovar gates."""
-import copy,hashlib,json,sqlite3,sys,tempfile,unittest
+import copy,hashlib,json,sqlite3,sys,tempfile,time,unittest
 from pathlib import Path
 from contextlib import closing
 from unittest.mock import Mock,patch
@@ -51,6 +51,20 @@ class Conferencias(unittest.TestCase):
         self.assertFalse((self.p/'tarefas.db').exists());self.assertFalse((self.p/'revisoes').exists())
         self.assertEqual(c.contexto(self.p,[self.pr],self.cfg)[0]['parecer'],self.rel)
         self.assertIsNone(self.executar());self.assertEqual(self.consultar.call_count,2);self.assertEqual(len(self.posts),1)
+
+    def test_adapter_real_inicializa_coletor_da_equipe_sem_inferencia(self):
+        ex=self.cfg['equipes'][0]['executor']
+        def chamar(executor,prompt,normalizador,ao_evento):
+            ao_evento({'type':'turn.completed','usage':{'input_tokens':20,'output_tokens':5}})
+            return normalizador(self.rel)
+        with patch('banco.ARQ',self.p/'banco.db'),patch('revisores_console.chamar',side_effect=chamar):
+            self.assertEqual(c.consultar(self.p,ex,'contexto',c.parecer,'conferencia:Dev'),self.rel)
+        from consumo_providers import Registro
+        g=Registro(self.p/'consumo_providers.db').resumo()['grupos'][0]
+        self.assertEqual(g['agente'],'Conferência: Dev');self.assertEqual(g['total'],25)
+        from consumo_coordenacao import ColetorIsolado
+        with self.assertRaises(ValueError):ColetorIsolado(self.p/'uso.db',ex,self.p,'conferencia',equipe='inventada')
+        with self.assertRaises(ValueError):ColetorIsolado(self.p/'uso.db',{**ex,'modelo':'outro'},self.p,'conferencia',equipe='Dev')
 
     def test_aguardar_nao_consulta_equipe_nem_repete_ceo(self):
         self.consultar.side_effect=lambda *_:{'acao':'aguardar','motivo':'Recurso indisponível'}
@@ -128,6 +142,32 @@ class Conferencias(unittest.TestCase):
         f.write_text(json.dumps(r),encoding='utf-8');self.comentarios[0]['user']['login']='outro'
         self.assertIsNone(self.executar());self.assertEqual(json.loads(f.read_text(encoding='utf-8'))['estado'],'publicando')
         self.assertEqual(len(self.posts),1)
+
+    def test_inicializacao_rejeitada_concilia_sem_repetir_ceo_ou_retornar_sessao(self):
+        original=self.consultar.side_effect
+        def falhar(ex,texto,papel):
+            if papel!='ceo':raise ValueError('Coletor exige papel cloud')
+            return original(ex,texto,papel)
+        self.consultar.side_effect=falhar
+        with self.assertRaises(ValueError):self.executar()
+        f=self.recibo();estado=self.p/'ciclo.json'
+        estado.write_text(json.dumps({'id':'f'*32,'estado':'erro','motivo':'Coletor exige papel cloud',
+            'inicio':time.time()-10,'atualizado':time.time()+10}),encoding='utf-8')
+        with patch('gestao_cli.pasta_dados',return_value=self.p),patch('ciclo_gdd.caminho_estado',return_value=estado),\
+             patch('ciclo_gdd.conferir_encerramento',return_value={'processos':[],'tentativas_pendentes':False}):
+            self.assertEqual(c.conciliar_inicializacao(self.p,f.stem)['estado'],'pronto')
+        self.consultar.reset_mock();self.consultar.side_effect=original
+        self.assertEqual(self.executar()['estado'],'publicado')
+        self.assertEqual(self.consultar.call_count,1);self.assertEqual(self.consultar.call_args.args[2],'conferencia:Dev')
+        self.assertEqual(len(self.posts),1)
+        self.assertEqual(len(list((f.parent/'historico').glob('*.json'))),1)
+
+    def test_nao_concilia_erro_de_modelo_ou_publicacao(self):
+        self.executar();f=self.recibo();estado=self.p/'ciclo.json'
+        estado.write_text(json.dumps({'estado':'erro','motivo':'Coletor exige papel cloud'}),encoding='utf-8')
+        with patch('gestao_cli.pasta_dados',return_value=self.p),patch('ciclo_gdd.caminho_estado',return_value=estado):
+            with self.assertRaises(ValueError):c.conciliar_inicializacao(self.p,f.stem)
+        self.assertEqual(json.loads(f.read_text(encoding='utf-8'))['estado'],'publicado')
 
 
 if __name__=='__main__':unittest.main()
