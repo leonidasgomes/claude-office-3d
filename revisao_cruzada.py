@@ -72,8 +72,8 @@ def revisar(cfg, autor, sha, diff, aceite, regras, chamar):
             "aprovado": all(x["aprovado"] for x in resultados)}
 
 
-def conferir(cfg, relatorio, sha):
-    """Recalcula a decisão; booleano de aprovação sozinho não basta."""
+def conferir_cobertura(cfg, relatorio, sha):
+    """Confere identidade e respostas, inclusive reprovação válida; não aprova."""
     try:
         if not re.fullmatch(r"[0-9a-f]{40}", sha or ""):
             return False
@@ -84,11 +84,19 @@ def conferir(cfg, relatorio, sha):
         if len(resultados) != len(esperados) or not esperados:
             return False
         for revisor, resultado in zip(esperados, resultados):
-            if ('erro' in resultado or 'falha_console' in resultado or resultado.get('aprovado') is not True
+            if ('erro' in resultado or 'falha_console' in resultado
                     or resultado["nome"] != revisor["nome"] or resultado["executor"] != revisor["executor"]
                     or resultado["cloud"] != cloud_executor(revisor["executor"])
-                    or resultado["sha"] != sha or not aprovado(resultado["resposta"])):
+                    or resultado["sha"] != sha
+                    or type(resultado.get('aprovado')) is not bool
+                    or resultado['aprovado'] != aprovado(resultado['resposta'])):
                 return False
-        return True
+        return (type(relatorio.get('aprovado')) is bool
+                and relatorio['aprovado']==all(x['aprovado'] for x in resultados))
     except (ValueError, TypeError, KeyError):
         return False
+
+
+def conferir(cfg, relatorio, sha):
+    """Recalcula a decisão; booleano de aprovação sozinho não basta."""
+    return conferir_cobertura(cfg,relatorio,sha) and relatorio['aprovado'] is True

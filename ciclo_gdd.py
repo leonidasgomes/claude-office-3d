@@ -589,6 +589,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 numeros.append(pr['number'])
             if len(set(numeros))!=len(numeros):raise ValueError('Fila de PRs duplicada; confira paginação')
             registro['prs_abertos']=len(numeros)
+            from revisor_ia import reconciliar_reprovacoes_gestao
+            reconciliar_reprovacoes_gestao(projeto,cfg,prs)
             preparacoes_fila=set()
             if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
                 from fila_prs import planejar,versao_politica

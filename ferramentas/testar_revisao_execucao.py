@@ -99,6 +99,7 @@ class Publicacao(unittest.TestCase):
     def preparar_publicacao(self):
         import copy
         self.cfg['merge']={'modo':'automatico','checks':['revisor-ia']}
+        self.cfg['kanban']={'repo':'owner/repo'}
         (self.repo/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
         cfg=re.gestao_projeto.carregar(self.repo)
         relatorio=re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',
@@ -154,6 +155,60 @@ class Publicacao(unittest.TestCase):
         r['revisoes'][0]['resposta']['veredito']='reprovado'
         with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
         self.assertEqual(self.chamadas,[])
+
+    def test_reprovacao_verificada_publica_falha_uma_vez_sem_inferencia(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        r=re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',
+            lambda *_:{'veredito':'reprovado','achados':[{'prioridade':'P2','arquivo':'codigo.py','linha':1,'evidencia':'Aceite não comprovado'}]})
+        def chamada(caminho,metodo='GET',dados=None):
+            if metodo=='POST' and '/statuses/' in caminho:
+                self.chamadas.append((caminho,metodo,dados));return {'state':dados['state'],'context':'revisor-ia'}
+            return api(caminho,metodo,dados)
+        primeiro=publicar_revisao_gestao(self.repo,cfg,pr,r,chamada)
+        self.assertEqual(primeiro['status'],'failure');self.assertEqual(primeiro['veredito'],'reprovado')
+        self.assertEqual(publicar_revisao_gestao(self.repo,cfg,pr,r,chamada),primeiro)
+        posts=[c for c in self.chamadas if c[1]=='POST'];self.assertEqual(len(posts),2)
+        self.assertIn('Revisão reprovada',posts[0][2]['body']);self.assertNotIn('Sem P0/P1',posts[0][2]['body'])
+        self.assertEqual(posts[1][2]['state'],'failure')
+
+    def test_falha_console_nao_e_reprovacao_publicavel(self):
+        from revisor_ia import publicar_revisao_gestao
+        cfg,r,pr,api=self.preparar_publicacao()
+        r=re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',lambda *_:'JSON inválido')
+        with self.assertRaises(ValueError):publicar_revisao_gestao(self.repo,cfg,pr,r,api)
+        self.assertEqual(self.chamadas,[])
+
+    def test_concilia_apenas_reprovacao_conhecida_com_autor_encerrado(self):
+        import sqlite3
+        from contextlib import closing
+        from controle_tarefas import Controle
+        from revisor_ia import reconciliar_reprovacoes_gestao
+        cfg,r,pr,api=self.preparar_publicacao();pr['body']='Parte de #1';pr['labels']=[]
+        r=re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',
+            lambda *_:{'veredito':'reprovado','achados':[{'prioridade':'P2','arquivo':'codigo.py','linha':1,'evidencia':'Aceite não comprovado'}]})
+        ctrl=Controle(gestao_cli.pasta_dados(self.repo)/'tarefas.db')
+        token=ctrl.reservar(cfg['kanban']['repo'],'1','Dev','gemini',
+                           {'executor':r['autor'],'objetivo':'Entregar mudança','aceite':'Aceite'},quadro_atual=True)
+        ctrl.transicao(token,'executando');tentativa=ctrl.iniciar_execucao(token)
+        ctrl.registrar_revisao(token,42,r,cfg)
+        with patch('revisor_ia.publicar_revisao_gestao') as publicar:
+            self.assertEqual(reconciliar_reprovacoes_gestao(self.repo,cfg,[pr]),[])
+            publicar.assert_not_called()
+        ctrl.terminar_execucao(tentativa,124,2);ctrl.transicao(token,'bloqueado')
+        with closing(sqlite3.connect(ctrl.banco)) as db,db:
+            db.execute('CREATE TABLE atividade_execucao(execucao TEXT,estado TEXT,codigo_console INTEGER)')
+            db.execute("INSERT INTO atividade_execucao VALUES (?,'encerrado',124)",(tentativa,))
+        with patch('revisor_ia.publicar_revisao_gestao',return_value={'estado':'publicado','status':'failure'}) as publicar:
+            antes=ctrl.listar(cfg['kanban']['repo'])
+            saida=reconciliar_reprovacoes_gestao(self.repo,cfg,[pr]);publicar.assert_called_once()
+            self.assertEqual(saida[0]['status'],'failure');self.assertEqual(antes,ctrl.listar(cfg['kanban']['repo']))
+            self.assertEqual(reconciliar_reprovacoes_gestao(self.repo,cfg,[{**pr,'draft':True}]),[])
+            self.assertEqual(reconciliar_reprovacoes_gestao(self.repo,cfg,[{**pr,'labels':[{'name':'merge-manual'}]}]),[])
+        # Relatório aprovado não é adotado por esta conciliação de falhas.
+        re.executar(self.repo,self.trabalho,self.base,'Dev','Aceite',lambda *_:{'veredito':'aprovado','achados':[]})
+        with patch('revisor_ia.publicar_revisao_gestao') as publicar:
+            self.assertEqual(reconciliar_reprovacoes_gestao(self.repo,cfg,[pr]),[]);publicar.assert_not_called()
 
 
 if __name__=='__main__': unittest.main()

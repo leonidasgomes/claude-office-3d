@@ -2122,6 +2122,18 @@ Esperar a implementação também permite essa consulta de preparação: não co
 a espera em autorização de execução. Se o diretor dispensar a investigação,
 o recibo conserva a decisão e evita novas chamadas de modelo no mesmo contexto.
 
+Uma revisão completa reprovada também publica `revisor-ia=failure`, com os
+achados e o commit exato. O controlador confere identidade, fornecedores,
+veredictos e cobertura antes de publicar; falha do console ou relatório
+incompleto não vira reprovação do código. Reprovação por falta de aceite,
+inclusive P2 com veredito reprovado, não publica sucesso.
+
+O ciclo pode conciliar a publicação de reprovações já registradas para PRs
+conhecidos, com autor encerrado e a mesma base/head/política. Não chama outro
+modelo, não retoma a reserva, não adota aprovações históricas e não mexe em
+rascunhos/manuais. Recibo de publicação incerto exige conferência. Isso torna
+a pendência visível no GitHub sem renovar o orçamento do autor.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos
