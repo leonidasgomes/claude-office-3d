@@ -2119,3 +2119,7 @@ pesado e criação em cascata ficam fora da passagem. Testes: testar_fila_prs e
 testar_ciclo_gdd, incluindo seleção do filho com bancada ocupada.
 O criador recebe objetivo_cartao calculado das fontes canônicas; não escreve
 classificação pendente quando o GDD já prova o vínculo pela prioridade ou pai.
+identidade_preparacao projeta os campos semânticos do pai e cartão, excluindo
+envelope REST e timestamps incidentais. Recibo antigo já criado só fornece o
+mesmo filho após comparação semântica e conferência completa do vínculo/aceite;
+consulta ou POST incerto nunca é repetido nessa compatibilidade.

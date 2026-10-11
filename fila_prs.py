@@ -9,6 +9,13 @@ def versao_politica(cfg):
     return hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 
+def identidade_preparacao(d):
+    # O envelope REST do item muda com leitura/links e não define o aceite.
+    # Mantém repo, PR/head, pai, política/fontes e todos os campos de despacho.
+    return {**d,'cartao':{key:d['cartao'].get(key) for key in ('equipe','prioridade','etapa','status')},
+            'issue':{key:d['issue'].get(key) for key in ('number','title','body')}}
+
+
 def autor_encerrado(dados,repo,pai):
     """Não libera reserva: confere apenas se há tentativa ainda incerta."""
     arq=Path(dados)/'tarefas.db'
@@ -44,13 +51,19 @@ def preparar_fila(projeto,cfg,prs,fila,docs,dados,k,criar,chamar=None,ao_consult
                     'issue':{key:issue.get(key) for key in ('number','title','body','updated_at')},
                     'cartao':cartao,'politica':versao_politica(cfg),
                     'fontes':[{'caminho':x['caminho'],'sha256':x['sha256']} for x in docs]}
+        identidade=identidade_preparacao(identidade)
         assinatura=hashlib.sha256(json.dumps(identidade,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         arq=pasta/(str(pr['number'])+'.json')
         if arq.is_symlink():raise ValueError('Recibo de preparação inválido')
         if arq.exists():
             if arq.stat().st_size>128000:raise ValueError('Recibo de preparação grande demais')
             r=json.loads(arq.read_text(encoding='utf-8'))
-            if r.get('assinatura')!=assinatura:continue
+            if r.get('assinatura')!=assinatura:
+                # Recibos criados antes desta projeção conservam o envelope
+                # original. Só o filho já criado pode ser revalidado; não
+                # repete consulta/POST ou reescreve o intento incerto.
+                if (r.get('estado')!='criado' or not isinstance(r.get('identidade'),dict)
+                    or identidade_preparacao(r['identidade'])!=identidade):continue
             if r.get('estado')=='criado':
                 from gestao_cli import instrucoes_cartao
                 n=r.get('numero');s=r.get('proposta') or {}
@@ -61,7 +74,8 @@ def preparar_fila(projeto,cfg,prs,fila,docs,dados,k,criar,chamar=None,ao_consult
                 filho=k.issue(n);c=k.cartao(n,ao_vivo=True);p=instrucoes_cartao(filho)
                 if (vinculo.get('estado')!='criado' or vinculo.get('origem_pr')!=pr['number']
                     or vinculo.get('numero')!=n or vinculo.get('proposta')!=s
-                    or c.get('equipe')!=s.get('equipe') or filho.get('title')!=s.get('titulo')
+                    or c.get('equipe')!=s.get('equipe') or c.get('prioridade')!=cartao.get('prioridade')
+                    or filho.get('title')!=s.get('titulo')
                     or any(p[key]!=s.get(key) for key in ('objetivo','aceite','skills'))
                     or p['escopo']!='Planejamento/investigação deste bloqueio; não implementar o pai.'):
                     raise ValueError('Preparação/aceite diverge do recibo')

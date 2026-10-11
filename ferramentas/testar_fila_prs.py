@@ -90,6 +90,27 @@ class Fila(unittest.TestCase):
                          lambda _:json.dumps({'subtarefa':s}))
         self.assertEqual(criar.call_args.args[3]['objetivo_gdd'],1)
 
+    def test_envelope_kanban_nao_duplica_preparacao_e_aceite_mudado_nao_e_adotado(self):
+        s=self.preparar_fixture();pai=dict(self.k.issue.return_value);cartao=dict(self.k.cartao.return_value)
+        consulta=Mock(return_value=json.dumps({'subtarefa':s}));criar=Mock(return_value=9)
+        with patch('gestao_projeto.carregar',return_value=self.cfg):
+            preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
+        arquivo=self.p/'preparacoes_prs/3.json';r=json.loads(arquivo.read_text(encoding='utf-8'));s=r['proposta']
+        r['assinatura']='versao-anterior';r['identidade']['cartao']['item']={'updated_at':'antigo'}
+        arquivo.write_text(json.dumps(r),encoding='utf-8')
+        recibos=self.p/'desbloqueios';recibos.mkdir()
+        (recibos/'1.json').write_text(json.dumps({'estado':'criado','numero':9,'origem_pr':3,'proposta':s}),encoding='utf-8')
+        filho={'title':s['titulo'],'state':'open','body':'\n\n'.join('**'+nome+':** '+valor for nome,valor in (
+            ('Objetivo',s['objetivo']),('Aceite',s['aceite']),('Skills',s['skills']),
+            ('Escopo','Planejamento/investigação deste bloqueio; não implementar o pai.')))}
+        self.k.issue.side_effect=lambda n:pai if n==1 else filho
+        self.k.cartao.side_effect=lambda n,**kw:{**cartao,'item':{'updated_at':'novo'}} if n==1 else {'equipe':'Dev','status':'Backlog','prioridade':'P1'}
+        self.assertEqual(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)['numero'],9)
+        consulta.assert_called_once();criar.assert_called_once()
+        pai['body']='Aceite do pai mudou'
+        self.assertIsNone(preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta))
+        consulta.assert_called_once();criar.assert_called_once()
+
     def test_consulta_incerta_nao_cria_nem_repete_e_subissue_existente_impede(self):
         self.preparar_fixture();criar=Mock();consulta=Mock(side_effect=RuntimeError('rede'))
         with self.assertRaises(RuntimeError):preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)

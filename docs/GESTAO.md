@@ -1883,6 +1883,9 @@ Não implementa nem regenera o pai, não retoma sua sessão, não troca seu orç
 e não aprova o PR parcial. A etapa real continua exigindo validação própria.
 Consulta/criação incerta não é repetida; um recibo criado precisa continuar
 compatível com o cartão, PR e política. Não há criação em cascata nessa passagem.
+Mudanças incidentais no envelope REST do Kanban não invalidam uma preparação
+já criada. Equipe, prioridade, etapa, status, corpo/aceite do pai, commit,
+política e fontes continuam sendo conferidos antes de reconhecer o mesmo filho.
 
 `memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
 referências estruturadas a entregas com conclusão registrada por merge, do
