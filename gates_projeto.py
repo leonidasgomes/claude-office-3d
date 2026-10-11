@@ -43,7 +43,7 @@ def comando_script(projeto,cfg):
             'fonte':cfg['fontes']['regras'],'fonte_sha256':hashlib.sha256(fonte.read_bytes()).hexdigest()}
 
 
-def preparar(projeto,cfg,pr,dados,k):
+def preparar(projeto,cfg,pr,dados,k,*,sincronizar=False):
     from gestao_cli import validar_worktree,estado_git,RAIZ
     from gestao_projeto import fontes_resolvidas,revisores
     from revisao_cruzada import conferir
@@ -87,13 +87,21 @@ def preparar(projeto,cfg,pr,dados,k):
         or pr['base'].get('ref')!=cfg['ciclo']['base'].removeprefix('origin/')):raise ValueError('Worktree/branch/PR/base de gate divergem')
     base_ref=cfg['ciclo']['base']
     ref_sha=subprocess.run(['git','-C',str(trabalho),'rev-parse','--verify',base_ref+'^{commit}'],capture_output=True,text=True,check=True,timeout=30).stdout.strip()
-    if ref_sha!=base:return None  # Conserva fluxo existente até sincronização autorizada.
     criados=[]
     for arq in (RAIZ/'dados/worktrees').glob('*.json'):
         r=ler(arq)
         if r.get('estado')=='criado' and r.get('projeto')==str(Path(projeto).resolve()):
             criados.extend(i for i in r['criados'] if i.get('cartao')==int(row['cartao']) and i.get('worktree')==str(trabalho) and i.get('branch')==ctx['branch'])
     if len(criados)!=1:raise ValueError('Gate exige criação única do worktree')
+    if ref_sha!=base:
+        if not sincronizar:raise ContextoIncompativel('Base local desatualizada; encaminhar revisão para sincronizar referência')
+        from controle_tarefas import ocupar_worktree
+        from gestao_cli import banco_worktrees,worktree_sujo
+        with ocupar_worktree(banco_worktrees(projeto),str(trabalho)):
+            if worktree_sujo(trabalho):raise ValueError('Worktree sujo antes de sincronizar base')
+            sincronizar_base(trabalho,repo,base_ref,base,ref_sha)
+            if estado_git(trabalho)!=git:raise ValueError('Checkout mudou durante sincronização')
+        return preparar(projeto,cfg,k.chamar(f'repos/{repo}/pulls/{n}'),dados,k)
     script=trabalho/regra['script']
     if script.is_symlink() or not script.resolve().is_relative_to(trabalho) or not script.is_file() or hashlib.sha256(script.read_bytes()).hexdigest()!=regra['script_sha256']:raise ValueError('Script do worktree diverge da fonte autorizada')
     original=subprocess.run(['git','-C',str(trabalho),'show',base+':'+regra['script']],capture_output=True,timeout=30)
@@ -108,6 +116,29 @@ def preparar(projeto,cfg,pr,dados,k):
             'revisor':equipes[0],'revisao_sha256':assinatura(relatorio),'check':CHECK,
             'encaminhamento':{'consulta_ceo':'decisao_sem_ferramentas','executor':'revisor_no_controlador_host',
                 'conferido_pelo_host':['politica','fontes','script','worktree_limpo','base','autor_encerrado','revisao']}}
+
+
+def sincronizar_base(trabalho,repo,ref,sha,anterior):
+    """Fetch de uma única branch do GitHub; atualiza apenas a referência remota com CAS."""
+    if (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',repo)
+        or not ref.startswith('origin/') or not re.fullmatch('[0-9a-f]{40}',sha)
+        or not re.fullmatch('[0-9a-f]{40}',anterior)):
+        raise ValueError('Identidade de base inválida')
+    def git(*args):
+        return subprocess.run(['git','-C',str(trabalho),*args],capture_output=True,text=True,
+                              encoding='utf-8',check=True,timeout=120).stdout.strip()
+    destino='refs/remotes/'+ref;origem='refs/heads/'+ref.removeprefix('origin/')
+    git('check-ref-format',origem);git('check-ref-format',destino)
+    url=git('remote','get-url','origin')
+    if url not in (f'https://github.com/{repo}.git',f'https://github.com/{repo}'):
+        raise ValueError('Origin diverge do repositório autorizado')
+    if git('ls-remote','--exit-code','--heads',url,origem)!=sha+'\t'+origem:
+        raise ValueError('Base remota mudou antes da sincronização')
+    git('fetch','--no-tags','--no-write-fetch-head','--no-recurse-submodules',url,origem)
+    if git('cat-file','-t',sha)!='commit':raise ValueError('Commit remoto não confirmado')
+    if git('ls-remote','--exit-code','--heads',url,origem)!=sha+'\t'+origem:
+        raise ValueError('Base remota mudou durante sincronização')
+    git('update-ref',destino,sha,anterior)
 
 
 def candidatos(projeto,cfg,prs,dados,k,*,pendencias=None):
@@ -160,7 +191,7 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,chamar=None,rodar=executar,ao_etapa=
     for pr in prs:
         d=next((x for x in fila['encaminhamentos'] if x['pr']==pr['number'] and x['head']==pr['head']['sha'] and x['acao']=='revisar'),None)
         if not d:continue
-        try:e=preparar(projeto,cfg,pr,dados,k)
+        try:e=preparar(projeto,cfg,pr,dados,k,sincronizar=True)
         except ContextoIncompativel:continue
         if not e:continue
         pasta=Path(dados)/'gates_projeto';pasta.mkdir(exist_ok=True)
