@@ -557,6 +557,17 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
                 registro['encaminhamentos_prs']=fila['encaminhamentos']
                 registro['fila_politica']=versao_politica(cfg)
+                from correcoes_prs import encaminhar
+                correcao=encaminhar(projeto,cfg,prs,fila,pasta_dados(projeto),k,
+                    ao_etapa=lambda etapa,alvo,r:salvar(etapa,
+                        cartoes=[{'cartao':alvo['cartao'],'equipe':r['equipe']}],
+                        proxima_acao=('CEO decidindo encaminhamento do revisor' if etapa=='diretor'
+                            else 'conferir contrato e worktree existentes' if etapa=='preparando'
+                            else 'equipe corrigindo o mesmo PR')))
+                if correcao:
+                    registro.setdefault('correcoes_encaminhadas',[]).append(correcao)
+                    atomico(p,registro)
+                    continue
                 from fila_prs import preparar_fila
                 novo=preparar_fila(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,subtarefa,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='avaliar preparação independente vinculada ao PR'))

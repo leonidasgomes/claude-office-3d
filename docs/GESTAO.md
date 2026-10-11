@@ -1952,3 +1952,37 @@ Com metas ativas, a prévia de retomada exibe o tempo e tokens restantes do cart
 No Codex retomado, a medição incremental também observa o transcrito da sessão. Os contadores anteriores estabelecem a base; somente os incrementos novos são atribuídos à tentativa atual. Isso permite interromper pelo limite observado antes do término do turno, preservando os gastos já registrados das tentativas anteriores.
 
 Uma retomada Codex autorizada, com ciclo ativo, recebe a mesma pasta de pedidos do host usada nos despachos novos. A permissão adicional pertence ao comando exec e é colocada antes de resume; o sandbox continua workspace-write. Cada tentativa recebe um cache novo de objetos Git nessa área, sem liberar refs, index ou hooks do repositório. A publicação continua passando pelo controlador, que confere cartão, reserva, worktree, branch e gates. Permissão de escrita não autoriza retomada, merge, novo orçamento ou publicação arbitrária.
+
+
+### Encaminhamento de correções pelo diretor e CEO
+
+O revisor registra achados no commit exato. O diretor classifica o PR existente;
+o CEO decide corrigir ou aguardar dentro de uma delegação explícita do usuário.
+A equipe autora executa pelo despacho comum, com os mesmos PR e worktree, skills,
+sessões, eventos, publicação restrita pelo host e gates. O chefe recebe a causa
+real quando falta recurso, evidência ou decisão fora da delegação.
+
+A delegação operacional privada fica em `dados/gestao/<projeto>/delegacao_correcoes.json`.
+Instalações existentes permanecem sem esta autorização. O registro contém `id`
+(UUID hexadecimal), `ativo`, `repo`, `politica` (SHA-256 da política normalizada),
+`origem` da autorização do usuário, `limites` (`tempo_min` e `tokens`, exatamente
+os limites configurados por cartão) e `prs` com `pr`, `cartao`, `token` da reserva
+e `head` completo. Não exponha nem versione este arquivo no projeto público.
+Cada delegação concede somente um contrato adicional por PR. Ela não dispensa
+conciliação de processos incertos, agentes filhos ou worktrees ocupados.
+
+O ciclo prioriza esses encaminhamentos na fila de PRs existente, antes de criar
+preparações ou novos despachos. Cada rodada executa somente uma correção;
+CEO e diretor não pedem novamente ao usuário a decisão já delegada. Política,
+aceite, head ou checkout divergentes bloqueiam o encaminhamento. Consulta ao CEO
+incerta não é repetida automaticamente. Sem mudança das evidências, uma decisão
+de aguardar usa o recibo anterior, sem consumir outro modelo.
+
+A tabela `contrato_correcao` arquiva a reserva/entrega anteriores e a decisão dos
+chefes antes do novo orçamento. Tentativas, consumo e metas anteriores permanecem
+registrados. O vínculo inicial ao PR tem aprovação zero: serve para atualizar
+esse mesmo PR, nunca para declarar aprovação ou conclusão. A revisão continua
+avaliando o aceite original; a decisão do chefe não substitui os gates.
+Entrega parcial preserva `Parte de #n` e não conclui o cartão-pai. Correção publicada,
+processo encerrado e merge são estados diferentes. Somente merge comprovado com
+aceite integral permite concluir o cartão pelo fluxo existente.
