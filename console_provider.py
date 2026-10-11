@@ -40,12 +40,15 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None,skills_contexto=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
-        prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
+        if skills_contexto is not None:
+            if provider.nome not in ('codex','gemini','opencode'):raise ValueError('Contexto limitado exige novo provider')
+            prompt=contexto(projeto_medicao,provider.nome,selecionadas=skills_contexto)+"\n\nTarefa:\n"+prompt
+        else:prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
     if diretorios_escrita and (provider.nome!='codex' or sandbox!='workspace-write' or sessao
                               or (prompt_inicial is None and prompt is None)):
         raise ValueError('Diretórios adicionais exigem Codex novo workspace-write')

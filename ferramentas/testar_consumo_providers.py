@@ -15,6 +15,17 @@ from consumo_providers import Coletor, ColetorRollout, Registro
 
 
 class Consumo(unittest.TestCase):
+    def test_contexto_despacho_recebe_fonte_canonica_antes_do_console(self):
+        from console_provider import executar
+        from providers_console import PROVIDERS
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);work=raiz/'work';work.mkdir()
+            with patch('console_provider.contexto',side_effect=ValueError('fonte conferida')) as contexto,patch('console_provider.subprocess.Popen') as processo:
+                with self.assertRaisesRegex(ValueError,'fonte conferida'):
+                    executar(PROVIDERS['codex'],'native',work,'Dev',prompt='Tarefa',projeto_consumo=raiz,skills_contexto=[])
+                contexto.assert_called_once_with(raiz.resolve(),'codex',selecionadas=[])
+                processo.assert_not_called()
+
     def test_snapshot_final_codex_e_rollout_compartilham_saldo_sem_duplicar(self):
         from metas_cartao import tokens_observados
         with tempfile.TemporaryDirectory() as tmp:

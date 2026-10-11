@@ -452,6 +452,8 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                                **({'limites_meta':meta_execucao} if meta_execucao else {}))
             else:
                 parametros_skills={}
+                if provider.nome in ('codex','gemini','opencode'):
+                    parametros_skills['skills_contexto']=[r['nome'] for r in pacote['skills_resolvidas']]
                 if meta_execucao:parametros_skills['limites_meta']=meta_execucao
                 if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex' and not retomada:
                     fila_host=RAIZ/'dados'/'controlador';fila_host.mkdir(parents=True,exist_ok=True)
