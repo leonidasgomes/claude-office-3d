@@ -18,6 +18,7 @@ class Correcoes(unittest.TestCase):
         self.pacote={'objetivo':'entrega','aceite':'aceite integral preservado','escopo':'implementar',
             'skills':'nenhuma','cartao':1,'url':'https://github.com/o/r/issues/1',
             'executor':{'console':'codex','modelo':'modelo','execucao':'cloud'},
+            'dependencias':{'verificadas_em':1,'itens':[]},
             'meta':{'limites':{'tempo_min':60,'tokens':2000000}}}
         self.token=self.ctrl.reservar('o/r','1','Dev','codex',self.pacote,quadro_atual=True)
         self.ctrl.transicao(self.token,'executando')
@@ -34,7 +35,7 @@ class Correcoes(unittest.TestCase):
             'prs':[{'pr':3,'cartao':1,'token':self.token,'head':'a'*40}]}
         self.e={'delegacao':self.d['id'],'pr':3,'cartao':1,'head':'a'*40,'token_anterior':self.token,
             'equipe':'Dev','limites':self.d['limites'],'reserva_sha256':c.assinatura(self.reserva),
-            'pacote_sha256':c.assinatura(self.pacote)}
+            'pacote_sha256':c.identidade_pacote(self.pacote)}
         decisao={'estado':'decidido','evidencia':self.e,'ceo':{'acao':'corrigir','motivo':'corrigir achados'}}
         self.contrato={**self.e,'assinatura':c.assinatura(decisao),'ceo':decisao['ceo']}
 
@@ -70,6 +71,16 @@ class Correcoes(unittest.TestCase):
 
     def test_segundo_claim_nao_renova_orcamento(self):
         self.contratar()
+        with self.assertRaises(ValueError):self.contratar()
+
+    def test_nova_consulta_de_dependencias_preserva_identidade(self):
+        antes=c.identidade_pacote(self.pacote)
+        self.pacote['dependencias']['verificadas_em']=2
+        self.assertEqual(c.identidade_pacote(self.pacote),antes)
+        self.assertIsNotNone(self.contratar())
+
+    def test_dependencia_alterada_invalida_decisao(self):
+        self.pacote['dependencias']['itens']=[{'numero':2,'estado':'bloqueado'}]
         with self.assertRaises(ValueError):self.contratar()
 
     def test_alterar_aceite_ou_orcamento_rejeitado(self):

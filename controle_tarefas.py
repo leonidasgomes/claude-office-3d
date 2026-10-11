@@ -188,12 +188,12 @@ class Controle:
                 or type(contrato.get('pr')) is not int or contrato['pr']<1
                 or not re.fullmatch('[0-9a-f]{32}',contrato.get('delegacao',''))):
                 raise ValueError('Contrato de correção inválido')
-            from correcoes_prs import assinatura
+            from correcoes_prs import assinatura,identidade_pacote
             evidencia={k:v for k,v in contrato.items() if k not in ('assinatura','ceo')}
             if (assinatura({'estado':'decidido','evidencia':evidencia,'ceo':contrato.get('ceo')})!=contrato['assinatura']
                 or contrato.get('ceo',{}).get('acao')!='corrigir'
                 or assinatura(atual)!=contrato.get('reserva_sha256')
-                or assinatura({k:v for k,v in pacote.items() if k!='contrato_correcao'})!=contrato.get('pacote_sha256')
+                or identidade_pacote({k:v for k,v in pacote.items() if k!='contrato_correcao'})!=contrato.get('pacote_sha256')
                 or pacote.get('meta',{}).get('limites')!={'tempo_min':contrato['limites']['tempo_min'],'tokens':contrato['limites']['tokens']}
                 or any(pacote.get(k)!=atual['pacote'].get(k) for k in ('objetivo','aceite','escopo','skills','cartao','url'))):
                 raise ValueError('Contrato/aceite/orçamento mudou após a decisão do chefe')
