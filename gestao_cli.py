@@ -385,27 +385,33 @@ def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None
 
 def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executar,revisar=None):
     """Entrada exclusiva do encaminhamento CEO/diretor, com trava compartilhada."""
+    falha_previa=None
     with ocupar_worktree(banco_worktrees(trabalho),trabalho):
-        from correcoes_prs import delegacao,assinatura
-        cfg,_,_,k,pacote=preparado
-        d=delegacao(pasta_dados(projeto),cfg)
-        alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
-              'token':reserva['token'],'head':contrato['head']}
-        if (not d or d['id']!=contrato['delegacao'] or alvo not in d['prs']
-            or carregar(projeto)!=cfg or assinatura(pacote)!=contrato['pacote_sha256']):
-            raise ValueError('Delegação/política mudou antes de executar a correção')
-        validar_worktree(projeto,trabalho)
-        atual=estado_git(trabalho)
-        pr=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{contrato["pr"]}')
-        if (pr.get('head',{}).get('sha')!=contrato['head'] or atual['sha']!=contrato['head']
-            or atual['branch']!=pacote['contexto_execucao']['branch']
-            or pr.get('head',{}).get('ref')!=atual['branch'] or pr.get('state')!='open'
-            or pr.get('draft') or pr.get('merged')
-            or any(x.get('name') in cfg['merge']['rotulos_manuais'] for x in pr.get('labels',[]))):
-            raise ValueError('PR/checkout mudou antes da correção')
-        return _despachar(projeto,int(reserva['cartao']),reserva['equipe'],
-            reserva['pacote']['contexto_execucao']['escopo'],trabalho,None,rodar,revisar,None,
-            preparado,correcao_delegada={'reserva':reserva,'contrato':contrato})
+        try:
+            from correcoes_prs import delegacao,assinatura
+            cfg,_,_,k,pacote=preparado
+            d=delegacao(pasta_dados(projeto),cfg)
+            alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
+                  'token':reserva['token'],'head':contrato['head']}
+            if (not d or d['id']!=contrato['delegacao'] or alvo not in d['prs']
+                or carregar(projeto)!=cfg or assinatura(pacote)!=contrato['pacote_sha256']):
+                raise ValueError('Delegação/política mudou antes de executar a correção')
+            validar_worktree(projeto,trabalho)
+            atual=estado_git(trabalho)
+            pr=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{contrato["pr"]}')
+            if (pr.get('head',{}).get('sha')!=contrato['head'] or atual['sha']!=contrato['head']
+                or atual['branch']!=pacote['contexto_execucao']['branch']
+                or pr.get('head',{}).get('ref')!=atual['branch'] or pr.get('state')!='open'
+                or pr.get('draft') or pr.get('merged')
+                or any(x.get('name') in cfg['merge']['rotulos_manuais'] for x in pr.get('labels',[]))):
+                raise ValueError('PR/checkout mudou antes da correção')
+        except (ValueError,OSError,sqlite3.Error,subprocess.SubprocessError) as exc:
+            falha_previa=exc
+        if falha_previa is None:
+            return _despachar(projeto,int(reserva['cartao']),reserva['equipe'],
+                reserva['pacote']['contexto_execucao']['escopo'],trabalho,None,rodar,revisar,None,
+                preparado,correcao_delegada={'reserva':reserva,'contrato':contrato})
+    raise falha_previa
 
 
 def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None, saldo_retomada=None, correcao_delegada=None):
