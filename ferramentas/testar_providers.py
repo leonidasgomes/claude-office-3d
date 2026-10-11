@@ -46,11 +46,11 @@ class TestProviders(unittest.TestCase):
             for destino in (cache,repo/'cache',raiz/'fora',area):
                 with self.assertRaisesRegex(ValueError,'Cache de objetos'):ambiente_objetos_git(repo,original,destino,[area])
 
-    def test_cache_git_recusa_provider_sandbox_e_retomada_antes_do_processo(self):
+    def test_cache_git_recusa_provider_ou_sandbox_invalido_antes_do_processo(self):
         from console_provider import executar
         with tempfile.TemporaryDirectory() as tmp:
             raiz=Path(tmp);area=raiz/'fila';area.mkdir()
-            casos=[('opencode',None,None),('codex','read-only',None),('codex','workspace-write','sessao')]
+            casos=[('opencode',None,None),('codex','read-only',None),('codex',None,'sessao')]
             for nome,sandbox,sessao in casos:
                 with self.subTest(provider=nome,sandbox=sandbox),patch('console_provider.subprocess.Popen') as processo:
                     with self.assertRaises(ValueError):
@@ -69,6 +69,37 @@ class TestProviders(unittest.TestCase):
             for nome,valor in (('claude','workspace-write'),('opencode','read-only'),('codex','danger-full-access')):
                 with self.subTest(nome=nome,valor=valor),self.assertRaises(ValueError):
                     PROVIDERS[nome].comando(nome,'.',sandbox=valor)
+
+    def test_codex_retomado_recebe_fila_e_cache_novos_sem_tocar_git_protegido(self):
+        import subprocess,contextlib,io
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);repo=raiz/'repo';repo.mkdir();area=raiz/'fila';area.mkdir()
+            subprocess.run(['git','-C',str(repo),'init','-b','main'],capture_output=True,check=True)
+            antes={str(p.relative_to(repo)):p.read_bytes() for p in (repo/'.git').rglob('*') if p.is_file()}
+            captura=area/'captura.json';fake=raiz/'fake.py';cache=area/'cache-tentativa'
+            fake.write_text('import os,sys,json\nfrom pathlib import Path\n'+
+                'Path('+repr(str(captura))+').write_text(json.dumps({"argv":sys.argv[1:],"entrada":sys.stdin.read(),'+
+                '"objetos":os.environ.get("GIT_OBJECT_DIRECTORY"),"alternativos":os.environ.get("GIT_ALTERNATE_OBJECT_DIRECTORIES")}),encoding="utf-8")\n'+
+                'for e in [{"type":"thread.started","thread_id":"sessao-existente"},{"type":"turn.started"},'+
+                '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}]:print(json.dumps(e),flush=True)\n',encoding='utf-8')
+            with patch('providers_console.comando_nativo',return_value=[sys.executable,str(fake)]),contextlib.redirect_stdout(io.StringIO()):
+                codigo=executar(PROVIDERS['codex'],'fake',repo,'Dev',prompt='Publicar pelo host',
+                    sessao='sessao-existente',sandbox='workspace-write',diretorios_escrita=[area],objetos_git=cache,
+                    banco=area/'eventos.db')
+            self.assertEqual(codigo,0);d=json.loads(captura.read_text(encoding='utf-8'));args=d['argv']
+            self.assertLess(args.index('--add-dir'),args.index('resume'))
+            self.assertEqual(args[args.index('--add-dir')+1],str(area.resolve()))
+            self.assertEqual(args[args.index('resume')+1],'sessao-existente')
+            self.assertEqual(args[args.index('--sandbox')+1],'workspace-write')
+            self.assertEqual(args[-1],'-');self.assertIn('Publicar pelo host',d['entrada'])
+            self.assertEqual(d['objetos'],str(cache.resolve()));self.assertTrue(cache.is_dir())
+            self.assertNotIn('--dangerously-bypass-approvals-and-sandbox',args)
+            depois={str(p.relative_to(repo)):p.read_bytes() for p in (repo/'.git').rglob('*') if p.is_file()}
+            self.assertEqual(antes,depois)
+            with patch('console_provider.subprocess.Popen') as processo,self.assertRaises(ValueError):
+                executar(PROVIDERS['codex'],'fake',repo,'Dev',prompt='Publicar pelo host',
+                    sessao='sessao-existente',sandbox='workspace-write',diretorios_escrita=[area],objetos_git=cache)
+            processo.assert_not_called()
 
     def test_opencode_recebe_contexto_e_tarefa_extensa_por_stdin(self):
         with tempfile.TemporaryDirectory() as tmp:

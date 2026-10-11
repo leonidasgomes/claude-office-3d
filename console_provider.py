@@ -49,15 +49,17 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             if provider.nome not in ('codex','gemini','opencode'):raise ValueError('Contexto limitado exige novo provider')
             prompt=contexto(projeto_medicao,provider.nome,selecionadas=skills_contexto)+"\n\nTarefa:\n"+prompt
         else:prompt = contexto(projeto,provider.nome) + "\n\nTarefa:\n" + prompt
-    if diretorios_escrita and (provider.nome!='codex' or sandbox!='workspace-write' or sessao
+    if diretorios_escrita and (provider.nome!='codex' or sandbox!='workspace-write'
                               or (prompt_inicial is None and prompt is None)):
-        raise ValueError('Diretórios adicionais exigem Codex novo workspace-write')
+        raise ValueError('Diretórios adicionais exigem Codex estruturado workspace-write')
     args = provider.comando(exe, projeto, prompt, modelo, sessao, agente, **({'sandbox':sandbox} if sandbox is not None else {}))
     if diretorios_escrita and prompt is not None:
         for diretorio in diretorios_escrita:
             pasta=Path(diretorio).resolve()
             if not pasta.is_dir():raise ValueError('Diretório de escrita não existe')
-            args[-1:-1]=['--add-dir',str(pasta)]
+            # add-dir pertence ao comando exec, não ao subcomando resume.
+            posicao=args.index('resume') if sessao else len(args)-1
+            args[posicao:posicao]=['--add-dir',str(pasta)]
     if prompt_inicial is not None:
         if provider.nome != 'codex' or prompt is not None or sessao or politica_local:
             raise ValueError('Prompt inicial exige Codex interativo novo, sem execução estruturada/local')
@@ -85,8 +87,8 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         args[-1] = "Siga a tarefa e as referências recebidas na entrada padrão."
     env = os.environ.copy()
     if objetos_git is not None:
-        if provider.nome!='codex' or sandbox!='workspace-write' or sessao or prompt is None or not diretorios_escrita or politica_local:
-            raise ValueError('Cache Git exige despacho Codex novo workspace-write com área autorizada')
+        if provider.nome!='codex' or sandbox!='workspace-write' or prompt is None or not diretorios_escrita or politica_local:
+            raise ValueError('Cache Git exige Codex estruturado workspace-write com área autorizada')
         from providers_console import ambiente_objetos_git
         env=ambiente_objetos_git(projeto,env,objetos_git,diretorios_escrita)
     if provider.nome=='codex':
