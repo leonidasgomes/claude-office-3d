@@ -1640,3 +1640,10 @@ reutilizar o daemon de outra versão; modelos, política e credenciais permanece
 as configuradas. Verifique com `codex --version` e um comando real antes de despachar.
 
 Para operação autorizada sem perguntas do Codex, defina `OFFICE_CODEX_AUTONOMO=1` no ambiente do launcher. Ele usa aprovação `never` e permite rede no `workspace-write` (necessária para GitHub), mantendo os limites de escrita. Comandos fora desses limites falham; não são escalados. Política do projeto, reservas, aceite, revisores e merge continuam passando pelos gates existentes. Não altera a configuração global do Codex. Reabra a sessão para aplicar.
+
+
+### Acompanhamento ao vivo do ciclo
+
+Com o ciclo automático habilitado, o atalho Windows abre uma janela de acompanhamento junto ao CEO interativo. A conversa não recebe mensagens espontâneas do host; o acompanhamento lê o estado, reservas e recibos de publicação a cada dois segundos, sem chamar modelos ou criar tarefas. Mostra candidatos separados do despacho, próximos passos, último motivo e PRs efetivamente publicados. Confere a identidade do processo coordenador a cada 30 segundos; uma reserva não comprova processo de equipe ativo. O último motivo pode pertencer à etapa anterior.
+
+Fechar o acompanhamento não encerra o controlador nem equipes. O acompanhamento fica vinculado à sessão observada e termina se outra sessão assumir. Ao reabrir o atalho, confira o estado do host; nenhuma reserva antiga é retomada. Em outros sistemas, use `python acompanhamento_ciclo.py --projeto CAMINHO` em um terminal separado; `--uma-vez` imprime uma consulta.

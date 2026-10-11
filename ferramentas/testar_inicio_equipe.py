@@ -6,6 +6,21 @@ from iniciar_equipe import tarefa,main
 from console_provider import executar
 from providers_console import PROVIDERS
 class Inicio(unittest.TestCase):
+    def test_ciclo_abre_monitor_e_conversa_sem_despachar_lote(self):
+        cfg={'ativo':True,'ceo':{'console':'codex','modelo':'teste','execucao':'cloud'},
+             'ciclo':{'ativo':True,'base':'origin/main'}}
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch('iniciar_equipe.__file__',str(Path(tmp)/'iniciar_equipe.py')), \
+             patch('iniciar_equipe.carregar',return_value=cfg), \
+             patch('iniciar_equipe.selecionar',return_value=(PROVIDERS['codex'],'codex')), \
+             patch('subprocess.run') as host,patch('acompanhamento_ciclo.abrir') as monitor, \
+             patch('iniciar_equipe.executar',return_value=0) as ceo:
+            host.return_value.returncode=0
+            self.assertEqual(main(['--projeto',tmp,'--base','origin/main']),0)
+            monitor.assert_called_once_with(Path(tmp).resolve())
+            self.assertIn('publicacoes/*.json',ceo.call_args.kwargs['prompt_inicial'])
+            self.assertIn('ciclo',host.call_args.args[0])
+            self.assertNotIn('lote',host.call_args.args[0])
     def test_tarefa_limitada_delega_sem_raiz(self):
         s=tarefa(Path('projeto'),Path('office'),'origin/main',2)
         self.assertIn('--acao lote --arquivo plano_utf8 --executar',s)
