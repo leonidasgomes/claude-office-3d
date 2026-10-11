@@ -17,6 +17,9 @@ class Transcrito:
         self.historico_ate = 0
         self.registros_lidos = 0
         self.consumo = consumo
+        self.paginado = False
+        self.comandos = {}
+        self.ligacoes = {}
 
     def medir(self, registro, base=False):
         if self.consumo:
@@ -26,6 +29,9 @@ class Transcrito:
                 pass  # Falha de coleta nunca interrompe o feed/agente.
 
     def evento(self, tipo="trabalho", **dados):
+        if dados.get('operacao_id') and dados.get('ferramenta') in ('Bash','exec_command','functions.exec_command'):
+            from observabilidade_equipes import nome_comando
+            dados['operacao_nome']=nome_comando(dados.get('resumo'))
         self.emitir({"tipo": tipo, "agente": self.mesa, "fonte": "codex", "sessao": self.sessao,
                      "para": [], **self.parentesco, **dados})
 
@@ -36,17 +42,23 @@ class Transcrito:
             return
         tipo = registro.get("type")
         if tipo == "session_meta":
+            self.paginado = payload.get("history_mode") == "paginated"
             if not self.sessao:
                 self.sessao = str(payload.get("id") or payload.get("session_id") or "")
             return
         if tipo == "event_msg":
+            if payload.get("type") == "item_completed" and isinstance(payload.get("item"), dict):
+                self.paginado = True
+                self.item_concluido(payload["item"])
+            elif payload.get("type") == "exec_command_end" and not self.paginado:
+                self.item_concluido({**payload, "type": "CommandExecution", "id": payload.get("call_id")})
             if payload.get("type") in ("task_complete", "task_completed", "turn_aborted"):
                 self.evento("ocioso", resumo="aguardando")
             return
         if tipo != "response_item":
             return
         item = payload.get("type")
-        if item == "message" and payload.get("role") == "assistant":
+        if item == "message" and payload.get("role") == "assistant" and not self.paginado:
             texto = "\n".join(str(c.get("text") or "") for c in payload.get("content") or []
                               if isinstance(c, dict) and c.get("type") in ("output_text", "text"))
             if texto:
@@ -56,7 +68,7 @@ class Transcrito:
         if not chave:
             return
         if item in ("function_call", "custom_tool_call"):
-            if ("inicio", chave) in self.vistos:
+            if ("inicio", chave) in self.vistos or ("fim", chave) in self.vistos:
                 return
             self.vistos.add(("inicio", chave))
             ferramenta = str(payload.get("name") or "Ferramenta")
@@ -66,9 +78,15 @@ class Transcrito:
             except ValueError:
                 dados = {}
             resumo = (dados.get("cmd") or dados.get("command") or dados.get("file_path") or ferramenta) if isinstance(dados, dict) else ferramenta
+            if ferramenta.split('.')[-1] == 'write_stdin' and isinstance(dados, dict):
+                principal = self.comandos.get(str(dados.get('session_id')))
+                if principal:
+                    self.ligacoes[chave] = principal
+                    self.pendentes[chave] = self.pendentes.get(principal, (ferramenta, resumo))
+                    return  # Consultar a ferramenta não inicia outro comando.
             self.pendentes[chave] = (ferramenta, resumo)
             ev = {"ferramenta": ferramenta, "resumo": resumo, "detalhe": str(entrada)[:400],
-                  "inicio": True, "espera_s": 120}
+                  "inicio": True, "espera_s": 120, "operacao_id": str(chave), "operacao_estado": "executando"}
             if ferramenta.split(".")[-1] in ("spawn_agent", "send_input", "send_message"):
                 ev["tipo"] = "subagente" if ferramenta.endswith("spawn_agent") else "fala"
                 if isinstance(dados, dict):
@@ -80,8 +98,8 @@ class Transcrito:
         elif item in ("function_call_output", "custom_tool_call_output"):
             if ("fim", chave) in self.vistos or chave not in self.pendentes:
                 return
-            self.vistos.add(("fim", chave))
-            ferramenta, resumo = self.pendentes.pop(chave)
+            ferramenta, resumo = self.pendentes[chave]
+            operacao = self.ligacoes.get(chave, chave)
             saida = payload.get("output") or ""
             resultado = {}
             if isinstance(saida, str):
@@ -90,7 +108,55 @@ class Transcrito:
                 if match:
                     codigo = int(match.group(1))
                     resultado.update(ok=codigo == 0, codigo=codigo)
-            self.evento(ferramenta=ferramenta, resumo=resumo, **resultado)
+                fundo = re.search(r"Process running with session ID\s+(\S+)", saida)
+                if fundo:
+                    self.comandos[fundo.group(1)] = operacao
+                    self.evento(ferramenta=ferramenta, resumo=resumo, operacao_id=str(operacao),
+                                operacao_estado="segundo_plano", comando_sessao=fundo.group(1))
+                    return
+            if self.paginado and not resultado:
+                return  # O resultado terminal virá em item_completed.
+            self.vistos.add(("fim", chave))
+            self.vistos.add(("fim", operacao))
+            self.pendentes.pop(chave, None)
+            self.pendentes.pop(operacao, None)
+            self.evento(ferramenta=ferramenta, resumo=resumo, operacao_id=str(operacao),
+                        operacao_estado="concluido", **resultado)
+
+    def item_concluido(self, item):
+        """Itens modernos e resultados legados compartilham a identidade da chamada.
+
+        Um resultado sem início observado não inventa duração ou atividade passada.
+        Contexto injetado em response_item não vira fala no modo paginado.
+        """
+        chave = str(item.get("id") or "")
+        tipo = item.get("type")
+        if not chave or ("fim", chave) in self.vistos:
+            return
+        if tipo == "AgentMessage":
+            conteudo = item.get("content") or []
+            texto = conteudo if isinstance(conteudo, str) else "\n".join(
+                str(c.get("text") or "") for c in conteudo if isinstance(c, dict))
+            if texto:
+                self.vistos.add(("fim", chave))
+                self.evento("fala", ferramenta="Mensagem", texto=texto, resumo=texto)
+            return
+        nomes = {"CommandExecution": "Bash", "FileChange": "Edit", "McpToolCall": "MCP"}
+        if tipo not in nomes:
+            return
+        self.vistos.add(("fim", chave))
+        anterior = self.pendentes.pop(chave, None)
+        resumo = item.get("command") or (anterior[1] if anterior else nomes[tipo])
+        if isinstance(resumo, list):
+            resumo = " ".join(str(x) for x in resumo)
+        resultado = {}
+        codigo = item.get("exit_code")
+        if type(codigo) is int:
+            resultado.update(codigo=codigo, ok=codigo == 0)
+        elif item.get("status") == "failed" or item.get("error"):
+            resultado["ok"] = False
+        self.evento(ferramenta=nomes[tipo], resumo=resumo, operacao_id=chave,
+                    operacao_estado="concluido", **resultado)
 
     def ler(self, caminho, somente_consumo=False):
         try:
@@ -127,6 +193,25 @@ def metadados(caminho):
         return registro.get("payload", {}) if registro.get("type") == "session_meta" else {}
     except (OSError, ValueError):
         return {}
+
+
+def campo(obj, nome):
+    if not isinstance(obj, dict): return None
+    normal = nome.replace('_','').lower()
+    return next((v for k,v in obj.items() if str(k).replace('_','').lower()==normal), None)
+
+
+def origem_filho(meta):
+    sub = campo(meta.get('source'), 'subagent')
+    spawn = campo(sub, 'thread_spawn')
+    if not isinstance(spawn,dict):return {}
+    return {nome:campo(spawn,nome) for nome in ('parent_thread_id','agent_nickname','agent_role')}
+
+
+def origem_interna(meta):
+    source=meta.get('source');sub=campo(source,'subagent')
+    return bool(sub or campo(source,'internal') or str(meta.get('thread_source') or '').lower()
+                in ('guardian_review','memory_consolidation'))
 
 
 def base_consumo(transcrito, caminho, ate):
@@ -203,7 +288,7 @@ class Observador:
                 if not meta.get("cwd") or Path(meta["cwd"]).resolve() != self.projeto:
                     continue
                 # Não anexa subagente como sessão principal.
-                if isinstance(meta.get("source"), dict):
+                if origem_interna(meta):
                     continue
                 candidatos.append(caminho)
             if len(candidatos) == 1:
@@ -225,9 +310,7 @@ class Observador:
             if caminho == self.caminho or caminho in self.descendentes:
                 continue
             meta = metadados(caminho)
-            source = meta.get("source")
-            sub = source.get("subagent", {}) if isinstance(source, dict) else {}
-            spawn = sub.get("thread_spawn", {}) if isinstance(sub, dict) else {}
+            spawn = origem_filho(meta)
             if isinstance(spawn, dict) and spawn.get("parent_thread_id") and meta.get("id"):
                 candidatos.append((caminho, meta, spawn))
         # Filhos podem aparecer antes do pai na listagem do sistema de arquivos.

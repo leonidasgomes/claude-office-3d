@@ -502,6 +502,13 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
         # Motivo pertence à etapa atual; espera anterior não é bloqueio da execução.
         kw.setdefault('motivo','')
         registro.update(estado=estado,atualizado=relogio(),**kw);atomico(p,registro)
+        try:
+            from observabilidade_equipes import etapa
+            banco_etapas=p.parent/'tarefas.db'
+            if banco_etapas.is_file():
+                etapa(banco_etapas,ident,estado,registro['atualizado'],registro.get('cartoes') or [])
+        except (OSError,ValueError,sqlite3.Error):
+            pass  # Observabilidade não altera despacho, gates ou recuperação.
     pausa=False
     def disponivel():
         nonlocal pausa

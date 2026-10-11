@@ -3,13 +3,17 @@ export function linhasCota(p) {
   const nome = ({codex: 'GPT / Codex', claude: 'Claude', opencode: 'OpenCode', gemini: 'Gemini'})[p.provider] || p.provider;
   const linhas = [nome];
   if (p.erro) linhas.push(p.erro);
+  if(p.fonte)linhas.push(`Origem: ${p.fonte} · validade da leitura: ${p.validade_seg??'não informada'} s`);
   if (p.coletado_em) linhas.push(`Leitura: ${new Date(p.coletado_em * 1000).toLocaleString('pt-BR')}${p.desatualizado ? ' · desatualizada' : ''}`);
   if (!p.disponivel) linhas.push('Cota não informada pelo console.');
   for (const limite of p.limites || []) {
     for (const j of limite.janelas || []) {
       const janela = j.duracao_min === 10080 ? 'semana' : `${j.duracao_min ?? '?'} minutos`;
-      const pct = Number.isFinite(j.usado_pct) ? `${j.usado_pct}% usado` : 'uso indisponível';
-      const restante = Number.isFinite(j.restante_pct) ? ` · ${j.restante_pct}% restante` : '';
+      const atual=!p.desatualizado && !j.expirado && j.atual!==false;
+      const pct = atual && Number.isFinite(j.usado_pct) ? `${j.usado_pct}% usado` : 'uso indisponível';
+      const restante = atual && Number.isFinite(j.restante_pct) ? ` · ${j.restante_pct}% restante` : '';
+      const ultimo=j.ultimo_usado_pct??j.usado_pct;
+      if(!atual && Number.isFinite(ultimo))linhas.push(`Última leitura histórica: ${ultimo}% usado; saldo atual não informado.`);
       const reset = j.renova_em ? new Date(j.renova_em * 1000).toLocaleString('pt-BR') : 'não informada';
       linhas.push(`${limite.nome} · ${janela}: ${pct}${restante} · renovação: ${reset}${j.expirado ? ' · leitura anterior à renovação' : ''}`);
     }

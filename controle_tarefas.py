@@ -273,6 +273,8 @@ class Controle:
                 raise ValueError("Sessão já vinculada; concilie antes de trocar")
             db.execute("UPDATE reserva SET estado=?, atualizado=?, sessao=COALESCE(?,sessao) WHERE token=?",
                        (estado, time.time(), sessao, token))
+            from observabilidade_equipes import etapa_reserva
+            etapa_reserva(db,token,estado,time.time())
 
     def listar(self, projeto):
         with closing(self._abrir()) as db:
@@ -395,3 +397,5 @@ class Controle:
                 raise ValueError('Conclusão sem evidência persistida')
             if linha['estado']=='revisao':
                 db.execute('UPDATE reserva SET estado=?,atualizado=? WHERE token=?',('concluido',time.time(),token))
+                from observabilidade_equipes import etapa_reserva
+                etapa_reserva(db,token,'concluido',time.time())

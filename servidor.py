@@ -1307,9 +1307,28 @@ class Handler(rede.HandlerSeguro):
     def rotas_get(self):
         url = urlparse(self.path)
         qs = parse_qs(url.query)
+        if url.path == "/eventos/ao-vivo":
+            import eventos_sse
+            try:
+                valor = self.headers.get('Last-Event-ID') or qs.get('desde', ['0'])[0]
+                if not re.fullmatch(r'[0-9]{1,18}', valor): raise ValueError('Cursor inválido')
+                desde = int(valor)
+            except (ValueError, TypeError):
+                return self.responder({'erro': 'Cursor inválido'}, codigo=400)
+            return eventos_sse.servir(self, banco.ARQ, desde, PASTA)
         if url.path == "/config":
             return self.responder(config_publica())
         if url.path == "/eventos":
+            if qs.get('pagina') == ['1']:
+                import eventos_sse
+                try:
+                    valor=qs.get('desde',['0'])[0]
+                    if not re.fullmatch(r'[0-9]{1,18}',valor): raise ValueError('Cursor inválido')
+                    total,itens=eventos_sse.lote(banco.ARQ,int(valor))
+                    return self.responder({'total':total,'proximo':itens[-1][0] if itens else min(int(valor),total),
+                                           'eventos':[e for _,e in itens]})
+                except (ValueError,sqlite3.Error,OSError):
+                    return self.responder({'erro':'Página de eventos indisponível'},codigo=503)
             qs_rep = parse_qs(url.query, keep_blank_values=True)   # "de=" vazio é erro do replay, não o modo antigo
             if "de" in qs_rep or "ate" in qs_rep:   # replay do dia: filtro por tempo, paginado por id
                 codigo, dados = eventos_periodo(qs_rep)

@@ -95,6 +95,21 @@ class Atividade(unittest.TestCase):
         with Acompanhamento(self.c.banco,nova):
             self.assertNotIn('eventos',self.ler()['atividades']['42'])
 
+    def test_operacao_stream_persistida_sem_comando_privado(self):
+        from observabilidade_equipes import operacoes
+        from providers_console import Eventos
+        adapter=Eventos('codex','Dev')
+        with Acompanhamento(self.c.banco,self.ident) as a:
+            for tipo,item in [('item.started',{'id':'op','type':'command_execution','command':'pytest SEGREDO'}),
+                              ('item.completed',{'id':'op','type':'command_execution','command':'pytest SEGREDO','exit_code':1})]:
+                for ev in adapter.converter({'type':tipo,'item':item}):a.evento(ev)
+            a.registrar('acompanhando')
+            with closing(sqlite3.connect(self.c.banco)) as db:
+                ops=operacoes(db,self.token,False,time.time())
+                self.assertEqual(ops[0]['ferramenta'],'Testes');self.assertEqual(ops[0]['codigo'],1)
+                self.assertGreaterEqual(ops[0]['duracao_seg'],0)
+                self.assertNotIn('SEGREDO',json.dumps(db.execute('SELECT * FROM atividade_operacao').fetchall()))
+
     def test_eventos_concorrentes_e_sinais_nao_regridem_contador(self):
         from concurrent.futures import ThreadPoolExecutor
         with Acompanhamento(self.c.banco,self.ident,intervalo=.01) as a:

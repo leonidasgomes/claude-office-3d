@@ -281,6 +281,12 @@ class Eventos:
                 return []
             detalhe = item.get("command") or json.dumps(item.get("changes") or item.get("arguments") or {}, ensure_ascii=False)
             ev = self.base(ferramenta=ferramenta, resumo=detalhe, detalhe=detalhe)
+            if item.get("id"):
+                ev.update(operacao_id=str(item["id"]),
+                          operacao_estado="executando" if tipo == "item.started" else "concluido")
+                if ferramenta=='Bash':
+                    from observabilidade_equipes import nome_comando
+                    ev['operacao_nome']=nome_comando(detalhe)
             if tipo == "item.started":
                 ev.update(inicio=True, espera_s=120)
             else:

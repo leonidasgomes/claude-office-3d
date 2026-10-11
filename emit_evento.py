@@ -82,6 +82,15 @@ def normalizar(ev):
     for chave in ("funcao", "modelo", "sessao", "sessao_pai", "agente_pai", "sessao_filho"):
         if ev.get(chave) is not None:
             out[chave] = str(ev[chave])[:128]
+    for chave in ("operacao_id", "comando_sessao"):
+        if ev.get(chave) is not None:
+            out[chave] = _curto(ev[chave], 128)
+    if "operacao_estado" in ev:
+        if ev["operacao_estado"] not in ("executando", "segundo_plano", "concluido"):
+            raise ValueError("Estado da operação inválido")
+        out["operacao_estado"] = ev["operacao_estado"]
+    if ev.get('operacao_nome') in ('Build','Testes','Comando'):
+        out['operacao_nome']=ev['operacao_nome']
     return out
 
 

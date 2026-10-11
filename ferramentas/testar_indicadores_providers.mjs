@@ -18,7 +18,9 @@ assert.match(linhasConsumo({precos:{estado:'catálogo inválido'}}).join('\n'),/
 const texto = linhasCota({provider: 'codex', disponivel: true, desatualizado: true, coletado_em: 100,
   limites: [{nome: '<script>conta</script>', janelas: [{duracao_min: 10080, usado_pct: 90,
     restante_pct: 10, expirado: true, renova_em: 200}]}]}).join('\n');
-assert.match(texto, /semana: 90% usado · 10% restante/);
+assert.match(texto, /semana: uso indisponível/);
+assert.match(texto, /histórica: 90% usado/);
+assert.doesNotMatch(texto, /10% restante/);
 assert.match(texto, /desatualizada/);
 assert.match(texto, /anterior à renovação/);
 assert.doesNotMatch(texto, /US\$/);

@@ -311,6 +311,8 @@ def resumo(projetos,banco_consumo=None):
             except (OSError,sqlite3.Error,ValueError,TypeError):
                 consumo={'escopo':'projeto','grupos':[],'erro':'Histórico de consumo deste projeto indisponível'}
             tarefas = []
+            from observabilidade_equipes import operacoes,esperas,entregas
+            espera=esperas(None)
             saude=saude_tarefas(None,cfg["kanban"]["repo"])
             metricas=desempenho(None,cfg["kanban"]["repo"])
             banco = pasta_dados(raiz) / "tarefas.db"
@@ -326,10 +328,19 @@ def resumo(projetos,banco_consumo=None):
                         (cfg["kanban"]["repo"],))]
                     metricas=desempenho(db,cfg["kanban"]["repo"])
                     saude=saude_tarefas(db,cfg["kanban"]["repo"])
+                    espera=esperas(db)
+                    try:metricas['entregas_merge']=entregas(db,cfg['kanban']['repo'],banco_consumo,raiz)
+                    except (OSError,ValueError,sqlite3.Error,TypeError):
+                        metricas['entregas_merge']={'erro':'Consumo por merge indisponível'}
                     for tarefa in tarefas:
                         tarefa['atividade']=saude['atividades'].get(str(tarefa['cartao']))
                         tarefa["ultima_execucao"]=metricas["por_cartao"].get(tarefa["cartao"])
                         pacote=json.loads(tarefa.pop('pacote'))
+                        tarefa['operacoes']=operacoes(db,tarefa['token'],
+                            tarefa['estado']=='executando' and (tarefa.get('atividade') or {}).get('estado')=='acompanhando'
+                            and (tarefa.get('atividade') or {}).get('codigo_console') is None
+                            and (tarefa.get('atividade') or {}).get('console_observado') is True
+                            and 0<=time.time()-(tarefa.get('atividade') or {}).get('ultimo_sinal',0)<=45,time.time())
                         tarefa['checkpoint']=checkpoint(db,cfg,tarefa['cartao'],pacote,tarefa['ultima_execucao'],tarefa.pop('token'))
                         membro=pacote.get('funcionario')
                         if membro:
@@ -356,7 +367,7 @@ def resumo(projetos,banco_consumo=None):
                           "coordenacoes":coordenacoes(raiz,cfg['kanban']['repo']),
                           "pedidos_coordenacao":pedidos_coordenacao(raiz,cfg['kanban']['repo']),
                           "pedidos_retomada":pedidos_retomada(raiz,cfg['kanban']['repo']),
-                          "saude_tarefas":saude, "desempenho":metricas})
+                          "saude_tarefas":saude, "desempenho":metricas, "esperas":espera})
         except (ValueError, OSError, sqlite3.Error, TypeError, KeyError):
             saida.append({"nome": raiz.name, "ativo": False, "erro": "Política ou estado de gestão inválido; confira no PC"})
     return {"projetos": saida}

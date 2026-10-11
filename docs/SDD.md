@@ -1033,6 +1033,7 @@ com a mesma guarda de sessão das demais APIs. Painel `gestao_painel.js`; ver `d
 | GET | `/`, `/index.html` | — | HTML com o `<title>` do config e o importmap (CDN ou `/vendor/three/`) | PC; celular com sessão |
 | GET | `/config` | — | `titulo`, `tema`, `apelidos`, `agentes`, `github` (`repo`, `kanban`, `prs`, `projeto_owner`, `projeto_numero`, `check_revisao`, `times`, `colunas`), `xp` (`ativo`, `niveis`), `gh_disponivel`, `three_local` (`servidor.config_publica`) | idem |
 | GET | `/eventos` | `desde=<id>`, `ultimos=<k>` (0–200) | `{"total": <último id>, "eventos": [...]}` (até 500) | idem |
+| GET | `/eventos/ao-vivo` | `desde=<id>` ou cabeçalho `Last-Event-ID` | SSE autenticado: `evento` com ID crescente, `gestao` com versão opaca, `batida` e `reiniciar`; até 8 clientes, conexão renovada em 120 s, escrita limitada a 10 s, páginas de 200 | PC; celular com sessão, mesma guarda de `/eventos` |
 | GET | `/eventos` (replay) | `de=<ISO>` (obrigatório), `ate=<ISO>` (exclusivo; sem ele, até agora), `apos=<id>` (página seguinte); ISO = `AAAA-MM-DD` ou `AAAA-MM-DDTHH:MM[:SS]` na hora local do hook | `{"de", "ate", "eventos" (cada um com `id`), "proximo" (id para `apos`, ou null), "maximo"}`, até `MAX_PERIODO = 5000` por página (`banco.eventos_periodo`); 400 com `erro` se a data é inválida (só dígitos ASCII, conferida com `datetime.strptime`; `de=` vazio também), `apos` não numérico ou acima de 2**63-1, ou `ate <= de`; 503 com o banco indisponível. Sem `de`/`ate` a rota responde como antes | idem |
 | GET | `/kanban` | `projeto=<id>` (opcional, ID público de projeto registrado) | `configurado`, `projeto`, `cartoes` (cada um com `tipo` e `item_id`, o id do item no projeto; rascunho com `numero` nulo e `url` do item no projeto, `?pane=issue&itemId=`; pelo GraphQL, a do quadro do projeto), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa`; gestão ativa acrescenta `fonte=gestao`, `repo`, `projetos[{id,nome}]`, `projeto_id`, `colunas`, `concluido` | idem |
 | GET | `/prs` | `forcar=1` (opcional) | `configurado`, `repo`, `check`, `prs[]` (numero, titulo, url, branch, rascunho, conflito, sha, revisao, checks, rotulos, fecha, autor, atualizado, linhas, arquivos, risco), `atualizado`, `erro`, `limite`, `cota`, `cota_baixa` | idem |
@@ -2164,3 +2165,26 @@ em `controle_tarefas.contratar_correcao` arquiva reserva e entrega anteriores em
 O ciclo prioriza o encaminhamento na fila de PRs antes de novo trabalho. Decisão
 incerta, processo sem encerramento, agentes filhos, alteração de head/política ou
 aceite não autorizam despacho. Não há aprovação sintética nem merge manual.
+
+`observabilidade_equipes.py` estende somente o banco privado `tarefas.db` com
+`atividade_operacao` (execução/sessão/ID, ferramenta, início/fim observados, estado,
+saída), `ciclo_etapa` (ciclo, etapa, instante, cartões) e `reserva_etapa` (token,
+estado, instante). Não cria uma segunda fonte de tarefas. A projeção pública retira
+IDs internos, comandos e caminhos; presença exige sinal recente do controlador.
+Campos opcionais neutros: `operacao_id`, `operacao_estado` (executando/segundo_plano/concluido),
+`comando_sessao` e `operacao_nome` (Build/Testes/Comando). Resultado ausente é desconhecido.
+As tabelas e os campos são aditivos, sem alterar o contrato dos hooks Claude.
+
+SSE é leitura do SQLite existente: cursor crescente e páginas de 200; `Last-Event-ID`
+prevalece sobre query. Uma redução do último ID pede novo snapshot; heartbeat a cada
+15 s, oito clientes e renovação em 120 s. REST com `pagina=1` retorna `proximo` sem
+alterar o formato legado; cliente não mistura replay nem processa IDs repetidos.
+Invalidações de Gestão são agrupadas e preservam formulários abertos. O acompanhamento
+leve mantém batida de 10 s com SSE e 2 s sem ele para não conservar presença vencida.
+O watchdog do navegador volta às consultas após 35 s sem batida. Nenhuma chamada de IA.
+
+`uso_providers.validade` recalcula idade/reset inclusive no cache: mantém fonte/data e
+percentual histórico, retira percentual atual/restante quando a leitura vence ou falha.
+`entregas_merge` conta apenas conclusões verificadas (até 100 recentes), com consumo
+vinculado observado nos últimos sete dias e cobertura parcial. Esperas são intervalos
+fechados do diário, não uma estimativa de causas de bloqueio nem de produtividade.
