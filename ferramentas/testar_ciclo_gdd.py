@@ -65,6 +65,12 @@ class Ciclo(unittest.TestCase):
             with self.assertRaises(ValueError):c.iniciar(self.p)
             self.assertEqual(criar.call_count,1)
 
+    def test_inicio_conciliado_nao_estende_janela(self):
+        c.atomico(c.caminho_estado(self.p),{'estado':'pausado','limite':200,'conciliacao':{'preservar_janela':True}})
+        with patch.object(c.time,'time',return_value=100),patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)):
+            c.iniciar(self.p)
+        self.assertEqual(c.resumo(self.p)['limite'],200)
+
     def test_paginas_20_encontra_cartao_25_e_respeita_limite(self):
         itens=[self.item(n) for n in range(1,26)];tempo=[0];consultados=[];despachos=[]
         (self.p/'PRODUTO.md').write_text('#### Objetivo 1\n'+ ' '.join('#'+str(n) for n in range(1,26)),encoding='utf-8')
@@ -111,6 +117,39 @@ class Ciclo(unittest.TestCase):
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',side_effect=[True,False]),patch.object(c,'candidatos',return_value=[{**self.item(1),'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]):
             c.rodar(self.p,'teste',relogio=lambda:tempo[0],dormir=lambda s:tempo.__setitem__(0,tempo[0]+s),consulta=consulta)
         self.assertEqual(consulta.call_count,2)
+
+    def test_subtarefa_resposta_rest_direta(self):
+        k=Mock();k._paginas.return_value=[];k.cache=self.raiz/'cache';k.base='users/test/projectsV2/4'
+        k.quadro.return_value={'campos':[{'id':i,'name':nome} for i,nome in enumerate(['Status','Time','Prioridade','Etapa GDD'],1)]}
+        k.chamar.side_effect=[{'number':50,'id':123},{},{'id':9},{}]
+        d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Investigar','equipe':'Dev','objetivo':'medir','aceite':'CSV','skills':'nenhuma'}
+        self.assertEqual(c.subtarefa(self.p,self.cfg,k,{**self.item(1),'objetivo_gdd':1},d),50)
+        self.assertEqual(k.chamar.call_args_list[-1].args[0],'users/test/projectsV2/4/items/9')
+
+    def test_retorno_atual_encaminha_preparacao_sem_retomar_pai(self):
+        tempo=[0];consultas=[];despachos=[]
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':10,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[self.item(1)]};k.cartoes.return_value=[self.item(1)];k._paginas.return_value=[]
+        candidato={**self.item(1),'preparavel':True,'objetivo_gdd':1,'issue':{'body':'aceite'}}
+        def consulta(p,cfg,docs,grupo,prs,ocupada):
+            consultas.extend(grupo)
+            d=self.decisao(1,'desbloquear' if len(consultas)>1 else 'executar')
+            if len(consultas)>1:d['subtarefa']={'titulo':'Investigar camada','equipe':'Dev','objetivo':'projeto técnico','aceite':'fixture verificável','skills':'nenhuma'}
+            return [d]
+        def lote(p,plano):
+            despachos.extend(plano['cartoes'])
+            return {'resultados':[{'cartao':1,'estado':'bloqueado','codigo':0,'motivo':'sem PR'}]}
+        def subtarefa(*args):tempo[0]=11;return 50
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=[candidato]),patch.object(c,'subtarefa',side_effect=subtarefa) as criar:
+            c.rodar(self.p,'teste',relogio=lambda:tempo[0],dormir=lambda s:None,consulta=consulta,
+                criar=lambda p,d:{'plano':{'cartoes':[{'cartao':1,'worktree':'novo'}]}},lote=lote)
+        self.assertEqual(len(despachos),1);self.assertTrue(consultas[1]['retorno_atual_confirmado']);self.assertEqual(criar.call_count,1)
+        d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Investigar','equipe':'Dev','objetivo':'x','aceite':'y','skills':'nenhuma'}
+        anterior={**candidato,'preparavel':False,'bloqueio':'reserva bloqueada'}
+        with self.assertRaisesRegex(ValueError,'Reserva anterior'):
+            c.validar_decisao(json.dumps({'decisoes':[d]}),[anterior],self.cfg)
+        atual={**anterior,'retorno_atual_confirmado':True}
+        self.assertEqual(c.validar_decisao(json.dumps({'decisoes':[d]}),[atual],self.cfg)[0]['acao'],'desbloquear')
 
 
 if __name__=='__main__':unittest.main()

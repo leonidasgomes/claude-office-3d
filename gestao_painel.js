@@ -89,6 +89,8 @@ async function carregar() {
         for(const c of ciclo.cartoes||[])linha('p',`#${c.cartao} · ${c.equipe}`,trabalho);
         if(ciclo.motivo)linha('p',ciclo.motivo,trabalho);
         if(ciclo.proxima_acao)linha('p','Próxima ação: '+ciclo.proxima_acao,trabalho);
+        for(const lote of (ciclo.resultados||[]).slice(-3))for(const r of lote.resultados||[])
+          linha('p',`Resultado #${r.cartao}: ${r.estado}${r.motivo?' · '+r.motivo:''}`,trabalho);
       }
       if(p.ativo)linha('p','Escolha o console e modelo da liderança. Salvar configurações não inicia agentes.',lideranca);
       if(p.documentacao) {

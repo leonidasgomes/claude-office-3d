@@ -14,6 +14,14 @@ class Controlador(unittest.TestCase):
         self.cfg=patch('gestao_projeto.carregar',return_value={'ativo':True});self.cfg.start();self.addCleanup(self.cfg.stop)
     def pedido(self,acao,dados):
         return {'projeto_id':id_projeto(self.projeto),'acao':acao,'dados':dados}
+    def test_json_atomico_repeticao_local_limitada(self):
+        arq=self.raiz/'estado.json'
+        with patch.object(Path,'replace',side_effect=[PermissionError(),arq]) as trocar,patch.object(c.time,'sleep'):
+            c.atomico(arq,{'estado':'teste'})
+        self.assertEqual(trocar.call_count,2)
+        with patch.object(Path,'replace',side_effect=PermissionError()) as trocar,patch.object(c.time,'sleep'):
+            with self.assertRaises(PermissionError):c.atomico(arq,{'estado':'teste'})
+        self.assertEqual(trocar.call_count,5)
     def test_consulta_host_usa_projeto_canonico(self):
         chamados=[]
         resultado=c.executar_pedido(self.pedido('diretor','Classifique'),[str(self.projeto)],
