@@ -51,6 +51,12 @@ class Resultados(unittest.TestCase):
         g=self.ler()['grupos'][0]
         self.assertEqual((g['tentativas'],g['despachos'],g['retomadas'],g['sem_resultado']),(3,2,1,1))
         self.assertEqual((g['sem_retorno'],g['resultados']['revisao_aprovada'],g['resultados']['falha_console']),(1,1,1))
+    def test_correcao_contabilizada_sem_se_perder_no_painel(self):
+        t=self.reserva();self.tentativa(t,'correcao',resultado='revisao_aprovada')
+        g=self.ler()['grupos'][0]
+        self.assertEqual(g['correcoes'],1);self.assertEqual(g['tipo_nao_informado'],0)
+        self.assertEqual(g['resultados']['revisao_aprovada'],1)
+
     def test_banco_anterior_nao_adivinha_resultado_ou_equipe(self):
         t=self.reserva();i=self.tentativa(t,resultado='revisao_aprovada')
         with closing(sqlite3.connect(self.banco)) as db,db:db.execute('DROP TABLE execucao_resultado')

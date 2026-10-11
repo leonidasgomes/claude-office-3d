@@ -73,6 +73,21 @@ class PoliticaPainel(unittest.TestCase):
         self.assertFalse(list((self.raiz/'.office').glob('*.tmp')))
         self.assertFalse((self.raiz/'.office/politica.edicao.lock').exists())
 
+    def test_fila_memoria_exigem_pausa_e_limites_validos(self):
+        from gestao_cli import pasta_dados
+        estado=pasta_dados(self.raiz)/'ciclo.json';estado.parent.mkdir(parents=True,exist_ok=True)
+        estado.write_text(json.dumps({'estado':'implementando'}),encoding='utf-8')
+        with self.assertRaises(p.Conflito):p.atualizar_ciclo(self.raiz,self.hash,{'max_prs_pendentes':1})
+        with self.assertRaises(p.Conflito):p.atualizar_ciclo(self.raiz,self.hash,{'memoria_referencias':3})
+        estado.write_text(json.dumps({'estado':'pausado'}),encoding='utf-8')
+        for valor in ({'max_prs_pendentes':21},{'max_prs_pendentes':True},{'memoria_referencias':6}):
+            with self.assertRaises(ValueError):p.atualizar_ciclo(self.raiz,self.hash,valor)
+        p.atualizar_ciclo(self.raiz,self.hash,{'max_prs_pendentes':1,'memoria_referencias':3})
+        cfg=p.snapshot(self.raiz)[0]
+        self.assertEqual(cfg['ciclo']['max_prs_pendentes'],1)
+        self.assertEqual(cfg['ciclo']['memoria_referencias'],3)
+        self.assertEqual(cfg['merge'],self.cfg['merge'])
+
     def test_api_pc_projeto_registrado_e_conflito(self):
         d={'projeto_id':id_projeto(self.raiz),'versao':self.hash,'executores':copy.deepcopy(self.alt)}
         self.assertEqual(p.api_atualizar([self.raiz],d,{'permissao':'ver'})[0],403)

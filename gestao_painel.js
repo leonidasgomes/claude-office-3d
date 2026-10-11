@@ -92,6 +92,7 @@ async function carregar() {
         for(const c of ciclo.cartoes||[])linha('p',`#${c.cartao} · ${c.equipe}`,trabalho);
         if(ciclo.motivo)linha('p',ciclo.motivo,trabalho);
         if(ciclo.proxima_acao)linha('p','Próxima ação: '+ciclo.proxima_acao,trabalho);
+        if(ciclo.prs_pendentes?.length)linha('p',`${ciclo.prs_pendentes.length} PR(s) desta sessão aguardando conclusão. Confira a aba PRs.`,trabalho);
         for(const lote of (ciclo.resultados||[]).slice(-3))for(const r of lote.resultados||[])
           linha('p',`Resultado #${r.cartao}: ${r.estado}${r.motivo?' · '+r.motivo:''}`,trabalho);
       }
@@ -180,7 +181,7 @@ async function carregar() {
         linha('p', `${g.saida_zero} retorno(s) com saída zero · ${g.saida_nao_zero} com saída diferente de zero · ${g.sem_retorno} sem retorno registrado.`, trabalho);
         if(g.resultados){
           const r=g.resultados;
-          linha('p',`${g.despachos} despacho(s) · ${g.retomadas} retomada(s) · ${g.tipo_nao_informado} com tipo não informado.`,trabalho);
+          linha('p',`${g.despachos} despacho(s) · ${g.retomadas} retomada(s) · ${g.correcoes??0} correção(ões) · ${g.tipo_nao_informado} com tipo não informado.`,trabalho);
           linha('p',`${r.revisao_aprovada} encaminhada(s) com revisão aprovada · ${r.revisao_desativada} com revisão desativada · ${r.revisao_reprovada} reprovada(s) na revisão.`,trabalho);
           linha('p',`${r.falha_console} falha(s) de console · ${r.sem_entrega} sem entrega · ${r.gate_bloqueado} bloqueio(s) nos gates · ${g.sem_resultado} sem resultado registrado.`,trabalho);
         }
@@ -231,6 +232,17 @@ async function carregar() {
       if (!p.tarefas.length) linha('p', 'Nenhuma tarefa despachada pelo controle comum.', trabalho);
       for (const t of p.tarefas) {
         linha('p', `#${t.cartao} · ${t.equipe} · ${t.console} · ${t.estado}`, trabalho);
+        if(t.checkpoint){
+          const cp=t.checkpoint,detalhes=document.createElement('details'),resumo=document.createElement('summary');
+          resumo.textContent='Trabalho preservado e próxima ação';detalhes.append(resumo);trabalho.append(detalhes);
+          linha('p',`Branch: ${cp.branch??'não informada'} · Worktree: ${cp.worktree_vinculado?'vinculado no controlador':'sem vínculo registrado'}`,detalhes);
+          if(cp.ultima_tentativa)linha('p',`Última tentativa: ${cp.ultima_tentativa.tipo??'tipo desconhecido'} · ${cp.ultima_tentativa.resultado??'sem resultado registrado'} · saída ${cp.ultima_tentativa.codigo??'não registrada'}`,detalhes);
+          linha('p',cp.acao,detalhes);
+          if(cp.entrega){
+            const a=document.createElement('a');a.textContent=`PR #${cp.entrega.pr} · ${cp.entrega.head.slice(0,8)}`;
+            a.href=cp.entrega.url;a.target='_blank';a.rel='noopener noreferrer';detalhes.append(a);
+          }
+        }
         if(t.estado==='bloqueado' && p.politica_versao)trabalho.append(formularioRetomada(p,t,async()=>{await carregar();}));
         if (t.ultima_execucao) {
           const e = t.ultima_execucao;
