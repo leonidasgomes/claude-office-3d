@@ -8,11 +8,12 @@ from providers_console import PROVIDERS
 class Inicio(unittest.TestCase):
     def test_tarefa_limitada_delega_sem_raiz(self):
         s=tarefa(Path('projeto'),Path('office'),'origin/main',2)
-        self.assertIn('lote --plano arquivo --executar',s)
+        self.assertIn('--acao lote --arquivo plano_utf8 --executar',s)
+        self.assertIn('--acao diretor --arquivo',s)
         self.assertIn('"max_cartoes": 2',s)
         self.assertIn('Não retome reserva',s)
         self.assertLess(len(s),6000)
-        for base,n in [('-x',1),('main x',1),('main',0),('main',5)]:
+        for base,n in [('-x',1),('main x',1),('main',0),('main',3)]:
             with self.assertRaises(ValueError):tarefa(Path('p'),Path('o'),base,n)
     def test_inicio_envia_prompt_e_mantem_tui(self):
         cfg={'ativo':True,'ceo':{'console':'codex','modelo':'teste','execucao':'cloud'}}
@@ -42,6 +43,13 @@ class Inicio(unittest.TestCase):
             self.assertIn('never',args);self.assertIn('sandbox_workspace_write.network_access=true',args)
             self.assertIn('workspace-write',args);self.assertNotIn('danger-full-access',args)
             self.assertNotIn('never',PROVIDERS['claude'].comando('claude',Path('.')))
+    def test_sandbox_windows_somente_opcao_suportada(self):
+        with patch.dict('os.environ',{'OFFICE_CODEX_WINDOWS_SANDBOX':'unelevated'}),patch('providers_console.comando_nativo',side_effect=lambda exe,nome:[exe]):
+            args=PROVIDERS['codex'].comando('codex',Path('.'),sandbox='workspace-write')
+            self.assertIn('windows.sandbox=unelevated',args);self.assertIn('workspace-write',args)
+            self.assertNotIn('windows.sandbox=unelevated',PROVIDERS['claude'].comando('claude',Path('.')))
+        with patch.dict('os.environ',{'OFFICE_CODEX_WINDOWS_SANDBOX':'danger-full-access'}):
+            with self.assertRaises(ValueError):PROVIDERS['codex'].comando('codex',Path('.'))
     def test_prompt_inicial_rejeita_modo_errado_antes_de_lancar(self):
         with self.assertRaises(ValueError):executar(PROVIDERS['claude'],'claude',Path('.'),'CEO',prompt_inicial='tarefa')
         with self.assertRaises(ValueError):executar(PROVIDERS['codex'],'codex',Path('.'),'CEO',prompt='exec',prompt_inicial='tarefa')

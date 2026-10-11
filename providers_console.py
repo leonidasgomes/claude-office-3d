@@ -73,6 +73,11 @@ class Provider:
             if agente:
                 raise ValueError("Codex não carrega .claude/agents; use instruções no prompt.")
             args = comando_nativo(exe, self.nome)
+            windows_sandbox=os.environ.get('OFFICE_CODEX_WINDOWS_SANDBOX')
+            if windows_sandbox:
+                if windows_sandbox not in ('elevated','unelevated'):
+                    raise ValueError('Sandbox Windows deve ser elevated ou unelevated')
+                args += ['-c','windows.sandbox='+windows_sandbox]
             if os.environ.get('OFFICE_CODEX_AUTONOMO') == '1':
                 args += ['--ask-for-approval','never','-c','sandbox_workspace_write.network_access=true']
             if os.environ.get('OFFICE_CODEX_SEM_DAEMON') == '1':
