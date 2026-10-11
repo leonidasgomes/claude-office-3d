@@ -197,3 +197,9 @@ html.compacto #menuOpcoes.secao { position: static; grid-column: 1 / -1; display
 html.compacto #menuOpcoes .titulo-opcoes { grid-column: 1 / -1; padding: 0; }
 html.compacto #menuOpcoes .versao-opcoes { grid-column: 1 / -1; }
 html.compacto #menuOpcoes button { background: #232d3a; border-color: #3a4756; white-space: normal; text-align: center; }
+
+.projetoCenaControle { width:100%; margin:8px 0; }
+.projetoCenaControle label { display:block; font-size:12px; margin-bottom:4px; }
+.projetoCenaControle select { width:100%; min-height:40px; color:#e2e8f0; background:#202a36; border:1px solid #475569; border-radius:6px; padding:8px; }
+.projetoCenaControle select:focus-visible { outline:2px solid #60a5fa; outline-offset:2px; }
+.projetoCenaControle p { font-size:12px; color:#aab8cc; margin:5px 0; }

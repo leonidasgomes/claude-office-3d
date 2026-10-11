@@ -2,6 +2,7 @@
 // Os três módulos (escritorio.js, kanban.js, prs.js) importam daqui e recebem o MESMO objeto.
 // Sem servidor (index.html aberto direto do disco) vale o padrão abaixo e a página entra em modo demonstração.
 
+import {projetosDaCena,selecionarProjeto,mesasDoProjeto,mudarProjeto} from './cadastro_cena.mjs';
 const PADRAO = {
   titulo: 'Office Multi-provider',
   tema: 'neutro',
@@ -29,6 +30,24 @@ export const temServidor = !!lido;
 export const CONFIG = { ...PADRAO, ...(lido || {}), github: { ...PADRAO.github, ...((lido && lido.github) || {}) },
   xp: { ...PADRAO.xp, ...((lido && lido.xp) || {}) } };
 if (!Array.isArray(CONFIG.agentes) || !CONFIG.agentes.length) CONFIG.agentes = PADRAO.agentes;
+let gestao=null;
+const controleGestao=new AbortController(),tempoGestao=setTimeout(()=>controleGestao.abort(),5000);
+try { const r=await fetch('/api/gestao',{cache:'no-store',signal:controleGestao.signal});if(r.ok)gestao=await r.json(); } catch {}
+finally { clearTimeout(tempoGestao); }
+export const PROJETOS_CENA=projetosDaCena(gestao);
+let projetoEscolhido=new URLSearchParams(location.search).get('projeto');
+try { projetoEscolhido ||= localStorage.getItem('office.projeto_cena'); } catch {}
+export const PROJETO_CENA=selecionarProjeto(PROJETOS_CENA,projetoEscolhido);
+if(PROJETO_CENA) CONFIG.agentes=mesasDoProjeto(PROJETO_CENA,CONFIG.agentes);
+const seletor=document.getElementById('projetoCena'),infoCena=document.getElementById('projetoCenaInfo');
+if(seletor) {
+  for(const p of PROJETOS_CENA) {const o=document.createElement('option');o.value=p.id;o.textContent=p.nome;seletor.append(o);}
+  seletor.value=PROJETO_CENA?.id||'';seletor.disabled=!PROJETO_CENA;
+  seletor.addEventListener('change',()=>mudarProjeto(seletor.value));
+}
+if(infoCena)infoCena.textContent=PROJETO_CENA ?
+  `${CONFIG.agentes.length} mesas da Gestão · ${(PROJETO_CENA.funcionarios||[]).length} funcionários adicionais. Cadastro não inicia consoles.`:
+  'Cena de compatibilidade: cadastro da Gestão indisponível ou não habilitado.';
 
 // chave comparável de um nome de agente (igual à do configuracao.py)
 export const chave = (n) => String(n || '').trim().toLowerCase().replace(/[-\s]/g, '_');

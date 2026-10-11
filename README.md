@@ -17,6 +17,14 @@ Personagens cadastrados permanecem na cena mesmo sem console aberto. A lista
 distingue cadastro, histórico e atividade recente observada, com a fonte do evento;
 a presença de uma mesa ou a leitura da ponte não comprova sessão ativa. Falhas de
 conexão exibem aviso e não ligam a demonstração automaticamente.
+Escolha **Projeto do escritório** acima da lista de agentes. A cena usa CEO,
+diretor, equipes e funcionários da Gestão desse projeto; nomes e cores antigos
+servem apenas como aliases e aparência. Em **Gestão → Funcionários**, a seção
+**Todas as mesas deste projeto** lista as funções e permite editar as equipes.
+Funcionários individuais continuam cadastrados separadamente, com sua própria
+equipe e skills. Depois de salvar alterações, use **Atualizar cena 3D**.
+Novos eventos trazem o vínculo do projeto; eventos antigos sem vínculo aparecem
+como histórico e não criam nem movimentam mesas na cena gerenciada.
 Consulte [a separação e o Claude padronizado](docs/VERSOES.md) antes de migrar.
 
 ## Começar em uma instalação nova

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Próxima versão
+- Cena e Gestão compartilham CEO, diretor, equipes e funcionários por projeto, com seletor de projeto e vínculo explícito de novos eventos.
 - Cena distingue cadastros, histórico e atividade observada; falhas de conexão HTTP não ligam a demonstração automaticamente.
 
 ## 2.0.0-dev.3

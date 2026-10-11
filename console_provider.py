@@ -106,6 +106,8 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                      tentativa=tentativa_consumo)
 
     def emitir(ev,nativo=False):
+        from funcionarios import id_projeto
+        ev['projeto_id']=id_projeto(projeto_medicao)
         if politica_local:
             ev['fonte'] = provider.nome+'_local'
         try:

@@ -5,11 +5,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MOVEL, COMPACTO, gavetaInfo } from './movel.js';   // celular/tablet: modo leve (pixel ratio 1, sem antialias, menos confete)
 const K_ROTULO = COMPACTO ? 1.45 : 1;   // balões e rótulos 3D maiores em tela pequena
-import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG } from './config.js';
-import { buscarFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from './funcionarios_cena.mjs';
+import { CONFIG, chave as chaveNome, LIDER as LIDER_CFG, PROJETO_CENA } from './config.js';
+import { destinoEvento } from './cadastro_cena.mjs';
+import { buscarFuncionarios, distribuirFuncionarios, assentosFuncionarios, xMesa, limiteEsquerdo, tituloFuncionario } from './funcionarios_cena.mjs';
 import { eventoRecente, demoAutomaticaPermitida, fonteObservada } from './atividade_cena.mjs';
-const FUNCIONARIOS = await buscarFuncionarios();
-const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(FUNCIONARIOS);
+const FUNCIONARIOS = PROJETO_CENA ? distribuirFuncionarios({projetos:[PROJETO_CENA]}) : await buscarFuncionarios();
+const EXTENSAO_CENA = [...CONFIG.agentes.slice(10),...FUNCIONARIOS];
+const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(EXTENSAO_CENA);
 
 const TEMA_SP = CONFIG.tema === 'sao-paulo';   // "sao-paulo": decoração temática; "neutro": sem ela
 const AGENTES_CFG = CONFIG.agentes;
@@ -250,8 +252,8 @@ const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 300);
 const VISAO_GERAL = TEM_DIRETORIA   // com a diretoria o escritório fica mais largo: a câmera enquadra tudo
   ? { pos: new THREE.Vector3(-3, 52, 74), alvo: new THREE.Vector3(-3, 0, 8) }
   : { pos: new THREE.Vector3(-10, 48, 68), alvo: new THREE.Vector3(-10, 0, 8) };
-if (FUNCIONARIOS.length) {
-  const extra = -34-limiteEsquerdo(FUNCIONARIOS), centro = VISAO_GERAL.alvo.x-extra/2;
+if (EXTENSAO_CENA.length) {
+  const extra = -34-limiteEsquerdo(EXTENSAO_CENA), centro = VISAO_GERAL.alvo.x-extra/2;
   VISAO_GERAL.alvo.x = centro; VISAO_GERAL.pos.set(centro,48+extra*0.6,68+extra*0.85);
 }
 camera.far=Math.max(300,VISAO_GERAL.pos.length()*6);
@@ -323,7 +325,7 @@ function texturaPiso() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.round((LIM.x1 - LIM.x0) / 2), Math.round((LIM.z1 - LIM.z0) / 2)); t.magFilter = THREE.NearestFilter;
   return t;
 }
-const LIM = { x0: limiteEsquerdo(FUNCIONARIOS), x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // mantém o piso legado e estende para os especialistas
+const LIM = { x0: limiteEsquerdo(EXTENSAO_CENA), x1: TEM_DIRETORIA ? 31 : 17, z0: -6, z1: 26 };  // extensão para equipes e especialistas
 const matJanela = new THREE.MeshBasicMaterial({ color: 0x7fb7e6 });   // própria (não do cache): muda com o dia e a noite (ajustarLuz)
 (function construirAmbiente() {
   const piso = new THREE.Mesh(new THREE.PlaneGeometry(LIM.x1 - LIM.x0, LIM.z1 - LIM.z0), new THREE.MeshLambertMaterial({ map: texturaPiso() }));
@@ -1347,6 +1349,7 @@ function corDoAgente(nome) {
 }
 function garantirAgente(nome) {
   nome = normalizarNome(nome) || 'Desconhecido';
+  if(PROJETO_CENA && !AGENTES_CFG.some(a=>a.nome===nome) && !ASSENTOS_FUNCIONARIOS.has(nome))return null;
   if (agentes.has(nome)) return agentes.get(nome);
   const naDiretoria = TEM_DIRETORIA && SALA_DE[nome.toLowerCase()] === 'diretoria' && !mesaDiretoria;   // uma mesa só na diretoria
   const indiceFuncionario = ASSENTOS_FUNCIONARIOS.get(nome);
@@ -1377,7 +1380,7 @@ function garantirAgente(nome) {
   return a;
 }
 // o time do config já começa sentado nas mesas (até MAX_MESAS); os demais ganham mesa quando aparecem nos eventos
-AGENTES_CFG.slice(0, MAX_MESAS).forEach((ag) => garantirAgente(ag.nome));
+AGENTES_CFG.forEach((ag) => garantirAgente(ag.nome));
 FUNCIONARIOS.forEach((f) => garantirAgente(f.nome));
 
 // Ações da fila: {t:'caminho', pts, estado, sentarAoFinal, yawFinal} | {t:'esperar', dur, estado, balao} | {t:'fn', fn}
@@ -2095,10 +2098,11 @@ function liFeed(ev, ag) {
   const cor = ag ? corCss(ag.cor) : '#666';
   li.style.borderLeftColor = cor;
   const t = document.createElement('span'); t.className = 't'; t.textContent = horaDe(ev);
-  const n = document.createElement('b'); n.style.color = cor; n.textContent = tituloFuncionario(ev.agente,FUNCIONARIOS);
+  const n = document.createElement('b'); n.style.color = cor; n.textContent = ag?.titulo || tituloFuncionario(ev.agente,FUNCIONARIOS);
   const para = Array.isArray(ev.para) && ev.para.length ? ' → ' + ev.para.join(', ') : '';
   const falhou = ev.ok === false ? ' ✖' : '';
-  const rest = document.createTextNode(` ${iconeDe(ev.ferramenta)}${falhou}${para}: ${String(ev.resumo || ev.tipo || '').slice(0, 120)}`);
+  const vinculo=PROJETO_CENA && !ev.projeto_id ? ' · histórico sem vínculo de projeto' : '';
+  const rest = document.createTextNode(` ${iconeDe(ev.ferramenta)}${falhou}${para}${vinculo}: ${String(ev.resumo || ev.tipo || '').slice(0, 120)}`);
   li.append(t, n, rest);
   if (ev.ok === false) li.classList.add('falhou');
   return li;
@@ -2509,6 +2513,9 @@ $('btnVisao').addEventListener('click', () => iniciarFoco(VISAO_GERAL.alvo.clone
 // ---------------------------------------------------------------- Eventos
 function processar(ev, animar = true, silencioso = false) {   // silencioso: avanço rápido do replay (sem feed nem ficha)
   if (!ev || typeof ev !== 'object') return;
+  const destino=destinoEvento(ev,PROJETO_CENA?.id);
+  if(destino==='outro_projeto')return;
+  if(destino==='historico') { adicionarFeed(ev,null,!silencioso);return; }
   if (!replay && !eventoRecente(ev, relogioMs(), TRABALHO_EXPIRA, MAX_COMANDO)) animar = false;
   const nome = normalizarNome(ev.agente) || 'Desconhecido';
   const tipo = String(ev.tipo || 'trabalho').toLowerCase();
@@ -3137,7 +3144,7 @@ const demoEv = (agente, tipo, ferramenta, resumo, para = []) => {
     const emPausa = tipo === 'reuniao' ? ordemAgentes.filter((x) => x.pausa).length >= 2 : envolvidos.some((x) => x.pausa);
     if (emPausa && Math.random() < 0.8) return;
   }
-  processar({ ts: agoraIso(), agente, tipo, para, ferramenta, resumo });
+  processar({ ts: agoraIso(), agente, tipo, para, ferramenta, resumo, ...(PROJETO_CENA?{projeto_id:PROJETO_CENA.id}:{}) });
 };
 // os papéis da demonstração: o líder e os 3 primeiros colegas do config (repete se houver menos)
 const COLEGAS_DEMO = AGENTES_CFG.filter((a) => a.nome !== LIDER);

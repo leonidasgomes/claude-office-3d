@@ -10,6 +10,8 @@ Nunca bloqueia o agente: banco ocupado/quebrado cai em `eventos.falha.jsonl` (c�
 """
 import argparse
 import json
+import os
+import hashlib
 import re
 import sqlite3
 import sys
@@ -73,6 +75,10 @@ def normalizar(ev):
             out["espera_s"] = max(1, min(int(ev["espera_s"]), 600))
         except (TypeError, ValueError):
             raise ValueError("espera_s precisa ser número") from None
+    if 'projeto_id' in ev:
+        if not isinstance(ev['projeto_id'],str) or not re.fullmatch('[0-9a-f]{20}',ev['projeto_id']):
+            raise ValueError('Identidade de projeto inválida')
+        out['projeto_id']=ev['projeto_id']
     for chave in ("funcao", "modelo", "sessao", "sessao_pai", "agente_pai", "sessao_filho"):
         if ev.get(chave) is not None:
             out[chave] = str(ev[chave])[:128]
@@ -117,6 +123,9 @@ def main(argv=None):
             print("Erro: informe --evento ou o JSON no stdin", file=sys.stderr)
             return 2
         obj = normalizar(json.loads(bruto))
+        projeto=os.environ.get('OFFICE_CONSUMO_PROJETO')
+        if projeto and 'projeto_id' not in obj:
+            obj['projeto_id']=hashlib.sha256(str(Path(projeto).resolve()).encode()).hexdigest()[:20]
     except ValueError as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 2

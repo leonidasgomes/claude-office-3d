@@ -1217,6 +1217,25 @@ exigem evento recente ou modo demonstração/replay; cadastro isolado não passe
 
 ### 6.2 Sugestões dos bots e `--pronto`
 
+Cadastro único da cena: `cadastro_cena.mjs` projeta CEO, diretor e equipes de
+`GET /api/gestao`; funcionários individuais permanecem por ID. `config.js` escolhe
+o projeto pelo parâmetro `projeto` ou preferência `office.projeto_cena` e compartilha
+o mesmo `CONFIG.agentes` com os consumidores. Config antigo fornece cores/aliases,
+sem cadastrar equipes. Se a Gestão estiver indisponível (timeout 5 s), a cena de
+compatibilidade é identificada explicitamente. O seletor recarrega a página;
+editar cadastros exige atualizar a cena. Mais de dez funções usam a extensão
+de assentos sem ocultar equipes ou misturar funcionários de outro projeto.
+
+`projeto_id` opcional nos eventos é o SHA256 da raiz canônica resolvida, truncado
+a 20 hexadecimais, igual ao ID da Gestão. O launcher usa `projeto_consumo` quando
+for trabalho em worktree. A porta neutra valida o campo e pode obtê-lo do contexto
+`OFFICE_CONSUMO_PROJETO`; o hook Claude acrescenta o ID da raiz monitorada mais
+específica para o cwd, preservando filtros, nomes e protocolo nativos. A cena
+gerenciada ignora eventos vinculados a outro projeto; eventos antigos sem ID
+ficam no feed como histórico sem criar mesas. Não há migração ou atribuição por
+suposição. Replay conserva os eventos disponíveis, respeitando esse vínculo.
+Na compatibilidade sem Gestão, o fluxo antigo de eventos permanece disponível.
+
 ```mermaid
 sequenceDiagram
   participant T as thread sugestoes (15 min)
