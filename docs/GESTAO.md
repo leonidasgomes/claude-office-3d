@@ -2059,4 +2059,20 @@ Quando a ação autorizada só regulariza o vínculo ou registra evidências no 
 não exige alteração de arquivo, commit artificial ou push vazio. Confere reserva
 em execução, recibo do worktree, PR/branch/base/head e confirmação remota do texto.
 O recibo conserva a operação; publicação incerta continua exigindo conciliação.
+
+### Autonomia e ordem das correções
+
+O ciclo coordena seleção pelo GDD/Kanban, classificação do diretor, decisão do
+CEO, despacho sequencial, revisão e reconhecimento de entrega por merge. Isso
+não comprova que todo cartão pode terminar: recursos ausentes, evidências de
+aceite e execuções incertas continuam sendo bloqueios reais.
+
+Nas concessões autorizadas, a primeira rodada de outro PR vem antes de renovar
+o orçamento de um PR já atendido. Entre rodadas iguais, a ordem da delegação é
+preservada. Cada decisão ainda confere reserva, commit, limites e evidências;
+essa preferência não autoriza retomada incerta nem remove dependências.
+
+Para conferir autonomia, use os registros do ciclo, das tentativas e dos merges,
+em vez de presença na cena ou processo aberto. Uma correção com testes sintéticos
+aprovados não substitui medições ou validação do mapa exigidas pelo cartão.
 A atualização do texto não aprova o código, gates ou aceite integral do cartão.

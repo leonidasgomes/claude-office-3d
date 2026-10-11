@@ -1,6 +1,6 @@
 """Revisor informa, diretor encaminha, CEO decide, equipe corrige pelo despacho comum.
 
-A delegação local é explícita e limitada a PRs/reservas. Uma concessão por PR,
+A delegação local é explícita e limitada a PRs/reservas. Concessões finitas por PR,
 sem retomada nativa, substituição de aceite, renovação em loop ou merge manual.
 """
 import hashlib
@@ -80,7 +80,9 @@ def pendentes(dados,cfg):
                 anterior=db.execute('SELECT anterior,token FROM contrato_correcao WHERE delegacao=? AND pr=?',(ident,alvo['pr'])).fetchone()
             if not anterior or anterior[0]!=alvo['token']:raise ValueError('Cadeia de concessões inválida')
             alvo={**alvo,'token':anterior[1]}
-    return resultado
+    # Uma primeira concessão independente vem antes de renovar outro PR.
+    # A ordenação estável preserva a ordem aprovada entre rodadas iguais.
+    return sorted(resultado,key=lambda d:d['rodada'])
 
 
 def limite_confirmado(dados,alvo):
