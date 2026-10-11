@@ -36,8 +36,11 @@ def resumo(projeto):
     p=caminho_estado(projeto)
     if not p.exists():return {'estado':'desligado'}
     r=json.loads(p.read_text(encoding='utf-8'))
-    return {k:r.get(k) for k in ('id','estado','inicio','limite','continuo','pausa_configuravel','atualizado','objetivo',
+    publico={k:r.get(k) for k in ('id','estado','inicio','limite','continuo','pausa_configuravel','atualizado','objetivo',
                                 'cartoes','motivo','proxima_acao','resultados')}
+    publico['conclusoes']=[{k:c.get(k) for k in ('cartao','pr','estado','motivo','acao')}
+                          for c in r.get('conclusoes',[])]
+    return publico
 
 
 def reservas(projeto):
@@ -472,6 +475,11 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     try:
         while disponivel():
             if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou; iniciar nova sessão após conferir')
+            from conclusao_tarefas import confirmar_sessao
+            conclusoes=confirmar_sessao(projeto,registro)
+            if conclusoes:
+                registro.setdefault('conclusoes',[]).extend(conclusoes)
+                atomico(p,registro)
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
             prs=k._paginas(f"repos/{cfg['kanban']['repo']}/pulls?state=open")
@@ -544,6 +552,9 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                        proxima_acao='aguardar entrega real da equipe')
                 r=lote(projeto,{'paralelismo':1,'cartoes':[item]});vistos.add(item['cartao'])
                 registro['resultados'].append(r)
+                from conclusao_tarefas import vincular_despacho
+                vinculo=vincular_despacho(projeto,item)
+                if vinculo:registro.setdefault('vinculos_conclusao',[]).append(vinculo)
                 bloqueado=next((x for x in r.get('resultados',[]) if x['cartao']==item['cartao'] and x['estado']=='bloqueado'),None)
                 limitado=(bloqueado is not None and bloqueado.get('codigo')==124
                           and bloqueado.get('motivo') in ('limite_tokens','limite_tempo'))

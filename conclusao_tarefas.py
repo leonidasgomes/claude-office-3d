@@ -65,8 +65,8 @@ def preparar(projeto,cartao,pr,banco=None,kanban=None):
     if atual['status'] not in estados or atual['equipe']!=reserva['equipe'] or atual.get('prioridade','')!=pacote.get('prioridade',''):
         raise ValueError('Cartão diverge da reserva ou não está em revisão')
     issue=k.issue(cartao)
-    if issue.get('state')!='closed' or issue.get('pull_request') or issue.get('html_url')!=pacote.get('url'):
-        raise ValueError('Issue do cartão não está fechada no repositório esperado')
+    if issue.get('state') not in ('open','closed') or issue.get('pull_request') or issue.get('html_url')!=pacote.get('url'):
+        raise ValueError('Issue do cartão não está no repositório esperado')
     if any(pacote.get(chave)!=valor for chave,valor in instrucoes_cartao(issue).items()):
         raise ValueError('Instruções do cartão mudaram')
     pull=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{pr}')
@@ -102,6 +102,19 @@ def executar(projeto,cartao,pr,banco=None,kanban=None):
     controle=Controle(banco or pasta_dados(projeto)/'tarefas.db')
     controle.registrar_conclusao(reserva['token'],previa['evidencia'])
     if carregar(projeto)!=cfg:raise ValueError('Política mudou antes de mover o cartão; concilie o diário')
+    # GitHub não fecha automaticamente Closes #N quando a base não é a branch
+    # padrão. Só fechar após provar merge, vínculo integral, revisão e gates.
+    issue=k.issue(cartao)
+    pacote=json.loads(reserva['pacote'])
+    if (issue.get('html_url')!=pacote.get('url') or issue.get('pull_request')
+        or issue.get('state') not in ('open','closed')
+        or any(pacote.get(chave)!=valor for chave,valor in instrucoes_cartao(issue).items())):
+        raise ValueError('Issue mudou antes da conclusão; concilie o diário')
+    if issue['state']=='open':
+        resposta=k.chamar(f'repos/{cfg["kanban"]["repo"]}/issues/{cartao}','PATCH',{'state':'closed'})
+        if resposta.get('state')!='closed' or resposta.get('html_url')!=pacote.get('url'):
+            raise ValueError('Fechamento da issue não comprovado; confira o diário')
+    if carregar(projeto)!=cfg:raise ValueError('Política mudou após fechar a issue; concilie o diário')
     atual=k.cartao(cartao,ao_vivo=True)
     if atual['status'] not in (cfg['kanban']['revisao'],cfg['kanban']['feito']) or atual['equipe']!=reserva['equipe']:
         raise ValueError('Cartão mudou antes da conclusão; concilie o diário')
@@ -109,3 +122,47 @@ def executar(projeto,cartao,pr,banco=None,kanban=None):
         k.mover(cartao,cfg['kanban']['feito'])
     controle.concluir(reserva['token'])
     return {**previa,'estado':'concluido','apenas_previa':False}
+
+
+def vincular_despacho(projeto,item):
+    """Vínculo privado ao worktree novo, após retorno confirmado do lote."""
+    cfg=carregar(projeto);banco=pasta_dados(projeto)/'tarefas.db'
+    if not banco.is_file():return None
+    with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        row=db.execute('SELECT token,pacote FROM reserva WHERE projeto=? AND cartao=? AND estado=?',
+                       (cfg['kanban']['repo'],str(item['cartao']),'revisao')).fetchone()
+    if not row:return None
+    contexto=json.loads(row[1]).get('contexto_execucao',{})
+    if Path(contexto.get('worktree','')).resolve()!=Path(item['worktree']).resolve():return None
+    return {'cartao':item['cartao'],'token':row[0]}
+
+
+def confirmar_sessao(projeto,registro):
+    """Somente entregas desta sessão; nunca retoma reservas ou faz merge."""
+    cfg=carregar(projeto)
+    if cfg['merge'].get('modo')!='automatico':return []
+    banco=pasta_dados(projeto)/'tarefas.db'
+    if not banco.is_file():return []
+    feitos=registro.get('conclusoes',[]);novos=[]
+    for item in registro.get('vinculos_conclusao',[]):
+        retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
+                  if r.get('cartao')==item.get('cartao') and r.get('estado')=='revisao' and r.get('codigo')==0]
+        token=item.get('token');n=item.get('cartao')
+        if (len(retornos)!=1
+            or not isinstance(token,str) or not re.fullmatch('[0-9a-f]{32}',token)
+            or type(n) is not int or n<1 or any(r.get('token')==token for r in feitos)):
+            continue
+        with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+            row=db.execute('SELECT r.estado,e.pr FROM reserva r JOIN entrega e ON e.token=r.token '
+                'WHERE r.projeto=? AND r.cartao=? AND r.token=?',
+                (cfg['kanban']['repo'],str(n),token)).fetchone()
+        if not row or row[0]!='revisao':continue
+        pr=api(f'repos/{cfg["kanban"]["repo"]}/pulls/{row[1]}')
+        if pr.get('merged') is not True:continue
+        try:
+            resultado=executar(projeto,n,row[1])
+            novos.append({'token':token,**resultado})
+        except (ValueError,OSError,sqlite3.Error) as exc:
+            novos.append({'token':token,'cartao':n,'pr':row[1],'estado':'bloqueado',
+                          'motivo':str(exc),'acao':'conferir conclusão; não repetir automaticamente'})
+    return novos

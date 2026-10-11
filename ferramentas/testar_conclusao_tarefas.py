@@ -24,10 +24,13 @@ class Quadro:
             'repo':{'full_name':'o/r'}},'base':{'repo':{'full_name':'o/r'}}}
         self.checks=[{'id':i,'head_sha':HEAD,'app':{'id':1},'name':n,'status':'completed','conclusion':'success'} for i,n in enumerate(('verificar','preparar-windows'),1)]
         self.total=None;self.statuses=[]
+        self.issue_state='closed';self.fechamentos=[]
     def cartao(self,n,ao_vivo=False):return {'status':self.status,'equipe':'Dev','prioridade':''}
-    def issue(self,n):return {'state':'closed','html_url':'https://github.com/o/r/issues/4',
+    def issue(self,n):return {'state':self.issue_state,'html_url':'https://github.com/o/r/issues/4',
                                 'title':'Objetivo','body':'**Aceite:** ok'}
-    def chamar(self,url):
+    def chamar(self,url,metodo='GET',dados=None):
+        if '/issues/' in url and metodo=='PATCH':
+            self.fechamentos.append(dados);self.issue_state='closed';return self.issue(4)
         if '/pulls/' in url:return self.pr
         if '/check-runs' in url:return {'check_runs':self.checks,'total_count':len(self.checks) if self.total is None else self.total}
         raise AssertionError(url)
@@ -65,6 +68,66 @@ class Conclusao(unittest.TestCase):
         self.assertEqual(alvo.executar(self.projeto,4,8,self.banco,self.k)['estado'],'concluido')
         self.assertEqual(self.k.movimentos,['Feito'])
         self.assertEqual(self.c.listar('o/r')[0]['estado'],'concluido')
+
+    def test_merge_em_base_nao_padrao_fecha_issue_somente_apos_gates(self):
+        self.k.issue_state='open'
+        self.assertEqual(self.run_previa()['estado'],'pronto')
+        self.assertEqual(self.k.fechamentos,[])
+        self.k.pr['merged']=False
+        with self.assertRaises(ValueError):alvo.executar(self.projeto,4,8,self.banco,self.k)
+        self.assertEqual(self.k.fechamentos,[])
+        self.k.pr['merged']=True;self.k.checks[0]['conclusion']='failure'
+        with self.assertRaises(ValueError):alvo.executar(self.projeto,4,8,self.banco,self.k)
+        self.assertEqual(self.k.fechamentos,[])
+        self.k.checks[0]['conclusion']='success'
+        alvo.executar(self.projeto,4,8,self.banco,self.k)
+        alvo.executar(self.projeto,4,8,self.banco,self.k)
+        self.assertEqual(self.k.fechamentos,[{'state':'closed'}])
+        self.assertEqual(self.k.movimentos,['Feito'])
+
+    def test_sessao_so_conclui_token_atual_mergeado_sem_retornar_reservas_antigas(self):
+        cfg={**self.cfg,'merge':{**self.cfg['merge'],'modo':'automatico'}}
+        with closing(sqlite3.connect(self.banco)) as db,db:
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?)',(self.token,HEAD,8,1,'{}',1))
+        registro={'vinculos_conclusao':[{'cartao':4,'token':self.token}], 'resultados':[{'resultados':[{'cartao':4,'estado':'revisao','codigo':0}]}]}
+        with patch.object(alvo,'carregar',return_value=cfg),patch.object(alvo,'pasta_dados',return_value=self.projeto),\
+             patch.object(alvo,'api',return_value={'merged':False}),patch.object(alvo,'executar') as executar:
+            self.assertEqual(alvo.confirmar_sessao(self.projeto,registro),[]);executar.assert_not_called()
+        with patch.object(alvo,'carregar',return_value=cfg),patch.object(alvo,'pasta_dados',return_value=self.projeto),\
+             patch.object(alvo,'api',return_value={'merged':True}),patch.object(alvo,'executar',return_value={'estado':'concluido'}) as executar:
+            resultado=alvo.confirmar_sessao(self.projeto,registro)
+            executar.assert_called_once_with(self.projeto,4,8)
+            registro['conclusoes']=resultado
+            self.assertEqual(alvo.confirmar_sessao(self.projeto,registro),[])
+            registro.pop('vinculos_conclusao');registro.pop('conclusoes')
+            self.assertEqual(alvo.confirmar_sessao(self.projeto,registro),[])
+
+    def test_erro_de_conclusao_registrado_sem_retry_automatico(self):
+        cfg={**self.cfg,'merge':{**self.cfg['merge'],'modo':'automatico'}}
+        with closing(sqlite3.connect(self.banco)) as db,db:
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?)',(self.token,HEAD,8,1,'{}',1))
+        registro={'vinculos_conclusao':[{'cartao':4,'token':self.token}], 'resultados':[{'resultados':[{'cartao':4,'estado':'revisao','codigo':0}]}]}
+        with patch.object(alvo,'carregar',return_value=cfg),patch.object(alvo,'pasta_dados',return_value=self.projeto),\
+             patch.object(alvo,'api',return_value={'merged':True}),patch.object(alvo,'executar',side_effect=ValueError('check alterado')) as executar:
+            resultado=alvo.confirmar_sessao(self.projeto,registro)
+            self.assertEqual(resultado[0]['estado'],'bloqueado')
+            registro['conclusoes']=resultado
+            self.assertEqual(alvo.confirmar_sessao(self.projeto,registro),[])
+            executar.assert_called_once()
+
+    def test_vinculo_exige_mesmo_worktree_e_nao_expoe_token_no_resumo(self):
+        with patch.object(alvo,'pasta_dados',return_value=self.projeto):
+            self.assertIsNone(alvo.vincular_despacho(self.projeto,{'cartao':4,'worktree':str(self.projeto/'outro')}))
+            self.assertEqual(alvo.vincular_despacho(self.projeto,{'cartao':4,'worktree':str(self.projeto)}),
+                             {'cartao':4,'token':self.token})
+        import ciclo_gdd
+        estado=self.projeto/'ciclo.json'
+        estado.write_text(json.dumps({'vinculos_conclusao':[{'token':self.token}],
+            'conclusoes':[{'cartao':4,'pr':8,'estado':'concluido','token':self.token}]}),encoding='utf-8')
+        with patch.object(ciclo_gdd,'caminho_estado',return_value=estado):
+            publico=ciclo_gdd.resumo(self.projeto)
+        self.assertNotIn(self.token,json.dumps(publico))
+        self.assertEqual(publico['conclusoes'][0]['estado'],'concluido')
     def test_recupera_falha_local_apos_movimento(self):
         with patch.object(Controle,'concluir',side_effect=OSError('disco')):
             with self.assertRaises(OSError):alvo.executar(self.projeto,4,8,self.banco,self.k)

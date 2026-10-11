@@ -787,12 +787,25 @@ O CLI retorna 1 para entrega bloqueada, mesmo se o implementador terminou com ze
 Após merge real, `python gestao_cli.py --projeto PROJETO concluir --cartao N --pr N`
 mostra a prévia sem escrever. Repetir com `--executar` exige reserva em revisão,
 PR fechado e mergeado no repositório e branch vinculados, vínculo `Closes`/`Fixes`/
-`Resolves` ao cartão inteiro, issue fechada, política e instruções preservadas e
+`Resolves` ao cartão inteiro, política e instruções preservadas e
 checks obrigatórios aprovados no head exato. Com revisão ativa exige a entrega
 aprovada e vinculada ao mesmo PR/head; com revisão desativada não exige revisores.
-O comando registra evidência local, move para Feito e marca a reserva concluída.
+O comando registra evidência local, fecha a issue se ela ainda estiver aberta,
+move para Feito e marca a reserva concluída. O fechamento explícito é necessário
+quando o GitHub não aplica `Closes` por a base não ser a branch padrão. Não fecha
+cartão-pai com vínculo parcial `Parte de`.
 Se a escrita local falhar após o movimento remoto, a próxima execução concilia
 a evidência já registrada. Não realiza merge nem publica checks.
+
+**Entrega concluída exige merge confirmado.** PR aberto, autor encerrado e revisão
+aprovada são etapas intermediárias. No ciclo com merge automático, a coordenação
+confere os PRs dos despachos confirmados da própria sessão antes de replanejar.
+Só encaminha a conclusão pelo mesmo comando e seus gates após comprovar o merge.
+O vínculo ao token e worktree novo é privado; não entra no resumo público nem
+altera recibos dos lotes. Reservas históricas, bloqueadas ou sem vínculo desta
+sessão ficam fora. Falha de conclusão fica registrada para intervenção, sem
+repetição automática; PR ainda aberto permanece em revisão. Projetos com merge
+manual preservam a conclusão explícita pelo comando acima.
 
 O painel Gestão mostra a última revisão, PR e SHA, sem expor relatório/prompt/token da
 reserva. Isso é histórico do commit exibido, não autorização atual de merge. Nenhum
