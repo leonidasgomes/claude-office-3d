@@ -2187,6 +2187,14 @@ reserva, worktree, entrega ou status de gate. Confere autor encerrado, diff
 completo (arquivos e linhas), cartão/aceite, política e fontes antes e depois
 da inferência. Publica somente comentário com marcador por identidade e head;
 recibo em `conferencias_prs` preserva decisão, parecer e publicador comprovado.
+O papel `conferencia` do `ColetorIsolado` exige equipe cadastrada e executor
+idêntico à política ativa; o custo fica atribuído a `Conferência: nome`.
+Os papéis anteriores preservam seus rótulos e rejeitam parâmetro de equipe.
+`conciliar_inicializacao` confere exclusivamente o erro do papel cloud antes de
+inferência, o encerramento do ciclo e a identidade/tempo do recibo. Preserva
+histórico com hash; estado `pronto` exige esse histórico e pacote idêntico antes
+de iniciar a equipe. Não repete decisão do CEO ou autor; não recupera modelo,
+sessão ou publicação incertos. Testes incluem rejeição de outros estágios.
 Publicação incerta só recupera comentário idêntico do mesmo usuário; não repete
 POST nem consulta. `fila_prs.planejar` inclui pareceres/esperas atuais no contexto
 e cache. `ciclo_gdd` encaminha depois de gates/correções e antes de esperar pelo

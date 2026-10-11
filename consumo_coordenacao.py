@@ -4,10 +4,19 @@ from consumo_providers import Coletor,contador
 
 
 class ColetorIsolado:
-    def __init__(self,arquivo,executor,projeto,papel):
-        if papel not in ('ceo','diretor','triagem','auditor') or executor.get('execucao','cloud')!='cloud':
+    def __init__(self,arquivo,executor,projeto,papel,equipe=None):
+        nomes={'ceo':'CEO','diretor':'Diretor','triagem':'Triagem','auditor':'Auditor'}
+        if papel=='conferencia':
+            from gestao_projeto import carregar
+            cfg=carregar(projeto)
+            registro=next((e for e in cfg['equipes'] if e['nome']==equipe),None)
+            if not cfg['ativo'] or not cfg['ciclo']['ativo'] or not registro or registro['executor']!=executor:
+                raise ValueError('Conferência exige executor da equipe cadastrada')
+            nomes[papel]='Conferência: '+equipe
+        elif equipe is not None:raise ValueError('Equipe somente no papel de conferência')
+        if papel not in nomes or executor.get('execucao','cloud')!='cloud':
             raise ValueError('Coletor exige papel cloud')
-        self.coletor=Coletor(arquivo,executor['console'],projeto,{'ceo':'CEO','diretor':'Diretor','triagem':'Triagem','auditor':'Auditor'}[papel],executor.get('modelo'))
+        self.coletor=Coletor(arquivo,executor['console'],projeto,nomes[papel],executor.get('modelo'))
         self.snapshot=SnapshotClaude(self.coletor,isolado=True) if executor['console']=='claude' else None
 
     def consumir(self,ev):

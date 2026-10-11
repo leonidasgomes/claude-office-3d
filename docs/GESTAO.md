@@ -2073,6 +2073,12 @@ O diretor recebe pareceres existentes na próxima classificação. Uma conferên
 por equipe/head/política/fontes não é repetida; espera ou execução incerta exigem
 conferência do recibo. Uma publicação com retorno perdido só é recuperada por
 comentário idêntico do publicador comprovado, sem novo POST ou nova inferência.
+O erro conhecido de inicialização do coletor (`Coletor exige papel cloud`), antes
+de iniciar a inferência da equipe, admite conciliação restrita: ciclo encerrado,
+recibo no intervalo desse ciclo, CEO já aprovou, nenhuma resposta/publicação e
+política/executor iguais. Arquiva o recibo original e revalida o pacote antes de
+iniciar a equipe; não repete o CEO nem retoma sessão. Outros erros não habilitam
+essa conciliação. Não se aplica a reservas/tentativas de implementação.
 Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada
