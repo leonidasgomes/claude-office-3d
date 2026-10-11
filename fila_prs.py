@@ -1,8 +1,9 @@
 """Classificação do diretor para PRs pendentes; não autoriza retomada ou merge."""
-import hashlib,json,re
+import hashlib,json,re,base64
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from urllib.parse import quote
 
 
 def versao_politica(cfg):
@@ -255,6 +256,29 @@ def contexto_preparacao(cfg,pr,docs,dados,k):
                         and all(g.get('estado')=='success' for g in gates)
                         and isinstance(ev.get('merged_at'),str) and ev['merged_at']):
                         filho['entrega_por_merge']={key:ev[key] for key in ('pr','head','merge_commit','merged_at')}
+    if filho['entrega_por_merge']:
+        prova=filho['entrega_por_merge']
+        arquivos=k._paginas(f'repos/{repo}/pulls/{prova["pr"]}/files?per_page=100')
+        if not isinstance(arquivos,list) or len(arquivos)>50:raise ValueError('Selecionar explicitamente artefatos da preparação')
+        extratos=[];outros=[];tamanho=0
+        for arquivo in arquivos:
+            nome=arquivo.get('filename','')
+            if (not isinstance(nome,str) or not nome or nome.startswith('/') or '\\' in nome
+                or any(p in ('','..','.') for p in nome.split('/'))):raise ValueError('Artefato com caminho inválido')
+            if not nome.startswith('docs/') or not nome.endswith('.md') or arquivo.get('status')=='removed':
+                outros.append(nome);continue
+            conteudo=k.chamar(f'repos/{repo}/contents/{quote(nome,safe="/")}?ref={prova["head"]}')
+            if (not isinstance(conteudo,dict) or conteudo.get('type')!='file' or conteudo.get('path')!=nome
+                or conteudo.get('encoding')!='base64' or type(conteudo.get('size')) is not int
+                or not 0<=conteudo['size']<=60000 or not isinstance(conteudo.get('content'),str)
+                or len(conteudo['content'])>85000):raise ValueError('Artefato de preparação inválido ou excessivo')
+            bruto=base64.b64decode(''.join(conteudo['content'].split()),validate=True);tamanho+=len(bruto)
+            sha=hashlib.sha1(b'blob '+str(len(bruto)).encode()+b'\0'+bruto).hexdigest()
+            if (len(bruto)!=conteudo['size'] or sha!=conteudo.get('sha') or sha!=arquivo.get('sha')
+                or tamanho>60000):raise ValueError('Artefato divergente ou pacote excessivo; sem truncar')
+            extratos.append({'caminho':nome,'head':prova['head'],'sha256':hashlib.sha256(bruto).hexdigest(),
+                             'conteudo':bruto.decode('utf-8-sig')})
+        filho['artefatos_versionados']=extratos;filho['arquivos_sem_extrato']=outros
     subs=k._paginas(f'repos/{repo}/issues/{pai}/sub_issues?per_page=100')
     if not isinstance(subs,list) or len(subs)>20:raise ValueError('Selecionar explicitamente as sub-issues do pacote; sem truncar')
     numeros=[]

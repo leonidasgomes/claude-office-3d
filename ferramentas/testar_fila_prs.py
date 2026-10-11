@@ -1,4 +1,4 @@
-import json,sys,tempfile,unittest,sqlite3
+import json,sys,tempfile,unittest,sqlite3,hashlib,base64
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock,patch
@@ -58,7 +58,13 @@ class Fila(unittest.TestCase):
         self.futuro={'number':10,'title':'Validar fase','state':'open','html_url':'https://github.com/o/r/issues/10',
                      'body':'Depende da integração; medições ainda pendentes'}
         self.k.issue.side_effect=lambda n:{9:self.filho,10:self.futuro,1:{'number':1,'body':'aceite original preservado'}}[n]
-        self.k._paginas.side_effect=lambda url:[self.futuro] if '/sub_issues?' in url else []
+        bruto=b'Investigacao versionada: montagem e benchmark ainda pendentes.'
+        sha=hashlib.sha1(b'blob '+str(len(bruto)).encode()+b'\0'+bruto).hexdigest()
+        self.artefato={'type':'file','path':'docs/preparacao.md','encoding':'base64','size':len(bruto),
+                       'sha':sha,'content':base64.b64encode(bruto).decode()}
+        self.k._paginas.side_effect=lambda url:([self.futuro] if '/sub_issues?' in url else
+            [{'filename':'docs/preparacao.md','sha':sha,'status':'added'}] if '/pulls/11/files?' in url else [])
+        self.k.chamar.side_effect=lambda url:self.artefato if '/contents/' in url else {'check_runs':[],'total_count':0}
         self.k.cartoes.return_value=[{'numero':10,'equipe':'Dev','status':'Backlog','prioridade':'P1','etapa':'L2'}]
         self.ev={'repo':'o/r','cartao':9,'pr':11,'head':'b'*40,'merge_commit':'c'*40,'merged_at':'2026-10-11T00:00:00Z',
                  'politica_sha256':versao_politica(self.cfg),'checks':{'gates':[{'nome':'ci','estado':'success'}]}}
@@ -76,6 +82,8 @@ class Fila(unittest.TestCase):
         self.assertIn('medições ainda pendentes',texto)
         self.assertIn('"aceite": false',texto)
         self.assertIn('"prioridade": "P1"',texto)
+        self.assertIn('Investigacao versionada: montagem e benchmark ainda pendentes.',texto)
+        self.assertIn('"artefatos_versionados"',texto)
         self.assertNotIn('PRIVATE_TOKEN',texto);self.assertEqual(antes,(self.p/'tarefas.db').read_bytes())
         planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);consultar.assert_called_once()
         self.futuro['body']='Aceite futuro alterado'
@@ -97,8 +105,13 @@ class Fila(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'outro repositório'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
 
     def test_subissues_excessivas_nao_sao_truncadas(self):
-        self.contexto_fixture();self.k._paginas.side_effect=None;self.k._paginas.return_value=[self.futuro]*21
+        self.contexto_fixture();original=self.k._paginas.side_effect
+        self.k._paginas.side_effect=lambda url:[self.futuro]*21 if '/sub_issues?' in url else original(url)
         with self.assertRaisesRegex(ValueError,'sem truncar'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
+
+    def test_artefato_versionado_adulterado_nao_e_evidencia(self):
+        self.contexto_fixture();self.artefato['content']=base64.b64encode(b'Medicao inventada').decode()
+        with self.assertRaisesRegex(ValueError,'divergente'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
 
     def test_projecao_exige_politica_head_e_equipe_sem_expor_recibo(self):
         estado={'fila_politica':versao_politica(self.cfg),'encaminhamentos_prs':[self.d],
