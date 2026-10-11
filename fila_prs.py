@@ -3,6 +3,32 @@ import hashlib,json,re
 from pathlib import Path
 
 
+def versao_politica(cfg):
+    return hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+
+def projetar(projeto,cfg,prs):
+    """Propostas da última classificação; nunca aprovação ou evidência de atividade."""
+    from gestao_cli import pasta_dados
+    arq=pasta_dados(projeto)/'ciclo.json'
+    if not arq.exists() or arq.is_symlink() or arq.stat().st_size>512000:return {}
+    try:
+        ciclo=json.loads(arq.read_text(encoding='utf-8'))
+        if not isinstance(ciclo,dict) or ciclo.get('fila_politica')!=versao_politica(cfg):return {}
+        ds=ciclo.get('encaminhamentos_prs',[])
+        if not isinstance(ds,list):return {}
+        resultado={}
+        for pr in prs:
+            candidatos=[d for d in ds if isinstance(d,dict) and d.get('pr')==pr['number']]
+            if len(candidatos)!=1:continue
+            d=candidatos[0]
+            try:validar(json.dumps({'encaminhamentos':[d]}),[pr],cfg)
+            except (ValueError,TypeError,KeyError):continue
+            resultado[pr['number']]={**d,'somente_preparacao':True}
+        return resultado
+    except (OSError,ValueError,TypeError):return {}
+
+
 def checks_atuais(k,repo,sha,nomes):
     from kanban_gestao import api
     from prs_evidencias import projetar_checks

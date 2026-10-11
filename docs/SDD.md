@@ -2099,3 +2099,10 @@ Recibo por hash do contexto/política evita inferência repetida e preserva
 consultas incertas. Somente consulta nova anuncia a etapa diretor;
 encaminhamentos_prs é uma proposta, nunca autorização de despacho/merge.
 Testes: testar_fila_prs e testar_ciclo_gdd.
+
+fila_prs.projetar fornece propostas para prs_gestao.vista a partir do diário
+local, com hash da política, SHA exato e equipe cadastrada conferidos. Estado
+antigo sem hash, arquivo inválido ou commit diferente não fornece proposta.
+prs.js apresenta somente preparação na aba PRs existente, como texto seguro;
+não altera aprovação, status, gates, recursos ou despacho. Testes incluem
+isolamento de política/commit e descarte da proposta de outro head.

@@ -1862,6 +1862,11 @@ Consulta interrompida exige conferir o recibo, sem repetição automática.
 A classificação é preparação: não aprova merge, não muda o aceite do pai,
 não cria cartão nem retoma reserva histórica. Etapas vinculadas ainda exigem
 vínculo formal, validação de recursos e despacho próprio pelo controlador.
+Na aba PRs, cada PR pode mostrar o encaminhamento da última classificação
+do diretor: equipe, ação, objetivo, aceite e evidências faltantes. Só aparece
+para o mesmo commit e política; mudança de commit ou política exige nova
+classificação. É proposta de preparação, sem comprovar despacho ou aprovação.
+Os checks continuam sendo conferidos na seção de evidências do PR.
 
 `memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
 referências estruturadas a entregas com conclusão registrada por merge, do

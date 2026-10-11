@@ -1,8 +1,8 @@
 import json,sys,tempfile,unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
-from fila_prs import validar,planejar
+from fila_prs import validar,planejar,projetar,versao_politica
 from gestao_projeto import validar as politica
 
 class Fila(unittest.TestCase):
@@ -43,5 +43,23 @@ class Fila(unittest.TestCase):
         self.assertIn('"estado": "success"',consultar.call_args.args[0])
         run['conclusion']='failure';planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         self.assertEqual(consultar.call_count,2)
+
+    def test_projecao_exige_politica_head_e_equipe_sem_expor_recibo(self):
+        estado={'fila_politica':versao_politica(self.cfg),'encaminhamentos_prs':[self.d],
+                'pid':999,'segredo':'nao_expor'}
+        arq=self.p/'ciclo.json'
+        with patch('gestao_cli.pasta_dados',return_value=self.p):
+            arq.write_text(json.dumps(estado),encoding='utf-8')
+            r=projetar(self.p,self.cfg,[self.pr]);self.assertTrue(r[3]['somente_preparacao'])
+            self.assertNotIn('segredo',json.dumps(r));self.assertNotIn('pid',json.dumps(r))
+            self.assertEqual(projetar(self.p,self.cfg,[{**self.pr,'head':{'sha':'b'*40}}]),{})
+            estado['fila_politica']='antiga';arq.write_text(json.dumps(estado),encoding='utf-8')
+            self.assertEqual(projetar(self.p,self.cfg,[self.pr]),{})
+            estado['fila_politica']=versao_politica(self.cfg)
+            estado['encaminhamentos_prs']=[{**self.d,'equipe':'Inventada'}]
+            arq.write_text(json.dumps(estado),encoding='utf-8')
+            self.assertEqual(projetar(self.p,self.cfg,[self.pr]),{})
+            arq.write_text('{quebrado',encoding='utf-8')
+            self.assertEqual(projetar(self.p,self.cfg,[self.pr]),{})
 
 if __name__=='__main__':unittest.main()
