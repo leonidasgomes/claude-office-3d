@@ -2079,6 +2079,12 @@ pedido interrompido exige conferência, sem repetição automática. Cada chamad
 limitada a 256 MiB por arquivo e 1 GiB total. Os recibos ficam em `assets/` nos dados
 de gestão do projeto. Hidratação não comprova importação, mapa montado ou aceite.
 
+O status Git pode marcar como modificado um asset hidratado cujo filtro produz
+exatamente o pointer do commit. Nesse caso, o controlador confere o diff de
+conteúdo contra HEAD e o staging, com diff externo e textconv desativados.
+Só permite prosseguir quando ambos estão vazios. Arquivos novos, removidos,
+conflitos e alterações reais continuam bloqueando; não faz reset ou commit.
+
 Para uma bancada com trava compartilhada, o operador pode registrar autorização
 operacional em `dados/gestao/<id>/recursos_escrita.json`, com `projeto` absoluto,
 `politica` (SHA-256 da política normalizada), `origem`, `equipes` cadastradas e

@@ -87,6 +87,7 @@ class DespachoRevisao(unittest.TestCase):
             raise AssertionError(args)
         with patch('gestao_cli.selecionar',return_value=(PROVIDERS[self.cfg['equipes'][0]['executor']['console']],'native')), \
              patch('gestao_cli.validar_worktree',return_value=self.pasta), \
+             patch('gestao_cli.worktree_sujo',return_value=False), \
              patch('gestao_cli.subprocess.run',return_value=SimpleNamespace(stdout='feat/tarefa')), \
              patch('revisao_execucao.git',side_effect=git):
             return gc.despachar(self.pasta,42,'Dev','implementacao',self.pasta,banco=self.db,
