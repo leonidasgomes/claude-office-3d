@@ -3,8 +3,10 @@
 ## Qual versão baixar?
 
 - **Codex e OpenCode, gestão de equipes e funcionários:** use a
-  [prévia atual 2.0.0-dev.3](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.3).
-  O pacote inclui as melhorias da Gestão, zoom e atalho do instalador Windows.
+  [prévia atual 2.0.0-dev.5](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.5).
+  O pacote inclui Gestão, metas, checkpoints e recuperação assistida com saldo
+  preservado, além do zoom e atalho do instalador Windows. A instalação não
+  inicia tarefas nem retoma reservas bloqueadas automaticamente.
 - **Continuar no Claude legado:** use
   [1.19.1 estável](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v1.19.1).
 - As prévias anteriores permanecem no histórico; seus ZIPs não recebem as
@@ -37,7 +39,7 @@ O instalador recusa copiar, revisar ou remover hooks de uma instalação antiga
 ou ambígua. Marcador inválido e VERSION fora de 2.x também bloqueiam a operação.
 Não acrescente esse marcador ao legado para forçar atualização. Essa identificação
 separa as edições; não é uma assinatura de integridade ou backup. O build novo usa
-`office-multi-provider-v2.0.0-dev.zip`, inclusive no nome da pasta dentro do ZIP.
+`office-multi-provider-v<VERSION>.zip`, com a versão também na pasta dentro do ZIP.
 
 Para começar um projeto em instalação nova, use `iniciar_projeto.py` conforme
 README. Ele prepara tanto a pasta do escritório quanto a política do projeto,

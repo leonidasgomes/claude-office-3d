@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0-dev.5
+
+- Recuperações manuais confirmadas passam a ser acompanhadas até o merge, com checkpoints preservados e sem repetir despacho ou publicação. Tentativas interrompidas continuam exigindo conciliação.
+- Retomada conserva o saldo de tempo e tokens do cartão, incluindo consumo em cache. A prévia mostra o saldo; limite esgotado ou histórico incompleto impede novo consumo. Correções acumuladas não são cobradas duas vezes.
+- Codex retomado mede incrementos do transcrito durante a execução e recebe a área limitada de pedidos do host e cache Git novo, preservando sandbox, refs, index, hooks e gates.
+- Revisão por IA dispensada registra o PR observado sem inventar aprovação. Entrega continua exigindo merge e os checks configurados.
+- Diretor recebe preparações concluídas, artefatos no commit exato e próximas etapas existentes; identifica campos ausentes e reservas bloqueadas, sem recriar tarefas ou declarar implementação concluída.
+- Links de download do README e da documentação apontam para a prévia desta versão; teste de regressão impede divulgar outra prévia como atual. ZIPs anteriores permanecem inalterados e o Claude legado continua separado.
+- Validação por regressões e subprocessos locais não substitui a execução real de cada recuperação. OpenCode continua sujeito a autenticação, acesso e disponibilidade efetivos; modelos gratuitos não são garantidos.
+
 ## 2.0.0-dev.4
 
 - Ciclo por projeto ligado ao GDD e Kanban, com prioridades, seleção paginada, diretor configurado, worktrees novos e despacho sequencial. Ativação e duração são configuráveis; a instalação não inicia tarefas automaticamente.
