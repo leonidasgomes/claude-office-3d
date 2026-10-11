@@ -13,7 +13,7 @@ function desenhar() {
   if(!dados?.ok){criar('p',dados?.erro||'Consultando estado local…');return;}
   const c=dados.ciclo||{},min=Math.max(0,Math.ceil(((c.limite||Date.now()/1000)-Date.now()/1000)/60));
   criar('strong',nomeCiclo(c.estado));
-  criar('p',`${min} min restantes`);
+  criar('p',c.continuo===true?'Operação contínua':`${min} min restantes`);
 }
 async function consultar() {
   if(!PROJETO_CENA)return;
@@ -27,7 +27,7 @@ async function consultar() {
     dados=novo;
   }catch{dados={ok:false,erro:'Acompanhamento indisponível; confira Gestão. Equipes não foram interrompidas.'};}
   finally{clearTimeout(timeout);}
-  const vista=JSON.stringify([dados?.ok,dados?.erro,dados?.ciclo?.estado,
+  const vista=JSON.stringify([dados?.ok,dados?.erro,dados?.ciclo?.estado,dados?.ciclo?.continuo,
     Math.ceil(((dados?.ciclo?.limite||0)-Date.now()/1000)/60)]);
   if(vista!==ultimaVista){
     ultimaVista=vista;desenhar();

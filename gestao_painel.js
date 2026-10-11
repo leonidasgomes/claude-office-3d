@@ -87,7 +87,8 @@ async function carregar() {
       if(p.ciclo_config?.ativo) {
         const ciclo=p.ciclo||{};
         linha('h4','Trabalho automático pelo GDD',trabalho);
-        linha('p',`Estado: ${ciclo.estado||'desligado'} · objetivo: ${ciclo.objetivo||'em seleção'} · tempo restante: ${ciclo.limite?Math.max(0,Math.ceil((ciclo.limite*1000-Date.now())/60000)):p.ciclo_config.duracao_min} min`,trabalho);
+        const tempo=ciclo.continuo===true?'operação contínua':`${ciclo.limite?Math.max(0,Math.ceil((ciclo.limite*1000-Date.now())/60000)):p.ciclo_config.duracao_min} min restantes`;
+        linha('p',`Estado: ${ciclo.estado||'desligado'} · objetivo: ${ciclo.objetivo||'em seleção'} · ${tempo}`,trabalho);
         for(const c of ciclo.cartoes||[])linha('p',`#${c.cartao} · ${c.equipe}`,trabalho);
         if(ciclo.motivo)linha('p',ciclo.motivo,trabalho);
         if(ciclo.proxima_acao)linha('p','Próxima ação: '+ciclo.proxima_acao,trabalho);

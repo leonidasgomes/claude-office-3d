@@ -1684,3 +1684,21 @@ equipes. `nova_janela:false` mantém o prazo anterior. `true` autoriza um próxi
 início com a duração configurada, inclusive quando a janela anterior expirou.
 Depois da conciliação, abrir o atalho ou enviar a ação `ciclo` inicia uma nova
 coordenação pelo quadro vivo, sem retomar reservas antigas.
+
+### Operação contínua
+
+Em Gestão → CEO e diretor → Configurar operação automática, habilite o modo
+contínuo para o próximo ciclo. Exige metas por cartão habilitadas. A política
+`ciclo.continuo` tem padrão `false`, inclusive nas instalações existentes.
+Quando habilitada, o próximo início não tem prazo global; cada tentativa mantém
+seus limites de tempo e tokens. São até dois cartões por seleção e execução
+sequencial. Sem mudanças no quadro, PRs, reservas, documentos ou recursos, o host
+espera sem chamar modelos. Falha de provider, autenticação, consulta ou execução
+incerta encerra a coordenação com a causa registrada; não repete trabalho.
+
+O botão **Pausar após o despacho atual** registra um pedido para a sessão exibida.
+O cartão em execução termina pelo controlador, com seus gates, antes de pausar
+novos despachos. Na espera, a pausa é percebida em até cinco segundos. Consultas
+já em curso terminam antes dessa conferência. O acompanhamento mostra etapa e
+“Operação contínua”, sem prazo fictício. Alterar modo/duração vale para o próximo
+início; não transforma uma sessão limitada em contínua nem a reinicia.

@@ -16,7 +16,7 @@
   ],
   "rotas": {},
   "metas": {"ativo": false, "tempo_min": 60, "tokens": 100000},
-  "ciclo": {"ativo": false, "duracao_min": 120, "max_cartoes": 2, "intervalo_seg": 300, "base": "origin/main", "criar_subtarefas": false},
+  "ciclo": {"ativo": false, "continuo": false, "duracao_min": 120, "max_cartoes": 2, "intervalo_seg": 300, "base": "origin/main", "criar_subtarefas": false},
   "sugestoes": {"ativo": false, "bots": [], "triagem": false},
   "auditor": {"ativo": false, "max_diff": 60000, "max_prs": 3},
   "revisao": {

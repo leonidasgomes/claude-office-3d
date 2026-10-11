@@ -22,7 +22,7 @@ def vista(projetos, ident):
         if arquivo.exists():
             r = json.loads(arquivo.read_text(encoding='utf-8'))
             saida['ciclo'] = {k:r.get(k) for k in (
-                'estado','inicio','limite','atualizado','objetivo','cartoes','motivo','proxima_acao')}
+                'estado','inicio','limite','continuo','atualizado','objetivo','cartoes','motivo','proxima_acao')}
         banco = pasta/'tarefas.db'
         if banco.exists():
             with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro', uri=True, timeout=2)) as db:

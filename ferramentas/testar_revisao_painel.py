@@ -8,6 +8,30 @@ from gestao_projeto import validar,revisores,decidir_merge
 from funcionarios import id_projeto
 
 class RevisaoPainel(unittest.TestCase):
+    def test_continuo_exige_metas_e_preserva_demais_opcoes(self):
+        with self.assertRaises(ValueError):p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':120,'continuo':True})
+        self.assertEqual(self.arq.read_bytes(),self.bruto)
+        cfg=copy.deepcopy(self.cfg);cfg['metas']['ativo']=True;cfg['ciclo'].update(ativo=True,base='origin/main')
+        self.arq.write_text(json.dumps(cfg),encoding='utf-8');versao=p.snapshot(self.raiz)[1]
+        p.atualizar_ciclo(self.raiz,versao,{'duracao_min':120,'continuo':True})
+        novo=p.snapshot(self.raiz)[0];self.assertTrue(novo['ciclo']['continuo'])
+        for k in set(cfg)-{'ciclo'}:self.assertEqual(novo[k],cfg[k])
+        self.assertEqual(novo['ciclo']['max_cartoes'],2)
+
+    def test_api_pausa_exige_pc_versao_e_sessao_exata(self):
+        dados=self.raiz/'dados';dados.mkdir();sessao='a'*32
+        (dados/'ciclo.json').write_text(json.dumps({'id':sessao,'estado':'aguardando','pausa_configuravel':True}))
+        pedido={'projeto_id':id_projeto(self.raiz),'versao':self.hash,'acao':'pausar','sessao':sessao}
+        with patch('gestao_cli.pasta_dados',return_value=dados),patch('ciclo_gdd.pasta_dados',return_value=dados):
+            self.assertEqual(p.api_ciclo([self.raiz],pedido,{'permissao':'ver'})[0],403)
+            self.assertEqual(p.api_ciclo([] ,pedido,{'permissao':'pc'})[0],400)
+            self.assertEqual(p.api_ciclo([self.raiz],{**pedido,'versao':'0'*64},{'permissao':'pc'})[0],409)
+            self.assertEqual(p.api_ciclo([self.raiz],{**pedido,'sessao':'b'*32},{'permissao':'pc'})[0],400)
+            self.assertFalse((dados/'ciclo.pausa.json').exists())
+            codigo,r=p.api_ciclo([self.raiz],pedido,{'permissao':'pc'})
+            self.assertEqual(codigo,200);self.assertEqual(r['estado'],'pausa_solicitada')
+            self.assertEqual(json.loads((dados/'ciclo.pausa.json').read_text())['id'],sessao)
+        self.assertEqual(self.arq.read_bytes(),self.bruto)
     def test_ciclo_antigo_protegido_e_novo_preserva_prazo(self):
         dados=self.raiz/'dados';dados.mkdir();arq=dados/'ciclo.json'
         r={'estado':'implementando','limite':123};arq.write_text(json.dumps(r))

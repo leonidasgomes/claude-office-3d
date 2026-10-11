@@ -28,14 +28,15 @@ def caminho_estado(projeto):
 
 def mesma_politica_em_execucao(atual,inicial):
     # A duração editada vale para o próximo início; o prazo persistido não muda.
-    return {**atual,'ciclo':{**atual['ciclo'],'duracao_min':inicial['ciclo']['duracao_min']}}==inicial
+    return {**atual,'ciclo':{**atual['ciclo'],'duracao_min':inicial['ciclo']['duracao_min'],
+                           'continuo':inicial['ciclo']['continuo']}}==inicial
 
 
 def resumo(projeto):
     p=caminho_estado(projeto)
     if not p.exists():return {'estado':'desligado'}
     r=json.loads(p.read_text(encoding='utf-8'))
-    return {k:r.get(k) for k in ('id','estado','inicio','limite','atualizado','objetivo',
+    return {k:r.get(k) for k in ('id','estado','inicio','limite','continuo','pausa_configuravel','atualizado','objetivo',
                                 'cartoes','motivo','proxima_acao','resultados')}
 
 
@@ -166,10 +167,11 @@ def iniciar(projeto):
         if anterior.get('conciliacao',{}).get('preservar_janela') is True:
             limite_anterior=anterior['limite']
     ident=uuid.uuid4().hex;agora=time.time()
-    limite=min(agora+60*cfg['ciclo']['duracao_min'],limite_anterior) if limite_anterior is not None else agora+60*cfg['ciclo']['duracao_min']
-    if limite<=agora:raise ValueError('Janela conciliada encerrada; configure novo início explícito')
+    continuo=cfg['ciclo']['continuo'] and limite_anterior is None
+    limite=None if continuo else min(agora+60*cfg['ciclo']['duracao_min'],limite_anterior) if limite_anterior is not None else agora+60*cfg['ciclo']['duracao_min']
+    if limite is not None and limite<=agora:raise ValueError('Janela conciliada encerrada; configure novo início explícito')
     r={'id':ident,'estado':'iniciando','inicio':agora,
-       'limite':limite,'atualizado':agora,
+       'limite':limite,'continuo':continuo,'pausa_configuravel':True,'atualizado':agora,
        'pid':None,'cartoes':[],'resultados':[],'motivo':'','proxima_acao':'consultar quadro'}
     # Lock exclusivo de criação evita dois pedidos em paralelo.
     lock=p.with_suffix('.inicio.lock')
@@ -189,6 +191,15 @@ def iniciar(projeto):
             atomico(p.with_suffix('.processo.json'),{'id':ident,'pid':processo.pid})
     finally:lock.unlink(missing_ok=True)
     return {'id':ident,'estado':'iniciando','pid':processo.pid}
+
+
+def solicitar_pausa(projeto,sessao):
+    if not isinstance(sessao,str) or not re.fullmatch('[0-9a-f]{32}',sessao):raise ValueError('Sessão inválida')
+    r=json.loads(caminho_estado(projeto).read_text(encoding='utf-8'))
+    if r.get('id')!=sessao or r.get('estado') not in ATIVOS:raise ValueError('Sessão mudou ou já encerrou; confira Gestão')
+    if not r.get('pausa_configuravel'):raise ValueError('Ciclo usa controlador anterior; pausa disponível no próximo início')
+    atomico(caminho_estado(projeto).with_suffix('.pausa.json'),{'id':sessao,'solicitado':time.time()})
+    return {'estado':'pausa_solicitada','sessao':sessao}
 
 
 def objetivos(texto):
@@ -369,7 +380,7 @@ def subtarefa(projeto,cfg,k,cartao,d):
     if not cfg['ciclo']['criar_subtarefas']:return None
     s=d['subtarefa']
     if s is None:return None
-    if carregar(projeto)!=cfg:raise ValueError('Política mudou antes de criar subtarefa')
+    if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou antes de criar subtarefa')
     pai=cartao['numero'];marca=f'office-desbloqueio:{pai}'
     pasta=pasta_dados(projeto)/'desbloqueios';pasta.mkdir(parents=True,exist_ok=True)
     recibo=pasta/(str(pai)+'.json')
@@ -421,8 +432,22 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     k=Kanban(cfg,pasta_dados(projeto)/'kanban.json');vistos=set();ultima=None
     def salvar(estado,**kw):
         registro.update(estado=estado,atualizado=relogio(),**kw);atomico(p,registro)
+    pausa=False
+    def disponivel():
+        nonlocal pausa
+        pedido=p.with_suffix('.pausa.json')
+        if pedido.exists() and json.loads(pedido.read_text(encoding='utf-8')).get('id')==ident:
+            pausa=True;return False
+        return registro.get('continuo') is True or relogio()<registro['limite']
+    def esperar():
+        # Pausa responsiva também na espera, sem novas consultas de modelo.
+        ate=relogio()+cfg['ciclo']['intervalo_seg']
+        while disponivel() and relogio()<ate:
+            restante=ate-relogio()
+            if not registro.get('continuo'):restante=min(restante,registro['limite']-relogio())
+            dormir(min(5,max(0,restante)))
     try:
-        while relogio()<registro['limite']:
+        while disponivel():
             if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou; iniciar nova sessão após conferir')
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
@@ -442,11 +467,11 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             assinatura=hashlib.sha256(json.dumps(fonte,sort_keys=True).encode()).hexdigest()
             if assinatura==ultima:
                 salvar('aguardando',motivo='Nenhuma mudança no quadro/PRs',proxima_acao='consultar novamente sem inferência')
-                dormir(min(cfg['ciclo']['intervalo_seg'],max(0,registro['limite']-relogio())));continue
+                esperar();continue
             ultima=assinatura;escolhidos=[];mudou=False;desbloqueios=0
             fila=ordenar([c for c in cartoes if c['status']==cfg['kanban']['backlog'] and c['numero'] not in vistos],cfg,mapa)
             for inicio in range(0,len(fila),20):
-                if relogio()>=registro['limite']:break
+                if not disponivel():break
                 grupo=candidatos(projeto,cfg,k,fila[inicio:inicio+20],mapa)
                 if grupo:grupo[0]['quadro_contexto']=cartoes
                 salvar('diretor',cartoes=[{'cartao':c['numero'],'equipe':c['equipe']} for c in grupo],
@@ -459,6 +484,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 atomico(decisao_arq,{'fontes':[{'caminho':d['caminho'],'sha256':d['sha256']} for d in docs],
                                     'candidatos':grupo,'decisoes':decisoes})
                 for d in decisoes:
+                    if not disponivel():break
                     c=next(c for c in grupo if c['numero']==d['cartao'])
                     if d['acao']=='desbloquear' and d['subtarefa'] is not None and desbloqueios<cfg['ciclo']['max_cartoes']:
                         salvar('investigando',motivo=d['motivo'],proxima_acao='organizar subtarefa real')
@@ -473,15 +499,17 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if not escolhidos:
                 salvar('aguardando',cartoes=[],motivo='Sem implementação aprovada; bloqueios registrados',
                        proxima_acao='avaliar subtarefas' if mudou else 'aguardar evidência ou decisão do usuário')
-                if not mudou:dormir(min(cfg['ciclo']['intervalo_seg'],max(0,registro['limite']-relogio())))
+                if not mudou:esperar()
                 continue
-            if relogio()>=registro['limite']:break
-            salvar('preparando',cartoes=[{'cartao':c['numero'],'equipe':c['equipe']} for c,d in escolhidos])
-            work=criar(projeto,{'base':cfg['ciclo']['base'],'cartoes':[c['numero'] for c,d in escolhidos]})
-            for item in work['plano']['cartoes']:
-                if relogio()>=registro['limite']:break
-                c,d=next((c,d) for c,d in escolhidos if c['numero']==item['cartao'])
+            if not disponivel():break
+            for c,d in escolhidos:
+                if not disponivel():break
                 if d['recurso']!='leve' and bancada_ocupada(projeto):raise ValueError('Bancada ficou ocupada antes do despacho')
+                salvar('preparando',cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}])
+                work=criar(projeto,{'base':cfg['ciclo']['base'],'cartoes':[c['numero']]})
+                itens=work['plano']['cartoes']
+                if len(itens)!=1 or itens[0]['cartao']!=c['numero']:raise ValueError('Worktree não corresponde ao cartão selecionado')
+                item=itens[0]
                 salvar('implementando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
                        proxima_acao='aguardar entrega real da equipe')
                 r=lote(projeto,{'paralelismo':1,'cartoes':[item]});vistos.add(item['cartao'])
@@ -492,7 +520,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                            proxima_acao='avaliar preparação vinculada; não retomar a reserva')
                     # Somente retorno confirmado deste despacho. Reservas antigas/erros incertos ficam fora.
                     if (bloqueado.get('codigo')==0 and cfg['ciclo']['criar_subtarefas']
-                        and desbloqueios<cfg['ciclo']['max_cartoes'] and relogio()<registro['limite']):
+                        and desbloqueios<cfg['ciclo']['max_cartoes'] and disponivel()):
                         atual={**c,'preparavel':False,'bloqueio':registro['motivo'],
                                'retorno_atual_confirmado':True,'retorno':bloqueado}
                         decisoes=consulta(projeto,cfg,docs,[atual],prs,bancada_ocupada(projeto))
@@ -504,7 +532,9 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                                 if novo is not None:desbloqueios+=1
                 salvar('replanejando',cartoes=[],proxima_acao='avaliar próximo cartão independente')
                 ultima=None
-        salvar('limite',cartoes=[],motivo='Janela automática encerrada',proxima_acao='novo início explícito pelo usuário')
+        salvar('pausado' if pausa else 'limite',cartoes=[],
+               motivo='Pausa solicitada pelo usuário; despacho em curso encerrado' if pausa else 'Janela automática encerrada',
+               proxima_acao='novo início explícito pelo usuário')
     except Exception as exc:
         # Não interrompe ferramentas nativas ou reapresenta reservas como concluídas.
         salvar('erro',motivo=str(exc),proxima_acao='conferir recibos e resolver a causa; não repetir trabalho incerto')
