@@ -34,6 +34,16 @@ class Fila(unittest.TestCase):
         with patch('correcoes_prs.contexto_continuacao',return_value=None):
             planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         self.assertEqual(consultar.call_count,2)
+
+    def test_recursos_disponiveis_informam_diretor_e_invalidam_contexto(self):
+        consultar=Mock(return_value=[self.d])
+        with patch('recursos_host.diretorios_travas',return_value=[]):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertIn('--acao assets',consultar.call_args.args[0])
+        with patch('recursos_host.diretorios_travas',return_value=[self.p/'travas']):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(consultar.call_count,2)
+        self.assertIn(json.dumps(str(self.p/'travas')),consultar.call_args.args[0])
     def revisao_fixture(self):
         from revisao_cruzada import assinatura
         pasta=self.p/'revisoes';pasta.mkdir(exist_ok=True)

@@ -13,6 +13,13 @@ from controle_tarefas import Controle
 
 
 class Publicacao(unittest.TestCase):
+    def test_linhas_preservam_texto_sem_coagir_objetos_ou_exceder_teto(self):
+        self.assertEqual(h.corpo_texto(['Parte de #7','','Evidência medida']),
+                         'Parte de #7\n\nEvidência medida')
+        self.assertEqual(h.corpo_texto(['a'*15999,'']),'a'*15999+'\n')
+        for valor in (None,False,7,{},[],[''],['a',7],['a',{}],['a'*16000,'']):
+            with self.assertRaises(ValueError):h.corpo_texto(valor)
+
     def test_git_real_reserva_paths_e_nao_repetir(self):
         with tempfile.TemporaryDirectory() as tmp:
             raiz=Path(tmp);projeto=raiz/'projeto';office=raiz/'office';work=raiz/'worktrees'/'novo';dados=raiz/'dados'
@@ -39,7 +46,7 @@ class Publicacao(unittest.TestCase):
                     criacoes.append(args)
                     return subprocess.CompletedProcess(args,0,'https://github.com/teste/projeto/pull/1','')
                 return original(args,**kwargs)
-            pedido={'cartao':7,'worktree':str(work),'titulo':'Entrega','corpo':'Closes #7\nTeste real'}
+            pedido={'cartao':7,'worktree':str(work),'titulo':'Entrega','corpo':['Closes #7','Teste real']}
             operacional=work/'pedido operação.json'
             operacional.write_text(json.dumps(pedido),encoding='utf-8-sig')
             (work/'dados.json').write_text(json.dumps({'cartao':7,'entrega':'dados reais'}))
@@ -58,6 +65,8 @@ class Publicacao(unittest.TestCase):
                 self.assertNotIn(operacional.name,arquivos)
                 self.assertIn('dados.json',arquivos);self.assertIn('entrega.txt',arquivos)
                 self.assertTrue(operacional.exists())
+                self.assertEqual(pedido['corpo'],['Closes #7','Teste real'])
+                self.assertEqual((dados/'publicacoes'/'7.md').read_text(encoding='utf-8'),'Closes #7\nTeste real')
                 with self.assertRaisesRegex(ValueError,'anterior'):h.publicar(projeto,pedido)
                 # A correção atualiza o mesmo PR, sem sobrescrever o recibo original.
                 operacional.unlink()

@@ -338,6 +338,9 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     repo=cfg['kanban']['repo']
     from correcoes_prs import contexto_continuacao
     pacote['continuacao_delegada']=contexto_continuacao(dados,cfg)
+    from recursos_host import diretorios_travas
+    pacote['recursos_host']={'assets':'Hidratação de pointers versionados do cache LFS local, sem download; a equipe solicita --acao assets.',
+        'travas_por_equipe':{e['nome']:[str(p) for p in diretorios_travas(projeto,dados,cfg,e['nome'])] for e in cfg['equipes']}}
     for p in prs:
         if (type(p.get('number')) is not int or p['number']<1 or p.get('state')!='open'
             or not re.fullmatch('[0-9a-f]{40}',p.get('head',{}).get('sha',''))
@@ -399,6 +402,11 @@ vínculo da etapa futura existente). Informe objetivo e aceite executáveis ness
 Preserve aceite do pai e gates: regularizar uma etapa não executa sua dependência nem
 aprova o PR. Não invente achados; se realmente não houver ação executável, use aguardar
 e explique recurso/dependência. A concessão não permite retomar sessões incertas.
+recursos_host descreve capacidades restritas agora disponíveis, não resultados.
+Quando um bloqueio era falta de acesso a assets locais ou à trava, considere essa
+mudança antes de decidir. Cache LFS local não comprova relatórios de importação,
+build empacotada, medição ou mapa pronto. Não renove apenas para repetir o mesmo
+impedimento sem uma ação executável; aguarde ou organize preparação independente.
 Retorne JSON {"encaminhamentos":[{"pr":1,"head":"sha exato","equipe":"nome",
 "acao":"revisar|correcao|etapa|aguardar","motivo":"...","objetivo":"...",
 "aceite":"...","evidencias_faltantes":"..."}]}. Todos os PRs exigem encaminhamento.

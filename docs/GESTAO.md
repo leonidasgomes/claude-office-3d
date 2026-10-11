@@ -2060,7 +2060,35 @@ não exige alteração de arquivo, commit artificial ou push vazio. Confere rese
 em execução, recibo do worktree, PR/branch/base/head e confirmação remota do texto.
 O recibo conserva a operação; publicação incerta continua exigindo conciliação.
 
-### Autonomia e ordem das correções
+O corpo do pedido de publicação aceita texto ou uma lista de linhas de texto
+(formato produzido por `Get-Content` sem `-Raw` no PowerShell). As linhas são
+unidas com quebras de linha, conservando linhas vazias e o limite de 16000
+caracteres. Objetos, números e listas mistas são recusados. O envelope original
+continua excluído do commit; essa compatibilidade não autoriza repetir uma
+publicação incerta. Ao criar pedidos, prefira `Get-Content -Raw -Encoding utf8`.
+
+### Assets locais e travas compartilhadas
+
+Uma equipe em execução pode solicitar ao host `--acao assets --arquivo pedido.json`.
+O pedido contém `cartao`, `worktree` absoluto e `arquivos`, lista de até 128 caminhos
+relativos versionados. O host exige recibo de criação único, reserva e tentativa em
+curso, política, branch e commit correspondentes. Copia somente objetos já no cache
+LFS comum desse repositório, com tamanho e SHA-256 conferidos; não faz download nem
+copia arquivos do checkout principal. Arquivo alterado, link, objeto ausente ou
+pedido interrompido exige conferência, sem repetição automática. Cada chamada fica
+limitada a 256 MiB por arquivo e 1 GiB total. Os recibos ficam em `assets/` nos dados
+de gestão do projeto. Hidratação não comprova importação, mapa montado ou aceite.
+
+Para uma bancada com trava compartilhada, o operador pode registrar autorização
+operacional em `dados/gestao/<id>/recursos_escrita.json`, com `projeto` absoluto,
+`politica` (SHA-256 da política normalizada), `origem`, `equipes` cadastradas e
+`travas` absoluto. Só são aceitas as pastas `travas` ou `locks` diretamente no cache
+pai da instalação. Em Codex com ciclo ativo, elas entram como `--add-dir` somente
+para as equipes indicadas. Sem registro, nenhum acesso é acrescentado. Mudança de
+política invalida a autorização; não modifica ACL, sandbox global, regras ou Git.
+Esse registro operacional ainda não tem formulário próprio no painel.
+
+### Evidências da autonomia
 
 O ciclo coordena seleção pelo GDD/Kanban, classificação do diretor, decisão do
 CEO, despacho sequencial, revisão e reconhecimento de entrega por merge. Isso
