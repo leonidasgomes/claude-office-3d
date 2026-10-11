@@ -49,6 +49,11 @@ Para publicação limitada, `--acao publicar` recebe cartão, worktree, título 
 corpo do PR. Exige recibo de criação, branch próprio e reserva em execução;
 preserva hooks, recusa alterações de regras/política e não executa merge.
 Falha após commit/push fica no recibo, sem repetir publicação automaticamente.
+O pedido JSON deve ficar em `dados/controlador`, fora do worktree. Se for salvo
+por engano como arquivo novo da entrega, o host exclui somente envelopes JSON
+idênticos ao pedido atual, registra os nomes e preserva o arquivo no disco.
+Arquivos JSON de produto permanecem na entrega. Pedido já indexado/versionado
+bloqueia antes do commit: retire-o da entrega e confira novamente.
 Claude legado continua com suas sessões e instruções específicas.
 
 Abra **⚙️ → Gestão das equipes** e escolha uma das áreas do seu projeto:

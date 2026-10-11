@@ -40,13 +40,33 @@ def publicar(projeto,dados):
         raise ValueError('Branch diverge do recibo')
     recibo=pasta_dados(projeto)/'publicacoes'/(str(n)+'.json');recibo.parent.mkdir(exist_ok=True)
     if recibo.exists():raise ValueError('Publicação anterior exige conciliação; não repetir')
-    nomes=set(git('diff','--name-only','HEAD').splitlines())|set(git('ls-files','--others','--exclude-standard').splitlines())
+    alterados=set(filter(None,git('diff','--name-only','-z','HEAD').split('\0')))
+    novos=set(filter(None,git('ls-files','--others','--exclude-standard','-z').split('\0')))
+    nomes=alterados|novos
     for nome in nomes:
         if nome in ('CLAUDE.md','AGENTS.md','.office/projeto.json') or nome.startswith(('.github/','.git/','.claude/hooks/','.claude/settings')):
             raise ValueError('Publicação não altera regras/política/hooks')
-    registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch};atomico(recibo,registro)
-    if git('status','--porcelain'):
-        git('add','--all');git('commit','-m',dados['titulo'])
+    pedidos=[]
+    for nome in novos:
+        arquivo=p/nome
+        if (arquivo.suffix.lower()!='.json' or arquivo.is_symlink() or not arquivo.is_file()
+            or arquivo.stat().st_size>128000):continue
+        try:
+            if json.loads(arquivo.read_text(encoding='utf-8-sig'))==dados:pedidos.append(nome)
+        except (ValueError,UnicodeError,OSError):pass
+    # O envelope exato da operação é dado do controlador, não uma entrega do cartão.
+    nomes.difference_update(pedidos)
+    for nome in alterados:
+        arquivo=p/nome
+        if arquivo.suffix.lower()=='.json' and arquivo.is_file() and not arquivo.is_symlink() and arquivo.stat().st_size<=128000:
+            try:
+                if json.loads(arquivo.read_text(encoding='utf-8-sig'))==dados:
+                    raise ValueError('Pedido de publicação já versionado/indexado; retire-o da entrega antes de publicar')
+            except (json.JSONDecodeError,UnicodeError,OSError):pass
+    registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch,
+              'arquivos_pedido_excluidos':sorted(pedidos)};atomico(recibo,registro)
+    if nomes:
+        git('add','--all','--',*sorted(nomes));git('commit','-m',dados['titulo'])
     sha=git('rev-parse','HEAD');git('push','origin','HEAD:refs/heads/'+branch)
     corpo=recibo.with_suffix('.md');corpo.write_text(dados['corpo'],encoding='utf-8')
     url=rodar(['gh','pr','create','--repo',cfg['kanban']['repo'],'--base',
