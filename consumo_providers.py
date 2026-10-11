@@ -238,7 +238,7 @@ class Coletor:
     adapter validado; seus valores ausentes não viram zero. OpenCode V1 usa uma
     amostra por step-finish com identidade persistente (projeto/sessão/part).
     """
-    def __init__(self, arquivo, provider, projeto, agente, modelo=None, rotulo=None, origem_modelo=None, sessao_claude_nova=None,sessao_claude_retomada=None,tentativa=None):
+    def __init__(self, arquivo, provider, projeto, agente, modelo=None, rotulo=None, origem_modelo=None, sessao_claude_nova=None,sessao_claude_retomada=None,tentativa=None,codex_incremental=False):
         self.registro = Registro(arquivo,tentativa)
         self.provider, self.agente = provider, agente
         self.rotulo = rotulo or provider
@@ -246,6 +246,7 @@ class Coletor:
         self.origem_modelo = (origem_modelo or 'configurado') if modelo else 'não informado'
         self.projeto = identidade_projeto(projeto)
         self.execucao, self.sessao = uuid.uuid4().hex, ''
+        self.codex_incremental = codex_incremental
         self.claude=None
         if sessao_claude_nova is not None and sessao_claude_retomada is not None:raise ValueError('Sessão Claude nova e retomada são alternativas')
         ident=sessao_claude_nova if sessao_claude_nova is not None else sessao_claude_retomada
@@ -265,6 +266,13 @@ class Coletor:
         if self.provider == 'codex' and tipo == 'turn.completed':
             uso = evento.get('usage') or {}
             entrada, saida = contador(uso.get('input_tokens')), contador(uso.get('output_tokens'))
+            if self.codex_incremental:
+                # Mesmo saldo do rollout: o snapshot final só acrescenta a diferença.
+                self.registro.cumulativo_codex(self.projeto,self.sessao,self.agente,self.modelo,
+                    {'input_tokens':entrada,'cached_input_tokens':uso.get('cached_input_tokens'),
+                     'output_tokens':saida,'total_tokens':entrada+saida if entrada is not None and saida is not None else None},
+                    rotulo=self.rotulo)
+                return
             amostras.append(('turno', self.modelo, self.origem_modelo, 'codex.exec/turn.completed',
                 {'entrada': entrada, 'cache': uso.get('cached_input_tokens'), 'saida': saida,
                  'total': entrada + saida if entrada is not None and saida is not None else None}))

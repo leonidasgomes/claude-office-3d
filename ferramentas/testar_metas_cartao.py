@@ -173,4 +173,25 @@ class Metas(unittest.TestCase):
             finally:f.doCleanups()
 
 
+    def test_codex_interrompe_pelo_rollout_antes_de_turn_completed(self):
+        import console_provider,contextlib,io,time
+        from providers_console import PROVIDERS
+        fake=self.raiz/'fake_codex.py';home=self.raiz/'codex-home'
+        registros=[{'type':'session_meta','payload':{'id':'s1','cwd':str(self.raiz),'source':'cli'}},
+            {'type':'turn_context','payload':{'model':'modelo'}},
+            {'type':'event_msg','payload':{'type':'token_count','info':{'total_token_usage':{
+                'input_tokens':900,'cached_input_tokens':800,'output_tokens':100,'total_tokens':1000}}}}]
+        fake.write_text('import os,json,time,pathlib,sys\nsys.stdin.read()\n'+
+            'p=pathlib.Path(os.environ["CODEX_HOME"])/"sessions/2026/10/11/rollout-s1.jsonl"\n'+
+            'p.parent.mkdir(parents=True,exist_ok=True)\np.write_text('+repr(''.join(json.dumps(r)+'\n' for r in registros))+',encoding="utf-8")\n'+
+            'print(json.dumps({"type":"thread.started","thread_id":"s1"}),flush=True)\ntime.sleep(60)\n',encoding='utf-8')
+        e=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.raiz/'consumo_providers.db')
+        inicio=time.monotonic()
+        with patch.dict('os.environ',{'CODEX_HOME':str(home)}),patch('providers_console.comando_nativo',return_value=[sys.executable,str(fake)]),contextlib.redirect_stdout(io.StringIO()):
+            codigo=console_provider.executar(PROVIDERS['codex'],'fake',self.raiz,'Dev',prompt='teste',
+                banco=self.raiz/'eventos.db',projeto_consumo=self.raiz,tentativa_consumo=self.ident,limites_meta=e)
+        self.assertLess(time.monotonic()-inicio,15)
+        self.assertNotEqual(codigo,0);self.assertEqual(e.motivo,'limite_tokens')
+        self.assertEqual(e.registro['tokens_observados'],1000)
+
 if __name__=='__main__':unittest.main()

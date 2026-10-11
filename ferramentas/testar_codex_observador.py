@@ -9,6 +9,20 @@ from codex_observador import Observador, Transcrito
 
 
 class TestObservador(unittest.TestCase):
+    def test_medicao_principal_exata_sem_duplicar_eventos_do_stream(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);eventos=[];registros=[]
+            o=Observador(raiz,'Dev',eventos.append,home=raiz,observar_principal=False,
+                         medir_principal=True,criar_consumo=lambda *_:SimpleNamespace(consumir=lambda r,**kw:registros.append(r)))
+            caminho=raiz/'sessions/2026/10/11/rollout-s1.jsonl'
+            self.escrever(caminho,[self.meta(raiz,'s1'),{'type':'event_msg','payload':{'type':'token_count'}},
+                {'type':'response_item','payload':{'type':'message','role':'assistant','content':[{'type':'output_text','text':'fala'}]}}])
+            o.tick();self.assertEqual(registros,[])
+            o.sessao='s1';o.tick()
+            self.assertEqual(len(registros),3);self.assertEqual(eventos,[])
+            o.tick();self.assertEqual(len(registros),3)
+
     def escrever(self, caminho, registros, modo="w"):
         caminho.parent.mkdir(parents=True, exist_ok=True)
         with caminho.open(modo, encoding="utf-8") as f:
