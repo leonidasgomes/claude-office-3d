@@ -40,6 +40,26 @@ class Lotes(unittest.TestCase):
         p=patch.object(gc,'RAIZ',self.work/'app'); p.start(); self.addCleanup(p.stop)
         p=patch.object(gc,'selecionar',return_value=(PROVIDERS['codex'],'native')); p.start(); self.addCleanup(p.stop)
 
+    def test_acompanhamento_recebe_execucao_reservada_antes_do_console(self):
+        eventos=[]
+        def ao_execucao(numero,token,medicao):
+            controle=Controle(gc.pasta_dados(self.raiz)/'tarefas.db')
+            reserva=next(r for r in controle.listar(gc.carregar(self.raiz)['kanban']['repo']) if str(r['cartao'])==str(numero))
+            self.assertEqual(reserva['estado'],'executando')
+            self.assertEqual(reserva['token'],token)
+            self.assertTrue(medicao)
+            self.assertEqual(len(self.consoles),len(eventos))
+            eventos.append(numero)
+        r=gc.executar_lote(self.raiz,self.plano,self.k,self.despacho,ao_execucao=ao_execucao)
+        self.assertEqual(eventos,[42,43]);self.assertEqual(r['estado'],'processado')
+
+    def test_acompanhamento_nao_dispara_se_lote_invalido(self):
+        from unittest.mock import Mock
+        callback=Mock();self.status[42]='Em andamento'
+        with self.assertRaises(ValueError):
+            gc.executar_lote(self.raiz,self.plano,self.k,self.despacho,ao_execucao=callback)
+        callback.assert_not_called();self.assertFalse(self.consoles)
+
     def git(self, pasta, *args):
         return subprocess.run(['git','-C',str(pasta),*args],capture_output=True,text=True,
             encoding='utf-8',check=True,timeout=20).stdout.strip()

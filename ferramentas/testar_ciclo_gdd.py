@@ -17,7 +17,7 @@ class Ciclo(unittest.TestCase):
         def candidatos(p,cfg,k,grupo,mapa):
             return [{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in grupo]
         def consulta(p,cfg,docs,grupo,prs,ocupada):return [self.decisao(i['numero'],'executar') for i in grupo]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             n=plano['cartoes'][0]['cartao'];despachos.append(n)
             return {'resultados':[{'cartao':n,'estado':'bloqueado','codigo':124,'motivo':'limite_tokens'}]}
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos):
@@ -35,7 +35,7 @@ class Ciclo(unittest.TestCase):
         def candidatos(p,cfg,k,grupo,mapa):
             return [{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in grupo]
         def consulta(p,cfg,docs,grupo,prs,ocupada):return [self.decisao(i['numero'],'executar') for i in grupo]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             n=plano['cartoes'][0]['cartao'];despachos.append(n)
             return {'resultados':[{'cartao':n,'estado':'revisao' if n==25 else 'bloqueado',
                                   'codigo':0 if n==25 else 124,'motivo':'' if n==25 else 'limite_tempo'}]}
@@ -45,6 +45,40 @@ class Ciclo(unittest.TestCase):
                     criar=lambda p,d:{'plano':{'cartoes':[{'cartao':n,'worktree':'novo'} for n in d['cartoes']]}},lote=lote)
         self.assertEqual(despachos,[1,25,50,51])
         self.assertEqual(len(c.resumo(self.p)['resultados']),4)
+
+    def test_etapa_so_avanca_apos_execucao_registrada(self):
+        ident='a'*32;item=self.item(1)
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':None,'resultados':[],'pausa_configuravel':True})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[item]};k.cartoes.return_value=[item];k._paginas.return_value=[]
+        grupo=[{**item,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]
+        def lote(p,plano,ao_execucao=None):
+            self.assertEqual(c.resumo(p)['estado'],'preparando')
+            self.assertIn('validar',c.resumo(p)['proxima_acao'])
+            ao_execucao(1,'token','tentativa')
+            self.assertEqual(c.resumo(p)['estado'],'implementando')
+            c.solicitar_pausa(p,ident)
+            return {'resultados':[{'cartao':1,'estado':'revisao','codigo':0}]}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo):
+            c.rodar(self.p,ident,consulta=lambda *a:[self.decisao(1,'executar')],
+                criar=lambda p,d:{'plano':{'cartoes':[{'cartao':1,'worktree':'novo'}]}},lote=lote)
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
+
+    def test_falha_validacao_nao_anuncia_implementacao(self):
+        ident='a'*32;item=self.item(1);etapas=[]
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','limite':999999999999,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[item]};k.cartoes.return_value=[item];k._paginas.return_value=[]
+        grupo=[{**item,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]
+        atomico=c.atomico
+        def gravar(p,registro):
+            etapas.append(registro.get('estado'));return atomico(p,registro)
+        def lote(p,plano,ao_execucao=None):raise ValueError('Dependência mudou')
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo),patch.object(c,'atomico',side_effect=gravar):
+            with self.assertRaisesRegex(ValueError,'Dependência mudou'):
+                c.rodar(self.p,ident,consulta=lambda *a:[self.decisao(1,'executar')],
+                    criar=lambda p,d:{'plano':{'cartoes':[{'cartao':1,'worktree':'novo'}]}},lote=lote)
+        self.assertIn('preparando',etapas);self.assertNotIn('implementando',etapas)
+        self.assertEqual(c.resumo(self.p)['estado'],'erro')
 
     def test_duracao_futura_nao_muda_politica_efetiva(self):
         import copy
@@ -106,7 +140,7 @@ class Ciclo(unittest.TestCase):
             'limite':None,'resultados':[],'pausa_configuravel':True})
         k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.return_value=itens;k._paginas.return_value=[]
         grupo=[{**i,'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}} for i in itens]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             despachos.extend(plano['cartoes']);c.solicitar_pausa(p,ident)
             return {'estado':'processado','resultados':[{'cartao':1,'estado':'revisao','codigo':0}]}
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',return_value=grupo):
@@ -247,7 +281,7 @@ class Ciclo(unittest.TestCase):
         def consulta(p,cfg,docs,grupo,prs,ocupada):
             consultados.append([i['numero'] for i in grupo])
             return [self.decisao(i['numero'],'executar' if i['numero']==25 else 'aguardar') for i in grupo]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             despachos.extend(plano['cartoes']);tempo[0]=11;return {'estado':'processado'}
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos):
             c.rodar(self.p,'teste',relogio=lambda:tempo[0],dormir=lambda s:None,consulta=consulta,
@@ -290,8 +324,10 @@ class Ciclo(unittest.TestCase):
             if grupo[0]['numero']==50:return [self.decisao(50,'executar')]
             d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Preparar','equipe':'Dev','objetivo':'classificar','aceite':'ADR','skills':'nenhuma'}
             return [d,self.decisao(25)]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             despachos.extend(plano['cartoes']);tempo[0]=11
+            self.assertEqual(c.resumo(p)['estado'],'preparando')
+            ao_execucao(50,'token','tentativa')
             self.assertEqual(c.resumo(p)['estado'],'investigando')
             return {'estado':'processado'}
         with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos),patch.object(c,'subtarefa',return_value=50):
@@ -340,7 +376,7 @@ class Ciclo(unittest.TestCase):
             d=self.decisao(1,'desbloquear' if len(consultas)>1 else 'executar')
             if len(consultas)>1:d['subtarefa']={'titulo':'Investigar camada','equipe':'Dev','objetivo':'projeto técnico','aceite':'fixture verificável','skills':'nenhuma'}
             return [d]
-        def lote(p,plano):
+        def lote(p,plano,ao_execucao=None):
             despachos.extend(plano['cartoes'])
             return {'resultados':[{'cartao':1,'estado':'bloqueado','codigo':0,'motivo':'sem PR'}]}
         def subtarefa(*args):tempo[0]=11;return 50

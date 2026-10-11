@@ -244,7 +244,7 @@ def preparar_lote(projeto, plano, kanban=None):
     return {'politica':cfg,'cartoes':entradas,'modo':'paralelo' if paralelismo>1 else 'sequencial','paralelismo':paralelismo,'somente_preparacao':True}
 
 
-def executar_lote(projeto, plano, kanban=None, despacho=None, esperado=None):
+def executar_lote(projeto, plano, kanban=None, despacho=None, esperado=None, ao_execucao=None):
     preparado=preparar_lote(projeto,plano,kanban)
     if esperado is not None:
         from coordenacao import identidade
@@ -264,9 +264,12 @@ def executar_lote(projeto, plano, kanban=None, despacho=None, esperado=None):
         finally: tmp.unlink(missing_ok=True)
     salvar()
     def despachar_item(item):
+        acompanhamento={}
+        if ao_execucao is not None:
+            acompanhamento['ao_execucao']=lambda token,medicao:ao_execucao(item['cartao'],token,medicao)
         return (despacho or despachar)(projeto,item['cartao'],item['equipe'],item['escopo'],item['worktree'],
             kanban=kanban,funcionario=item.get('funcionario'),
-            esperado={'politica':cfg,'pacote':item['pacote'],'git':item['git']})
+            esperado={'politica':cfg,'pacote':item['pacote'],'git':item['git']},**acompanhamento)
     try:
         if preparado['paralelismo']>1:
             registro.update(paralelismo=preparado['paralelismo'],cartoes_em_execucao=[])
@@ -367,7 +370,7 @@ def snapshot_pacote(pacote):
 
 
 def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None, rodar=executar, revisar=None, funcionario=None,
-              banco_execucoes=None, esperado=None):
+              banco_execucoes=None, esperado=None, ao_execucao=None):
     preparado=preparar(projeto, numero, equipe, escopo, kanban, funcionario)
     if esperado is not None and (preparado[0]!=esperado['politica'] or snapshot_pacote(preparado[4])!=snapshot_pacote(esperado['pacote'])):
         raise ValueError('Despacho diverge do plano do lote; prepare novamente')
@@ -377,7 +380,7 @@ def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None
         trabalho=validar_worktree(projeto,worktree)
         if esperado is not None and estado_git(trabalho)!=esperado['git']:
             raise ValueError('Branch/HEAD mudou desde o plano do lote')
-        return _despachar(projeto,numero,equipe,escopo,trabalho,banco,rodar,revisar,funcionario,preparado)
+        return _despachar(projeto,numero,equipe,escopo,trabalho,banco,rodar,revisar,funcionario,preparado,ao_execucao=ao_execucao)
 
 
 def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None):
