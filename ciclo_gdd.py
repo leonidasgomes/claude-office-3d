@@ -19,7 +19,7 @@ from controlador_local import atomico, criar_worktrees
 
 RAIZ=Path(__file__).resolve().parent
 TERMINAIS={'concluido','limite','pausado'}
-ATIVOS={'iniciando','consultando','diretor','investigando','preparando','implementando','replanejando','aguardando'}
+ATIVOS={'iniciando','consultando','diretor','investigando','preparando','implementando','revisando','replanejando','aguardando'}
 
 
 def caminho_estado(projeto):
@@ -584,14 +584,12 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if conclusoes:
                 registro.setdefault('conclusoes',[]).extend(conclusoes)
                 atomico(p,registro)
+            bloqueio_entregas=False
             if cfg['ciclo']['max_prs_pendentes']:
                 from conclusao_tarefas import pendencias_sessao
                 pendencias=pendencias_sessao(projeto,registro)
                 registro['prs_pendentes']=pendencias
-                if len(pendencias)>=cfg['ciclo']['max_prs_pendentes']:
-                    salvar('aguardando',cartoes=[],motivo='Limite de PRs pendentes desta sessão',
-                           proxima_acao='conferir PRs e Alertas; aguardar merge ou intervenção')
-                    esperar();continue
+                bloqueio_entregas=len(pendencias)>=cfg['ciclo']['max_prs_pendentes']
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
             prs=k._paginas(f"repos/{cfg['kanban']['repo']}/pulls?state=open")
@@ -606,7 +604,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             from revisor_ia import reconciliar_reprovacoes_gestao
             reconciliar_reprovacoes_gestao(projeto,cfg,prs)
             preparacoes_fila=set()
-            if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
+            if bloqueio_entregas or (cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']):
                 from fila_prs import planejar,versao_politica
                 fila=planejar(projeto,cfg,prs,docs,pasta_dados(projeto),k,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
@@ -632,6 +630,10 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     registro.setdefault('correcoes_encaminhadas',[]).append(correcao)
                     atomico(p,registro)
                     continue
+                if bloqueio_entregas:
+                    salvar('aguardando',cartoes=[],motivo='Limite de PRs pendentes desta sessão; fila conferida',
+                           proxima_acao='encaminhamentos do diretor em PRs e Alertas; aguardar gates/merge')
+                    esperar();continue
                 from fila_prs import preparar_fila
                 novo=preparar_fila(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,subtarefa,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='avaliar preparação independente vinculada ao PR'))

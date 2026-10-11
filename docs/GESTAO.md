@@ -2150,6 +2150,13 @@ O acompanhamento do merge reconhece a finalização pelo diário transacional e
 recibo confirmado, mantendo o código 124 do autor. Não exige um retorno zero
 inventado nem conclui um cartão cujo PR esteja aberto ou com gates pendentes.
 
+O teto de PRs pendentes da sessão impede novas implementações e investigações,
+mas não impede conferir a fila com o diretor, finalizar revisão publicada ou
+encaminhar correções autorizadas do mesmo PR. A conferência usa os checks e o
+cache compartilhados; contexto inalterado não repete consulta de modelo. A etapa
+`revisando` identifica coordenação viva e permite solicitar pausa, aplicada após
+o trabalho em curso, sem interromper a revisão nem lançar outro coordenador.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos

@@ -126,16 +126,48 @@ class Ciclo(unittest.TestCase):
         self.assertIn('preparando',etapas);self.assertNotIn('implementando',etapas)
         self.assertEqual(c.resumo(self.p)['estado'],'erro')
 
-    def test_fila_aguarda_sem_modelo_nem_novo_despacho_e_pausa_responsiva(self):
+    def test_fila_pendente_confere_diretor_sem_novo_despacho_e_pausa_responsiva(self):
         self.cfg['ciclo']['max_prs_pendentes']=1;ident='a'*32;tempo=[0]
         c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
             'limite':None,'resultados':[],'pausa_configuravel':True})
         consulta=Mock();lote=Mock();k=Mock()
+        k.quadro.return_value={'campos':[],'itens':[]};k.cartoes.return_value=[]
+        k._paginas.return_value=[{'number':8,'state':'open','head':{'sha':'a'*40}}]
         def dormir(seg):tempo[0]+=seg;c.solicitar_pausa(self.p,ident)
-        with patch.object(c,'Kanban',return_value=k),patch('conclusao_tarefas.confirmar_sessao',return_value=[]),patch('conclusao_tarefas.pendencias_sessao',return_value=[{'cartao':4,'pr':8}]):
+        with patch.object(c,'Kanban',return_value=k),patch('conclusao_tarefas.confirmar_sessao',return_value=[]),patch('conclusao_tarefas.pendencias_sessao',return_value=[{'cartao':4,'pr':8}]),\
+             patch('fila_prs.planejar',return_value={'encaminhamentos':[]}) as diretor,patch('fila_prs.preparar_fila') as preparar:
             c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta,lote=lote)
-        consulta.assert_not_called();lote.assert_not_called();k.quadro.assert_not_called()
+        consulta.assert_not_called();lote.assert_not_called();diretor.assert_called_once();preparar.assert_not_called()
         self.assertEqual(c.resumo(self.p)['estado'],'pausado');self.assertGreater(tempo[0],0)
+
+    def test_etapa_revisando_identifica_ciclo_vivo_e_aceita_pausa(self):
+        ident='a'*32
+        r={'id':ident,'estado':'revisando','pid':123,'limite':200,'pausa_configuravel':True}
+        c.atomico(c.caminho_estado(self.p),r)
+        with patch.object(c,'coordenador_vivo',return_value=True),patch.object(c.subprocess,'Popen') as novo:
+            self.assertTrue(c.iniciar(self.p)['existente']);novo.assert_not_called()
+        self.assertEqual(c.solicitar_pausa(self.p,ident)['estado'],'pausa_solicitada')
+        self.assertEqual(json.loads(c.caminho_estado(self.p).read_text()),r)
+
+    def test_fila_pendente_encaminha_correcao_existente_sem_criar_cartao(self):
+        self.cfg['ciclo']['max_prs_pendentes']=1;ident='a'*32
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,
+            'limite':None,'resultados':[],'pausa_configuravel':True})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[]};k.cartoes.return_value=[]
+        k._paginas.return_value=[{'number':8,'state':'open','head':{'sha':'a'*40}}]
+        def corrigir(*args,**kwargs):
+            c.solicitar_pausa(self.p,ident)
+            return {'pr':8,'estado':'revisao'}
+        consulta=Mock();criar=Mock();lote=Mock()
+        with patch.object(c,'Kanban',return_value=k),patch('conclusao_tarefas.confirmar_sessao',return_value=[]),\
+             patch('conclusao_tarefas.pendencias_sessao',return_value=[{'cartao':4,'pr':8}]),\
+             patch('fila_prs.planejar',return_value={'encaminhamentos':[]}),\
+             patch('correcoes_prs.encaminhar',side_effect=corrigir) as encaminhar,\
+             patch('fila_prs.preparar_fila') as preparar:
+            c.rodar(self.p,ident,consulta=consulta,criar=criar,lote=lote)
+        encaminhar.assert_called_once();preparar.assert_not_called()
+        consulta.assert_not_called();criar.assert_not_called();lote.assert_not_called()
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
 
     def test_duracao_futura_nao_muda_politica_efetiva(self):
         import copy
