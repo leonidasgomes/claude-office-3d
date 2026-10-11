@@ -17,6 +17,21 @@ from revisao_cruzada import revisar
 
 
 class DespachoRevisao(unittest.TestCase):
+    def test_ciclo_codex_recebe_cache_unico_na_fila_autorizada(self):
+        from unittest.mock import patch
+        self.cfg['ciclo']['ativo']=True
+        self.cfg['ciclo']['base']='origin/main'
+        self.cfg['equipes'][0]['executor']={'console':'codex'}
+        self.cfg['revisao']['revisores'][1]['executor']={'console':'gemini'}
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        recebidos=[]
+        with patch.object(gc,'RAIZ',self.pasta/'office'):
+            self.executar(lambda *a,**kw:self.relatorio(),rodar=lambda *a,**kw:recebidos.append(kw) or 0)
+        kw=recebidos[0]
+        self.assertEqual(kw['sandbox'],'workspace-write')
+        self.assertEqual(kw['objetos_git'].parent,kw['diretorios_escrita'][0])
+        self.assertRegex(kw['objetos_git'].name,r'^git-objetos-[0-9a-f]{32}$')
+
     def test_despacho_novo_provider_recebe_apenas_skills_selecionadas(self):
         vistos=[]
         self.executar(lambda *a,**kw:self.relatorio(),rodar=lambda *a,**kw:vistos.append(kw) or 0)

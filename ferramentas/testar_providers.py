@@ -20,6 +20,44 @@ import emit_evento
 
 
 class TestProviders(unittest.TestCase):
+    def test_merge_tree_objetos_isolados_sem_refs_index_e_conflito_real(self):
+        import subprocess
+        from providers_console import ambiente_objetos_git
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);repo=raiz/'repo';repo.mkdir();area=raiz/'fila';area.mkdir()
+            def git(*args,env=None,check=True):
+                return subprocess.run(['git','-C',str(repo),*args],env=env,capture_output=True,text=True,check=check)
+            git('init','-b','main');git('config','user.name','Teste');git('config','user.email','teste@example.com')
+            (repo/'a.txt').write_text('base\n');git('add','.');git('commit','-m','base')
+            git('checkout','-b','lado-a');(repo/'a.txt').write_text('lado-a\n');git('commit','-am','lado a')
+            git('checkout','-b','lado-b','main');(repo/'b.txt').write_text('lado-b\n');git('add','.');git('commit','-m','lado b')
+            antigos=set((repo/'.git/objects').rglob('*'));index=(repo/'.git/index').read_bytes()
+            head=git('rev-parse','HEAD').stdout
+            cache=area/'tentativa';original=os.environ.copy()
+            env=ambiente_objetos_git(repo,original,cache,[area])
+            self.assertEqual(original,os.environ.copy())
+            resultado=git('merge-tree','--write-tree','--name-only','lado-a','HEAD',env=env)
+            self.assertEqual(resultado.returncode,0);self.assertTrue(list(cache.rglob('*')))
+            self.assertEqual(set((repo/'.git/objects').rglob('*')),antigos)
+            self.assertEqual((repo/'.git/index').read_bytes(),index);self.assertEqual(git('rev-parse','HEAD').stdout,head)
+            git('checkout','-b','conflito','main');(repo/'a.txt').write_text('conflito\n');git('commit','-am','conflito')
+            resultado=git('merge-tree','--write-tree','--name-only','lado-a','HEAD',env=env,check=False)
+            self.assertEqual(resultado.returncode,1);self.assertIn('a.txt',resultado.stdout)
+            for destino in (cache,repo/'cache',raiz/'fora',area):
+                with self.assertRaisesRegex(ValueError,'Cache de objetos'):ambiente_objetos_git(repo,original,destino,[area])
+
+    def test_cache_git_recusa_provider_sandbox_e_retomada_antes_do_processo(self):
+        from console_provider import executar
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz=Path(tmp);area=raiz/'fila';area.mkdir()
+            casos=[('opencode',None,None),('codex','read-only',None),('codex','workspace-write','sessao')]
+            for nome,sandbox,sessao in casos:
+                with self.subTest(provider=nome,sandbox=sandbox),patch('console_provider.subprocess.Popen') as processo:
+                    with self.assertRaises(ValueError):
+                        executar(PROVIDERS[nome],'native',raiz,'Dev',prompt='Tarefa',sandbox=sandbox,sessao=sessao,
+                                 diretorios_escrita=[area],objetos_git=area/'cache')
+                    processo.assert_not_called()
+
     def test_sandbox_codex_explicitamente_selecionado_sem_bypass(self):
         with patch('providers_console.comando_nativo',side_effect=lambda *_:['codex']):
             p=PROVIDERS['codex']

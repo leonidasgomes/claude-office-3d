@@ -40,7 +40,7 @@ def encerrar_processo(processo):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None,skills_contexto=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None,skills_contexto=None,objetos_git=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
@@ -84,6 +84,11 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         entrada = prompt
         args[-1] = "Siga a tarefa e as referências recebidas na entrada padrão."
     env = os.environ.copy()
+    if objetos_git is not None:
+        if provider.nome!='codex' or sandbox!='workspace-write' or sessao or prompt is None or not diretorios_escrita or politica_local:
+            raise ValueError('Cache Git exige despacho Codex novo workspace-write com área autorizada')
+        from providers_console import ambiente_objetos_git
+        env=ambiente_objetos_git(projeto,env,objetos_git,diretorios_escrita)
     if provider.nome=='codex':
         from providers_console import ambiente_git_codex
         env=ambiente_git_codex(env)
