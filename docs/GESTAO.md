@@ -1669,3 +1669,18 @@ Em **Trabalho e indicadores → Metas por cartão**, consulte os recibos por ten
 Tempo atingido interrompe a árvore do console iniciado pelo launcher. Tokens são entrada (incluindo cache) e saída conforme o ledger observado, sem somar cache novamente. O monitor confere a cada segundo e também ao retorno; orçamento atingido impede encaminhar entrega, mesmo com saída zero. Não retoma automaticamente. Ausência de contador permanece não informada; contagem parcial é identificada. O limite de tokens não garante teto de cobrança nem cobre trabalho não observado de filhos: Codex pode informar uso apenas no `turn.completed`, e OpenCode em `step_finish`. Uma chamada pode ultrapassar o limite antes da informação chegar. Referências: [eventos oficiais do Codex](https://github.com/openai/codex/blob/main/sdk/typescript/src/events.ts) e [CLI oficial do OpenCode](https://opencode.ai/v2/docs/cli/commands/).
 
 Uma tentativa com PR vai para revisão, sem declarar aceite ou merge. A meta só aparece como entregue quando o controle existente registra a conclusão após os gates. Falha de monitor/persistência é incerta e exige conciliação. Desabilitar não remove histórico nem modifica os gates. Veja [decisão de arquitetura](ADR-METAS-CARTAO.md).
+
+### Recuperar a coordenação interrompida
+
+Um ciclo em erro não é reiniciado pelo atalho. Após conferir tarefas e recibos,
+o host aceita `controlador_local.py --projeto <raiz> --acao conciliar-ciclo
+--arquivo <pedido.json>`. O pedido UTF-8 contém `{"versao":"<SHA256 dos bytes
+atuais de dados/gestao/<id>/ciclo.json>","nova_janela":false}`. O host recusa
+processos ainda presentes, inventário indisponível, reservas em execução,
+tentativas sem retorno, ocupações e lotes sem encerramento confirmado.
+Preserva tarefas, reservas, PRs e uma cópia imutável do estado anterior em
+`dados/gestao/<id>/ciclos`. A conciliação apenas pausa a coordenação; não despacha
+equipes. `nova_janela:false` mantém o prazo anterior. `true` autoriza um próximo
+início com a duração configurada, inclusive quando a janela anterior expirou.
+Depois da conciliação, abrir o atalho ou enviar a ação `ciclo` inicia uma nova
+coordenação pelo quadro vivo, sem retomar reservas antigas.
