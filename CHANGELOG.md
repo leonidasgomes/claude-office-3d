@@ -1,6 +1,16 @@
 # Changelog
 
-## Próxima versão
+## 2.0.0-dev.4
+
+- Ciclo por projeto ligado ao GDD e Kanban, com prioridades, seleção paginada, diretor configurado, worktrees novos e despacho sequencial. Ativação e duração são configuráveis; a instalação não inicia tarefas automaticamente.
+- Metas por cartão com tempo e tokens configuráveis no painel. Entrega exige merge confirmado e gates; PR aberto e processo encerrado não significam conclusão.
+- Fila de PRs considera também entregas antigas e rascunhos. O diretor distingue revisão, correção e etapas futuras, com evidências do commit atual; preparação independente não retoma autores antigos ou reservas bloqueadas.
+- Checkpoints preservam entregas ainda em revisão após novo início. Recuperação incerta exige conferência; não há repetição automática de despacho ou publicação.
+- Memória seletiva usa referências a entregas mergeadas, com vínculo ao objetivo e versão do GDD. A ficha da mesa apresenta tarefa, worktree, evidências e recuperação; não presume atividade real.
+- Acompanhamento usa etapa e tempo; PRs e Alertas continuam nas abas existentes. Motivos de espera antigos são removidos quando o trabalho avança.
+- Planejamento exige registro versionado e PR do cartão, além de orientar o cadastro dos próximos cartões com dependências e campos do Kanban.
+- Caixa de sugestões por projeto usa trava liberada pelo sistema operacional após queda. Marcadores antigos continuam exigindo recuperação assistida; protocolo legado preservado.
+- Revisão por IA continua opcional por projeto, sem dispensar checks ou regras de merge. Codex foi validado com entrega real pelo controlador; disponibilidade e autenticação dos modelos OpenCode devem ser conferidas na instalação. Não há garantia de modelos gratuitos disponíveis ou de redução medida de tokens.
 
 - Autonomia Codex opt-in por launcher: rede no workspace e comandos sem confirmação, preservando sandbox e gates.
 
