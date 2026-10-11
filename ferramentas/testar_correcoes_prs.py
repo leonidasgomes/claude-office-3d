@@ -121,6 +121,12 @@ class Correcoes(unittest.TestCase):
             self.assertEqual(ds[0]['rodada'],2);self.assertEqual(ds[0]['raiz'],self.d['id'])
             self.assertEqual(ds,c.pendentes(self.p,self.cfg))
             self.assertEqual(c.contexto_continuacao(self.p,self.cfg)['max_concessoes'],2)
+            contrato={**self.contrato,'delegacao':ds[0]['id'],'head':'b'*40}
+            self.assertEqual(c.conferir_concessao(self.p,self.cfg,contrato,{'token':token}),ds[0])
+            with self.assertRaises(ValueError):
+                c.conferir_concessao(self.p,self.cfg,{**contrato,'delegacao':self.d['id']},{'token':token})
+            with self.assertRaises(ValueError):
+                c.conferir_concessao(self.p,self.cfg,{**contrato,'head':'c'*40},{'token':token})
         with closing(sqlite3.connect(self.ctrl.banco)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM execucao_tarefa').fetchone()[0],2)
         self.d['max_concessoes']=1;self.gravar_delegacao()

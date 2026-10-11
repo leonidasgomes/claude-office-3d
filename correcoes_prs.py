@@ -117,6 +117,15 @@ def contexto_continuacao(dados,cfg):
     return {'delegacao':d['id'],'limites':d['limites'],'max_concessoes':d.get('max_concessoes',1),'prs':alvos} if alvos else None
 
 
+def conferir_concessao(dados,cfg,contrato,reserva):
+    alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
+          'token':reserva['token'],'head':contrato['head']}
+    d=next((d for d in pendentes(dados,cfg) if d['id']==contrato['delegacao'] and alvo in d['prs']),None)
+    if not d or d['limites']!=contrato['limites']:
+        raise ValueError('Delegação/política mudou antes de executar a correção')
+    return d
+
+
 def utilizado(dados,d,pr):
     arq=Path(dados)/'tarefas.db'
     if not arq.is_file():return False
