@@ -2059,3 +2059,18 @@ Saúde em gestão: GET /saude?projeto=ID seleciona o mesmo projeto registrado do
 Revisores suspensos não contam em gestao_projeto.validar. A edição de revisão valida também disponibilidade por fornecedor para autores das equipes; erros de validação são apresentados sem salvar e erros de gravação têm mensagem própria.
 
 
+
+
+Correção de revisão no mesmo despacho: ciclo.max_correcoes_revisao (0..2, padrão 0)
+é configurável em POST /api/gestao/ciclo e ciclo_form.mjs; mudança exige ciclo terminal
+conferido. Com ciclo/metas ativos, Codex/OpenCode pode receber uma devolutiva verificada
+num contexto novo da mesma equipe, worktree, cartão e PR. O claim transacional exige
+reserva bloqueada da chamada atual, última tentativa encerrada com código zero, revisão
+reprovada no PR/SHA exatos e ausência de eventos de filhos. correcao_tarefa conserva
+sessão anterior por tentativa; não é um endpoint de retomada histórica. Tempo original
+e tokens de todas as tentativas são compartilhados em metas_cartao.Execucao; medição
+incompleta ou limite impede outra correção. Publicação com pr/head_sha atualiza o mesmo
+PR via push normal, sem novo PR/merge, após verificar contexto/política e entrega.
+Recibos incertos não são repetidos; ciclo_painel deduplica cartão/PR. A conclusão
+continua condicionada ao merge comprovado. Testes: testar_despacho_revisao,
+testar_metas_cartao, testar_publicacao_host e testar_revisao_painel.

@@ -34,7 +34,8 @@ def vista(projetos, ident):
             numero = str(r.get('pr','')).rsplit('/',1)[-1]
             esperado = f'https://github.com/{cfg["kanban"]["repo"]}/pull/{numero}'
             if r.get('estado')=='publicado' and numero.isdigit() and r.get('pr')==esperado:
-                saida['publicacoes'].append({'cartao':r['cartao'],'pr':esperado})
+                item={'cartao':r['cartao'],'pr':esperado}
+                if item not in saida['publicacoes']:saida['publicacoes'].append(item)
         return saida
     except (OSError, ValueError, KeyError, TypeError, sqlite3.Error):
         return {'ok':False, 'projeto_id':publico['id'], 'erro':'Estado local indisponível; confira Gestão'}

@@ -1809,3 +1809,28 @@ antes de conciliar, sem repetir automaticamente. Uma publicação confirmada nã
 duplica comentários. Revisão desativada não publica sucesso. Projetos com merge
 manual ou sem esse check preservam o fluxo anterior, assim como o revisor Claude
 legado configurado em `config.json`. Reservas antigas não são retomadas.
+
+
+### Devolutiva de revisão para a equipe
+
+Uma revisão reprovada retorna `motivo: revisao_reprovada` e uma `devolutiva` com
+PR, commit, equipe, ação e achados completos. Achados verificados levam à ação
+`corrigir`; indisponibilidade, cobertura incompleta ou falta de achado verificável
+levam a `conferir_revisao`. Falha do revisor não deve gerar uma implementação fictícia.
+
+O publicador do host aceita atualizar o mesmo PR: o pedido habitual
+(`cartao`, `worktree`, `titulo`, `corpo`) recebe `pr` e `head_sha`. A reserva precisa
+estar em execução, com contexto da política atual e entrega registrada nesse commit.
+PR fechado, rascunho, commit divergente ou outro branch/repositório são recusados
+antes do commit. O push é normal, sem force; o recibo original fica preservado e
+a atualização recebe recibo próprio. Sem confirmação remota, não repetir.
+
+Esses mecanismos não autorizam retomar reservas históricas nem dispensam nova
+revisão do commit corrigido. Em Gestão → Configurar operação automática, `Correções automáticas por cartão`
+permite de 0 (desligado, padrão) a 2. Configure com o ciclo pausado. Para novos
+despachos Codex/OpenCode com metas ativas, uma revisão reprovada com achados
+verificados pode acionar a mesma equipe em contexto novo, no mesmo worktree e PR.
+O processo anterior precisa ter retorno confirmado e nenhum agente filho observado.
+Cada tentativa fica registrada; tempo e tokens somam todas as tentativas, sem novo
+orçamento. Medição incompleta, erro do revisor ou limite atingido deixam bloqueio
+para conciliação. Reservas anteriores ao novo ciclo não são retomadas automaticamente.

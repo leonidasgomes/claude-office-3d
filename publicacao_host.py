@@ -10,7 +10,9 @@ def publicar(projeto,dados):
     from gestao_cli import pasta_dados
     from controle_tarefas import Controle
     from gestao_projeto import carregar
-    if not isinstance(dados,dict) or set(dados)!={'cartao','worktree','titulo','corpo'}:
+    campos={'cartao','worktree','titulo','corpo'}
+    atualizar=isinstance(dados,dict) and set(dados)==campos|{'pr','head_sha'}
+    if not isinstance(dados,dict) or (set(dados)!=campos and not atualizar):
         raise ValueError('Publicação exige cartão, worktree, título e corpo')
     n=dados['cartao']
     if type(n) is not int or n<1 or not isinstance(dados['worktree'],str):raise ValueError('Cartão/worktree inválido')
@@ -38,7 +40,42 @@ def publicar(projeto,dados):
     branch=git('branch','--show-current')
     if branch!=criados[0]['branch'] or branch in ('main','master',cfg['ciclo']['base'].removeprefix('origin/')):
         raise ValueError('Branch diverge do recibo')
-    recibo=pasta_dados(projeto)/'publicacoes'/(str(n)+'.json');recibo.parent.mkdir(exist_ok=True)
+    pr_atual=None
+    if atualizar:
+        from kanban_gestao import api
+        if (type(dados['pr']) is not int or dados['pr']<1
+            or not isinstance(dados['head_sha'],str) or not re.fullmatch('[0-9a-f]{40}',dados['head_sha'])):
+            raise ValueError('Correção exige PR e commit completo')
+        ctx=reserva['pacote'].get('contexto_execucao') or {}
+        import hashlib
+        politica=hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+        if (ctx.get('worktree')!=str(p) or ctx.get('branch')!=branch or ctx.get('politica_sha256')!=politica):
+            raise ValueError('Correção exige contexto atual da reserva')
+        evidencia=Controle(pasta_dados(projeto)/'tarefas.db').revisao(reserva['token'])
+        if not evidencia or evidencia['pr']!=dados['pr'] or evidencia['sha']!=dados['head_sha']:
+            raise ValueError('Correção não corresponde à entrega registrada')
+        def conferir_pr():
+            atual=api(f"repos/{cfg['kanban']['repo']}/pulls/{dados['pr']}")
+            vigente=next((r for r in Controle(pasta_dados(projeto)/'tarefas.db').listar(cfg['kanban']['repo'])
+                          if r['token']==reserva['token']),None)
+            if not vigente or vigente['estado']!='executando' or vigente['pacote']!=reserva['pacote']:
+                raise ValueError('Reserva mudou durante a correção')
+            if (carregar(projeto)!=cfg or atual.get('state')!='open' or atual.get('draft') is not False
+                or atual.get('merged') is not False or atual.get('number')!=dados['pr']
+                or atual.get('head',{}).get('sha')!=dados['head_sha']
+                or atual.get('head',{}).get('ref')!=branch
+                or atual.get('head',{}).get('repo',{}).get('full_name')!=cfg['kanban']['repo']
+                or atual.get('base',{}).get('ref')!=cfg['ciclo']['base'].removeprefix('origin/')
+                or atual.get('base',{}).get('repo',{}).get('full_name')!=cfg['kanban']['repo']):
+                raise ValueError('PR/commit/base divergente; não publicar correção')
+            if not re.search(rf'(?:Closes|Fixes|Resolves|Parte de)\s+#{n}\b',atual.get('body') or '',re.I):
+                raise ValueError('PR não vincula o cartão da correção')
+            return atual
+        pr_atual=conferir_pr()
+        if git('rev-parse','HEAD')!=dados['head_sha']:
+            raise ValueError('Checkout não corresponde ao commit revisado')
+    nome_recibo=(str(n)+'-pr-'+str(dados['pr'])+'-'+dados['head_sha']) if atualizar else str(n)
+    recibo=pasta_dados(projeto)/'publicacoes'/(nome_recibo+'.json');recibo.parent.mkdir(exist_ok=True)
     if recibo.exists():raise ValueError('Publicação anterior exige conciliação; não repetir')
     alterados=set(filter(None,git('diff','--name-only','-z','HEAD').split('\0')))
     novos=set(filter(None,git('ls-files','--others','--exclude-standard','-z').split('\0')))
@@ -64,10 +101,24 @@ def publicar(projeto,dados):
                     raise ValueError('Pedido de publicação já versionado/indexado; retire-o da entrega antes de publicar')
             except (json.JSONDecodeError,UnicodeError,OSError):pass
     registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch,
-              'arquivos_pedido_excluidos':sorted(pedidos)};atomico(recibo,registro)
+              'arquivos_pedido_excluidos':sorted(pedidos)}
+    if atualizar:
+        if not nomes:raise ValueError('Correção sem alterações')
+        conferir_pr()
+        registro.update(pr=f"https://github.com/{cfg['kanban']['repo']}/pull/{dados['pr']}",head_anterior=dados['head_sha'],operacao='atualizar_pr')
+    atomico(recibo,registro)
     if nomes:
         git('add','--all','--',*sorted(nomes));git('commit','-m',dados['titulo'])
-    sha=git('rev-parse','HEAD');git('push','origin','HEAD:refs/heads/'+branch)
+    sha=git('rev-parse','HEAD')
+    if atualizar:conferir_pr()
+    git('push','origin','HEAD:refs/heads/'+branch)
+    if atualizar:
+        atual=api(f"repos/{cfg['kanban']['repo']}/pulls/{dados['pr']}")
+        if atual.get('head',{}).get('sha')!=sha:
+            raise ValueError('Push sem confirmação remota; concilie antes de repetir')
+        registro.update(estado='publicado',sha=sha)
+        atomico(recibo,registro)
+        return registro
     corpo=recibo.with_suffix('.md');corpo.write_text(dados['corpo'],encoding='utf-8')
     url=rodar(['gh','pr','create','--repo',cfg['kanban']['repo'],'--base',
         cfg['ciclo']['base'].removeprefix('origin/'),'--head',branch,'--title',dados['titulo'],'--body-file',str(corpo)])

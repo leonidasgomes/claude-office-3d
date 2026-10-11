@@ -2,6 +2,7 @@
 from contextlib import contextmanager, closing
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -96,7 +97,7 @@ def encerrar_arvore(processo):
 
 
 class Execucao:
-    def __init__(self,projeto,pasta,tentativa,meta,consumo,relogio=time.monotonic,leitor=tokens_observados,encerrar=encerrar_arvore):
+    def __init__(self,projeto,pasta,tentativa,meta,consumo,relogio=time.monotonic,leitor=tokens_observados,encerrar=encerrar_arvore,antecedentes=None):
         if not re.fullmatch('[0-9a-f]{32}',tentativa):raise ValueError('Tentativa de meta inválida')
         self.projeto=Path(projeto);self.arquivo=Path(pasta)/'metas'/(tentativa+'.json')
         self.consumo=consumo;self.relogio=relogio;self.leitor=leitor;self.encerrar=encerrar
@@ -105,6 +106,17 @@ class Execucao:
         self.registro={'tentativa':tentativa,'meta':meta,'estado':'executando','inicio':agora,
                        'limite':agora+60*meta['limites']['tempo_min'],'atualizado':agora,
                        'tokens_observados':None,'medicao':'sem_amostras','motivo':''}
+        self.anteriores=[]
+        if antecedentes is not None:
+            ids=antecedentes.get('tentativas',[])
+            inicio=antecedentes.get('inicio_monotonic')
+            if (not isinstance(ids,list) or not 1<=len(ids)<=2 or len(set(ids))!=len(ids)
+                or any(not isinstance(i,str) or not re.fullmatch('[0-9a-f]{32}',i) or i==tentativa for i in ids)
+                or type(inicio) not in (int,float) or not math.isfinite(inicio) or inicio>self.inicio
+                or antecedentes.get('limite')!=antecedentes.get('inicio',0)+60*meta['limites']['tempo_min']):
+                raise ValueError('Histórico de orçamento inválido')
+            self.anteriores=ids[:];self.inicio=inicio
+            self.registro.update(inicio=antecedentes['inicio'],limite=antecedentes['limite'],tentativas_anteriores=ids[:])
         self.arquivo.parent.mkdir(parents=True,exist_ok=True)
         if self.arquivo.exists():raise ValueError('Meta existente: não retomar automaticamente')
         self.salvar()
@@ -115,7 +127,9 @@ class Execucao:
 
     def conferir(self):
         with self.trava:
-            total,estado=self.leitor(self.consumo,self.projeto,self.registro['tentativa'])
+            amostras=[self.leitor(self.consumo,self.projeto,i) for i in self.anteriores+[self.registro['tentativa']]]
+            total=sum(t for t,e in amostras) if all(t is not None for t,e in amostras) else None
+            estado='observado' if all(e=='observado' for t,e in amostras) else (amostras[-1][1] if len(amostras)==1 else 'parcial')
             self.registro.update(tokens_observados=total,medicao=estado)
             if self.motivo is None:
                 if (self.relogio() if self.fim_execucao is None else self.fim_execucao)-self.inicio>=60*self.registro['meta']['limites']['tempo_min']:self.motivo='limite_tempo'
@@ -151,6 +165,17 @@ class Execucao:
             parar.set();thread.join(timeout=17)
             if thread.is_alive() or falhas:raise ValueError('Monitor de meta indisponível; concilie a tentativa')
             self.encerrar_medicao()
+
+    def orcamento_correcao(self):
+        """Somente continuação em memória, sem renovar o orçamento do cartão."""
+        self.conferir()
+        if (self.motivo or self.registro['medicao']!='observado'
+            or self.registro['tokens_observados'] is None
+            or self.registro['tokens_observados']+1000>=self.registro['meta']['limites']['tokens']
+            or self.relogio()-self.inicio+5>=60*self.registro['meta']['limites']['tempo_min']
+            or len(self.anteriores)>=2):return None
+        return {'tentativas':self.anteriores+[self.registro['tentativa']],
+                'inicio_monotonic':self.inicio,'inicio':self.registro['inicio'],'limite':self.registro['limite']}
 
     def finalizar(self,estado,motivo='',pr=None):
         with self.trava:

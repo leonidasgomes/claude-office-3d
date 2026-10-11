@@ -21,7 +21,7 @@ PADRAO = {
     "rotas": {},
     "metas": {"ativo": False, "tempo_min": 60, "tokens": 100000},
     "ciclo": {"ativo": False, "continuo": False, "duracao_min": 120, "max_cartoes": 2,
-              "intervalo_seg": 300, "base": "", "criar_subtarefas": False},
+              "intervalo_seg": 300, "base": "", "criar_subtarefas": False, "max_correcoes_revisao": 0},
     "sugestoes": {"ativo": False, "bots": [], "triagem": False},
     "auditor": {"ativo": False, "max_diff": 60000, "max_prs": 3},
     "revisao": {"ativo": False, "clouds_distintas": 2, "separar_autor": True, "revisores": []},
@@ -91,7 +91,7 @@ def validar(dados):
     ciclo=cfg['ciclo']
     for chave in ('ativo','continuo','criar_subtarefas'):
         if type(ciclo[chave]) is not bool:raise ValueError('Ciclo: flags booleanas obrigatórias')
-    for chave, minimo, maximo in [('duracao_min',1,240),('max_cartoes',1,2),('intervalo_seg',60,3600)]:
+    for chave, minimo, maximo in [('duracao_min',1,240),('max_cartoes',1,2),('intervalo_seg',60,3600),('max_correcoes_revisao',0,2)]:
         if type(ciclo[chave]) is not int or not minimo<=ciclo[chave]<=maximo:
             raise ValueError('Ciclo: limite inválido em '+chave)
     if not isinstance(ciclo['base'],str):raise ValueError('Ciclo: base deve ser texto')

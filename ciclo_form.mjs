@@ -9,7 +9,11 @@ export function formularioCiclo(projeto,atualizar) {
   const modo=document.createElement('label');modo.textContent='Operação contínua enquanto houver trabalho e acesso ao provider';
   const continuo=document.createElement('input');continuo.type='checkbox';continuo.checked=projeto.ciclo_config.continuo===true;
   continuo.setAttribute('aria-label',modo.textContent);modo.append(continuo);form.append(modo);
-  const aviso=document.createElement('p');aviso.textContent='Vale para o próximo ciclo. O modo contínuo exige metas por cartão habilitadas e dispensa o prazo global. Mantém execução sequencial, gates e pausas por erro. Sem mudanças no quadro, espera sem chamar IA. Salvar não inicia trabalho nem altera a sessão atual.';form.append(aviso);
+  const labelCorrecoes=document.createElement('label');labelCorrecoes.textContent='Correções automáticas por cartão (0 desativa, até 2)';
+  const correcoes=document.createElement('input');correcoes.type='number';correcoes.min='0';correcoes.max='2';correcoes.step='1';
+  correcoes.required=true;correcoes.value=String(projeto.ciclo_config.max_correcoes_revisao??0);
+  correcoes.setAttribute('aria-label',labelCorrecoes.textContent);labelCorrecoes.append(correcoes);form.append(labelCorrecoes);
+  const aviso=document.createElement('p');aviso.textContent='Vale para o próximo ciclo. O modo contínuo exige metas por cartão habilitadas e dispensa o prazo global. Mantém execução sequencial, gates e pausas por erro. Sem mudanças no quadro, espera sem chamar IA. As correções exigem ciclo pausado, metas ativas e retorno confirmado; usam o mesmo PR e orçamento. Salvar não inicia trabalho nem retoma reservas antigas.';form.append(aviso);
   const salvar=document.createElement('button');salvar.type='submit';salvar.textContent='Salvar operação';form.append(salvar);
   const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
   let versao=projeto.politica_versao;
@@ -18,8 +22,10 @@ export function formularioCiclo(projeto,atualizar) {
     try{
       const n=Number(minutos.value);
       if(!Number.isSafeInteger(n)||n<1||n>240)throw Error('Informe entre 1 e 240 minutos.');
+      const c=Number(correcoes.value);
+      if(!Number.isSafeInteger(c)||c<0||c>2)throw Error('Informe entre 0 e 2 correções.');
       const r=await fetch('/api/gestao/ciclo',{method:'POST',headers:{'Content-Type':'application/json','X-Office-Acao':'1'},
-        body:JSON.stringify({projeto_id:projeto.id,versao,ciclo:{duracao_min:n,continuo:continuo.checked}})});
+        body:JSON.stringify({projeto_id:projeto.id,versao,ciclo:{duracao_min:n,continuo:continuo.checked,max_correcoes_revisao:c}})});
       const j=await r.json();if(!r.ok)throw Error(j.erro||'Não foi possível salvar.');
       if(!/^[a-f0-9]{64}$/.test(j.versao)||typeof j.alterado!=='boolean')throw Error('Resposta inválida; recarregue para conferir.');
       versao=j.versao;d.open=false;await atualizar();

@@ -90,3 +90,33 @@ def executar(projeto, trabalho, base, equipe, aceite, chamar=revisores_console.c
     finally:
         tmp.unlink(missing_ok=True)
     return relatorio
+
+
+def devolutiva(cfg, autor, relatorio, sha, pr, equipe):
+    """Achados verificados para a equipe; falha do revisor não vira bug do autor."""
+    esperados = gestao_projeto.revisores(cfg, autor)
+    from revisao_cruzada import assinatura, normalizar
+    verificadas = relatorio.get('revisoes', [])
+    valida = (relatorio.get('sha') == sha and relatorio.get('autor') == autor
+              and relatorio.get('politica') == assinatura(cfg)
+              and isinstance(verificadas, list) and len(verificadas) == len(esperados)
+              and bool(esperados))
+    achados = []
+    if valida:
+        for esperado, recebido in zip(esperados, verificadas):
+            if (not isinstance(recebido, dict) or recebido.get('nome') != esperado['nome']
+                or recebido.get('executor') != esperado['executor']
+                or recebido.get('sha') != sha or 'erro' in recebido or 'falha_console' in recebido):
+                valida = False
+                break
+            try:
+                resposta = normalizar(recebido['resposta'])
+                achados.extend({**a, 'revisor': recebido['nome']} for a in resposta['achados'])
+            except (ValueError, KeyError, TypeError):
+                valida = False
+                break
+    return {'pr': pr, 'sha': sha, 'equipe': equipe,
+            'acao': 'corrigir' if valida and achados else 'conferir_revisao',
+            'achados': achados if valida else [],
+            'motivo': ('Revisão encontrou problemas verificáveis no commit'
+                       if valida and achados else 'Revisão indisponível, incompleta ou sem achado verificável')}

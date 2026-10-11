@@ -32,6 +32,27 @@ class Metas(unittest.TestCase):
         self.meta=m.construir(self.raiz,self.cfg,self.cartao,self.issue,self.pacote)
         self.dados=self.raiz/'dados';self.ledger=self.raiz/'consumo.db';self.ident='a'*32
 
+    def test_correcao_soma_tokens_e_preserva_relogio_original(self):
+        self.meta['limites']['tokens']=5000
+        agora=[0];valores={self.ident:2000,'b'*32:1500}
+        leitor=lambda arquivo,projeto,i:(valores.get(i),'observado' if i in valores else 'sem_amostras')
+        a=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.ledger,relogio=lambda:agora[0],leitor=leitor)
+        agora[0]=20;a.encerrar_medicao();orcamento=a.orcamento_correcao()
+        self.assertIsNotNone(orcamento)
+        agora[0]=35
+        b=m.Execucao(self.raiz,self.dados,'b'*32,self.meta,self.ledger,relogio=lambda:agora[0],leitor=leitor,antecedentes=orcamento)
+        b.conferir();self.assertEqual(b.registro['tokens_observados'],3500)
+        self.assertEqual(b.registro['limite'],a.registro['limite']);self.assertEqual(b.inicio,a.inicio)
+        valores['b'*32]=3000;self.assertEqual(b.conferir(),'limite_tokens')
+        agora[0]=60
+        c=m.Execucao(self.raiz,self.dados,'c'*32,self.meta,self.ledger,relogio=lambda:agora[0],leitor=leitor,antecedentes=orcamento)
+        self.assertEqual(c.conferir(),'limite_tempo')
+        self.assertIsNone(c.orcamento_correcao())
+
+    def test_correcao_sem_medicao_completa_nao_ganha_novo_orcamento(self):
+        a=m.Execucao(self.raiz,self.dados,self.ident,self.meta,self.ledger,leitor=lambda *_:(None,'indisponivel'))
+        self.assertIsNone(a.orcamento_correcao())
+
     def test_meta_kanban_gdd_sem_inventar_objetivo_ou_mudar_aceite(self):
         self.assertEqual(self.meta['gdd']['numero'],1);self.assertEqual(self.meta['aceite'],'teste real')
         self.assertEqual(len(self.meta['gdd']['sha256']),64)

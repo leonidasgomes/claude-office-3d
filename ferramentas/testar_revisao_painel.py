@@ -53,6 +53,19 @@ class RevisaoPainel(unittest.TestCase):
         self.assertEqual(antes,self.arq.read_bytes())
         dados['revisao']['clouds_distintas']=1
         self.assertEqual(p.api_revisao([self.raiz],dados,{'permissao':'pc'})[0],200)
+    def test_correcoes_configuraveis_exigem_ciclo_pausado(self):
+        dados=self.raiz/'dados';dados.mkdir();estado=dados/'ciclo.json'
+        estado.write_text(json.dumps({'estado':'implementando'}))
+        with patch('gestao_cli.pasta_dados',return_value=dados):
+            with self.assertRaisesRegex(p.Conflito,'Pause'):
+                p.atualizar_ciclo(self.raiz,self.hash,{'max_correcoes_revisao':1})
+            self.assertEqual(self.arq.read_bytes(),self.bruto)
+            estado.write_text(json.dumps({'estado':'pausado'}))
+            resultado=p.atualizar_ciclo(self.raiz,self.hash,{'max_correcoes_revisao':1})
+            cfg,sha,_=p.snapshot(self.raiz);self.assertEqual(cfg['ciclo']['max_correcoes_revisao'],1)
+            for n in (-1,3,True,1.5):
+                with self.assertRaises(ValueError):p.atualizar_ciclo(self.raiz,sha,{'max_correcoes_revisao':n})
+
     def test_duracao_preserva_politica_e_sessao(self):
         ciclo=self.raiz/'ciclo.json';ciclo.write_text('{"limite":123}')
         resultado=p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':60})
