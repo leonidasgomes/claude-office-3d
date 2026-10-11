@@ -73,6 +73,8 @@ class Provider:
             if agente:
                 raise ValueError("Codex não carrega .claude/agents; use instruções no prompt.")
             args = comando_nativo(exe, self.nome)
+            if os.environ.get('OFFICE_CODEX_SEM_DAEMON') == '1':
+                args += ['--disable','daemon_auto_start']
             if prompt is None and sandbox is not None:
                 args += ['--sandbox',sandbox]
             if prompt is not None:
