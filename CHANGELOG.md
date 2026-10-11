@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Continuação delimitada após tempo/tokens: diretor recebe prova do limite e CEO decide completar correções/evidências no mesmo PR, sem repetir autorização humana nem apagar histórico.
+
 - Observação Codex paginada, deduplicação por chamada e comandos em segundo plano vinculados à tentativa.
 - Atualização SSE com cursor, batidas e alternativa REST paginada; replay e acesso pareado preservados.
 - Operações e duração observada na ficha da mesa, intervalos de espera e consumo parcial por merge confirmado.

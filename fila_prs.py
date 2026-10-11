@@ -336,6 +336,8 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     pacote={'prs':[],'fontes':[{'caminho':d['caminho'],'sha256':d['sha256']} for d in docs],
             'equipes':[{'nome':e['nome'],'especialidade':e['especialidade']} for e in cfg['equipes']]}
     repo=cfg['kanban']['repo']
+    from correcoes_prs import contexto_continuacao
+    pacote['continuacao_delegada']=contexto_continuacao(dados,cfg)
     for p in prs:
         if (type(p.get('number')) is not int or p['number']<1 or p.get('state')!='open'
             or not re.fullmatch('[0-9a-f]{40}',p.get('head',{}).get('sha',''))
@@ -389,6 +391,14 @@ Entrega do planejamento não comprova implementação, mapa, benchmark ou aceite
 Esses dados não autorizam retomar sessões, criar tarefas duplicadas, aprovar PR ou dispensar gates.
 Fontes citadas por hash não foram carregadas: não invente objetivos do GDD nem medições.
 Escolha equipe cadastrada. Revisar significa conferir evidências, não aprovar o commit.
+continuacao_delegada, quando presente, autoriza CEO e diretor a decidir uma nova concessão
+limitada para os PRs indicados, com prova do limite anterior. Não peça autorização humana
+para essa decisão. Encaminhe correcao ou etapa à equipe AUTORA indicada na prova quando
+houver ação concreta no PR existente (corrigir, completar evidências ou regularizar o
+vínculo da etapa futura existente). Informe objetivo e aceite executáveis nesse orçamento.
+Preserve aceite do pai e gates: regularizar uma etapa não executa sua dependência nem
+aprova o PR. Não invente achados; se realmente não houver ação executável, use aguardar
+e explique recurso/dependência. A concessão não permite retomar sessões incertas.
 Retorne JSON {"encaminhamentos":[{"pr":1,"head":"sha exato","equipe":"nome",
 "acao":"revisar|correcao|etapa|aguardar","motivo":"...","objetivo":"...",
 "aceite":"...","evidencias_faltantes":"..."}]}. Todos os PRs exigem encaminhamento.

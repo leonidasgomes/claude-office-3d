@@ -24,6 +24,16 @@ class Fila(unittest.TestCase):
         self.assertTrue(a['somente_preparacao']);self.assertIn('aceite original preservado',consultar.call_args.args[0])
         self.pr['head']['sha']='b'*40;self.d['head']='b'*40
         planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);self.assertEqual(consultar.call_count,2)
+
+    def test_diretor_recebe_concessao_e_mudanca_invalida_cache(self):
+        consultar=Mock(return_value=[self.d]);contexto={'delegacao':'f'*32,'prs':[{'pr':3,'equipe':'Dev'}]}
+        with patch('correcoes_prs.contexto_continuacao',return_value=contexto):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+            self.assertIn('"continuacao_delegada"',consultar.call_args.args[0])
+            self.assertIn('equipe AUTORA',consultar.call_args.args[0])
+        with patch('correcoes_prs.contexto_continuacao',return_value=None):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(consultar.call_count,2)
     def revisao_fixture(self):
         from revisao_cruzada import assinatura
         pasta=self.p/'revisoes';pasta.mkdir(exist_ok=True)
