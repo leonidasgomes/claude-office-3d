@@ -93,6 +93,7 @@ async function carregar() {
         if(ciclo.motivo)linha('p',ciclo.motivo,trabalho);
         if(ciclo.proxima_acao)linha('p','Próxima ação: '+ciclo.proxima_acao,trabalho);
         if(ciclo.prs_pendentes?.length)linha('p',`${ciclo.prs_pendentes.length} PR(s) desta sessão aguardando conclusão. Confira a aba PRs.`,trabalho);
+        if(ciclo.prs_abertos)linha('p',`${ciclo.prs_abertos} PR(s) aberto(s) no projeto. Revisões e recuperação têm prioridade; confira PRs e Alertas.`,trabalho);
         for(const lote of (ciclo.resultados||[]).slice(-3))for(const r of lote.resultados||[])
           linha('p',`Resultado #${r.cartao}: ${r.estado}${r.motivo?' · '+r.motivo:''}`,trabalho);
       }

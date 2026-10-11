@@ -37,7 +37,7 @@ def resumo(projeto):
     if not p.exists():return {'estado':'desligado'}
     r=json.loads(p.read_text(encoding='utf-8'))
     publico={k:r.get(k) for k in ('id','estado','inicio','limite','continuo','pausa_configuravel','atualizado','objetivo',
-                                'cartoes','motivo','proxima_acao','resultados')}
+                                'cartoes','motivo','proxima_acao','resultados','prs_abertos')}
     publico['conclusoes']=[{k:c.get(k) for k in ('cartao','pr','estado','motivo','acao')}
                           for c in r.get('conclusoes',[])]
     publico['prs_pendentes']=[{k:p.get(k) for k in ('cartao','equipe','pr','estado','motivo')}
@@ -493,6 +493,18 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
             prs=k._paginas(f"repos/{cfg['kanban']['repo']}/pulls?state=open")
+            numeros=[]
+            for pr in prs:
+                if (not isinstance(pr,dict) or type(pr.get('number')) is not int or pr['number']<1
+                    or pr.get('state')!='open'):
+                    raise ValueError('Fila de PRs do projeto sem cobertura válida; confira GitHub')
+                numeros.append(pr['number'])
+            if len(set(numeros))!=len(numeros):raise ValueError('Fila de PRs duplicada; confira paginação')
+            registro['prs_abertos']=len(numeros)
+            if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
+                salvar('aguardando',cartoes=[],motivo='Limite de PRs abertos do projeto; priorizar revisão e recuperação',
+                       proxima_acao='conferir PRs e Alertas; conciliar reservas antigas antes de recuperar pela equipe')
+                esperar();continue
             fonte={'campos':quadro['campos'],'itens':quadro['itens'],
                    'prs':[(pr['number'],pr.get('updated_at'),pr.get('head',{}).get('sha')) for pr in prs]}
             fonte['evidencias']=evidencias(projeto)

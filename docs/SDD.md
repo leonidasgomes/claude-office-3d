@@ -2077,7 +2077,8 @@ testar_metas_cartao, testar_publicacao_host e testar_revisao_painel.
 
 
 Fila e memória de entregas: ciclo.max_prs_pendentes (0..20) controla espera por
-entregas em revisão desta sessão; pendencias_sessao usa vínculos privados e
+entregas em revisão desta sessão e todos os PRs abertos lidos por REST antes
+de outro despacho; pendencias_sessao usa vínculos privados e
 retornos confirmados, sem adoção de reservas antigas. A conclusão por merge
 continua em conclusao_tarefas. ciclo.memoria_referencias (0..5) habilita
 memoria_entregas.recuperar: leitura SQLite sem migração, conclusão registrada,

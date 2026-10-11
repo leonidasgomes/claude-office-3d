@@ -10,6 +10,21 @@ from gestao_projeto import validar
 
 
 class Ciclo(unittest.TestCase):
+    def test_pr_historico_impede_acumular_antes_de_chamar_diretor(self):
+        self.cfg['ciclo']['max_prs_pendentes']=1;ident='a'*32;tempo=[0]
+        c.atomico(c.caminho_estado(self.p),{'id':ident,'estado':'iniciando','continuo':True,'limite':None,'resultados':[],'pausa_configuravel':True})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[self.item(1)]};k.cartoes.return_value=[self.item(1)]
+        k._paginas.return_value=[{'number':667,'state':'open','draft':True},{'number':672,'state':'open','draft':False}]
+        consulta=Mock();criar=Mock();lote=Mock()
+        def dormir(seg):
+            self.assertEqual(c.resumo(self.p)['estado'],'aguardando')
+            self.assertEqual(c.resumo(self.p)['prs_abertos'],2)
+            c.solicitar_pausa(self.p,ident);tempo[0]+=seg
+        with patch.object(c,'Kanban',return_value=k):
+            c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta,criar=criar,lote=lote)
+        consulta.assert_not_called();criar.assert_not_called();lote.assert_not_called()
+        self.assertEqual(c.resumo(self.p)['estado'],'pausado')
+
     def test_dois_limites_seguidos_param_antes_de_novo_despacho(self):
         itens=[self.item(1),self.item(25),self.item(50)];despachos=[]
         c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':600,'resultados':[]})
