@@ -36,6 +36,7 @@ Object.assign(dados.projetos[0].desempenho.grupos[0],{equipe:'<script>Equipe</sc
   resultados:{revisao_aprovada:0,revisao_desativada:0,revisao_reprovada:0,falha_console:1,sem_entrega:0,gate_bloqueado:0}});
 dados.projetos[0].tarefas[0].ultima_execucao={duracao_seg:5,codigo:0,consumo:{grupos:[{provider:'gemini',modelo:'<script>modelo nativo</script>',origem_modelo:'informado',agente:'Dev',amostras:1,entrada:10,com_entrada:1,saida:2,com_saida:1,total:12,com_total:1,equivalente_api_usd:'0.02',com_preco:1}]}};
 const vazio=()=>new Elemento('details');
+Object.assign(dados.projetos[0],{metas_config:{ativo:false,tempo_min:60,tokens:100000},metas:{itens:[]}});
 dados.projetos[0].funcionarios=[{id:'f'.repeat(32),nome:'História <script>',funcao:'Pesquisa',equipe:'Dev',executor:{console:'claude'},perfil_nativo:{estado:'divergente'}}];
 dados.projetos.push({id:'d'.repeat(20),nome:'Projeto inativo',ativo:false,documentacao:{
   fontes:[{papel:'regras',caminho:'<script>REGRAS.md</script>',estado:'ausente'}],
@@ -53,6 +54,7 @@ vm.runInContext(fs.readFileSync(new URL('../retomada_form.mjs',import.meta.url),
 vm.runInContext(fs.readFileSync(new URL('../merge_form.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fs.readFileSync(new URL('../indicadores_providers.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fs.readFileSync(new URL('../agentes_nativos_form.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
+vm.runInContext(fs.readFileSync(new URL('../metas_form.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fonte,contexto);
 await vm.runInContext('painel.open=true; carregar()',contexto);
 const texto=e=>[e.textContent,...e.children.map(texto)].join('\n');
@@ -61,6 +63,8 @@ assert.match(resultado,/Todas as mesas deste projeto/);
 assert.match(resultado,/Ver este projeto na cena/);
 assert.match(resultado,/Funcionários adicionais cadastrados/);
 assert.match(resultado,/Consumo deste projeto/);
+assert.match(resultado,/Configurar metas por cartão/);
+assert.match(resultado,/Cartões antigos não ganham metas retroativas/);
 assert.match(resultado,/Acompanhamento de outras instalações/);
 assert.match(resultado,/Ponte: algumas fontes interrompidas/);
 assert.match(resultado,/<script>Legado<\/script>.*3 eventos importados nesta execução.*1 descartados/);

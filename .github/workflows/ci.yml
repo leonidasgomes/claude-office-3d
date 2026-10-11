@@ -130,6 +130,8 @@ jobs:
           node ferramentas/testar_merge_form.mjs
           node ferramentas/testar_revisao_form.mjs
           node ferramentas/testar_ciclo_form.mjs
+          node ferramentas/testar_metas_form.mjs
+          python -W error ferramentas/testar_metas_cartao.py
       - name: Codex interativo (transcritos e isolamento de sessões)
         run: python -W error ferramentas/testar_codex_observador.py
       - name: Providers no feed HTTP do escritório
@@ -196,4 +198,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Preparação da máquina com instaladores simulados
-        run: python -W error ferramentas/testar_preparar_maquina.py
+        run: |
+          python -W error ferramentas/testar_preparar_maquina.py
+          python -W error ferramentas/testar_metas_cartao.py

@@ -1077,6 +1077,12 @@ Cabeçalhos exigidos em todo POST de ação (`rede._origem_segura`): `Content-Ty
 localhost; no celular, `X-Office-Csrf` igual ao token da sessão. As rotas `/api/saude/*` exigem ainda `Sec-Fetch-Site:
 same-origin` e `Sec-Fetch-Mode` presentes (`rede.ROTAS_NAVEGADOR`); texto que não codifica em UTF-8 (surrogate solto) é 400.
 
+`POST /api/gestao/metas`: edição no PC, projeto registrado e ativo, hash de política e campos exatos projeto_id/versao/metas. metas contém ativo booleano, tempo_min inteiro 1..240, tokens inteiro 1000..10000000. Validação, backup e gravação atômica existentes. Conflito 409 para versão divergente ou ciclo/tarefa em execução (inclui reserva incerta). Não inicia ciclo, não altera reservas ou gates. GET /api/gestao projeta metas_config e metas (até 200 tentativas; somente metadados públicos). metas_form.mjs configura em CEO e diretor e mostra histórico em Trabalho e indicadores.
+
+metas_cartao.py constrói snapshot estável por cartão na preparação, usando seções Objetivo N da fonte produto e vínculo explícito/referências do GDD, hashes, escopo, aceite e dependências; não inclui horário variável na identidade. gestao_cli confere novamente na admissão/entrega e mantém fluxo de reservas/gates. Recibos UTF-8 atômicos por tentativa em dados/gestao/ID/metas/UUID.json. Não sobrescreve tentativa existente, nem retroage sobre reservas antigas. Monitor por console estruturado, grupo de processos próprio no POSIX, árvore por PID lançado no Windows; watchdog de tempo e tokens observados a cada segundo/retorno, sem sondagem de modelo. Limite confirmado retorna código 124 e bloqueia a entrega. Persistência/monitor inválido bloqueia e exige conciliação. Janela do agente termina antes da revisão independente, que mantém gates existentes. PR não conclui meta; projeção entregue exige estado concluido na reserva da mesma tentativa, após o controle de conclusão existente.
+
+Consumo por meta lê consumo_providers.db em mode=ro: JOIN consumo/consumo_tentativa pelo vínculo exato de projeto e tentativa, sem filtro semanal, sem estimativa por texto ou soma dupla de cache. Sem amostras/erro fica null; cobertura incompleta é parcial, total conhecido serve apenas como limite inferior. Não assegura teto financeiro ou cobertura de filhos; contadores podem chegar apenas no fim de turno/step. Não altera cotas, preços, transcritos ou eventos legados. Ver docs/ADR-METAS-CARTAO.md e projeto.exemplo.json.
+
 ### 5.2 Hooks do Claude Code
 
 | Evento | Matcher | Resultado no escritório |
@@ -2051,3 +2057,5 @@ Saúde em gestão: GET /saude?projeto=ID seleciona o mesmo projeto registrado do
 `POST /api/gestao/ciclo`: edição no PC da duração do próximo ciclo (1..240 minutos), com projeto_id, versão hash e ciclo contendo somente duracao_min. Preserva outras opções e prazo atual. ciclo_form.mjs aparece em Gestão/CEO e diretor. O ciclo host ignora apenas mudanças de duracao_min ao conferir a política durante uma sessão.
 
 Revisores suspensos não contam em gestao_projeto.validar. A edição de revisão valida também disponibilidade por fornecedor para autores das equipes; erros de validação são apresentados sem salvar e erros de gravação têm mensagem própria.
+
+

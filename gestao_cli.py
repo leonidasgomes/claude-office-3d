@@ -59,6 +59,10 @@ def conferir_cartao(k, numero, projeto, cfg, equipe, pacote, status):
         raise ValueError('Skill mudou desde o despacho; concilie com a fonte compartilhada')
     if fontes_resolvidas(projeto,cfg)!=pacote['fontes_resolvidas']:
         raise ValueError('Fonte documental mudou desde o despacho; concilie com a raiz canônica')
+    if pacote.get('meta'):
+        from metas_cartao import construir
+        if construir(projeto,cfg,{**cartao,'numero':numero},issue,pacote)!=pacote['meta']:
+            raise ValueError('Meta/GDD mudou desde o despacho; concilie com o cartão')
     if carregar(projeto)!=cfg:
         raise ValueError('Política mudou durante a conferência do cartão; concilie com o projeto')
     return issue
@@ -102,6 +106,9 @@ def preparar(projeto, numero, equipe, escopo="implementacao", kanban=None, funci
     pacote['fontes_resolvidas']=fontes_resolvidas(projeto,cfg)
     pacote['skills_resolvidas']=resolver_skills(projeto,nomes_cartao(pacote['skills']) + (membro or {}).get('skills',[]),cfg,
                                                rota['console'],rota.get('execucao','cloud')=='local')
+    if cfg['metas']['ativo']:
+        from metas_cartao import construir
+        pacote['meta']=construir(projeto,cfg,{**cartao,'numero':numero},issue,pacote)
     return cfg, provider, exe, k, pacote
 
 
@@ -386,7 +393,7 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
         token = controle.reservar(chave, str(numero), equipe, provider.nome, pacote, quadro_atual=True)
     else:
         token=retomada['token']
-    medicao=None; retorno_registrado=False; resultado_registrado=False
+    medicao=None; retorno_registrado=False; resultado_registrado=False;meta_execucao=None;entrega=None
     try:
         if carregar(projeto) != cfg:
             raise ValueError('Política mudou antes do despacho')
@@ -407,6 +414,11 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
             nome = funcionarios.nome_eventos(atual)
         from skills_compartilhados import instrucoes_ativacao
         prompt += instrucoes_ativacao(pacote['skills_resolvidas'])
+        if pacote.get('meta'):
+            prompt += ('\nMeta deste cartão: persista somente no escopo e aceite do despacho. '
+                'Ao faltar evidência, registre o bloqueio e a próxima ação. Não invente entrega nem reduza gates. '
+                'Respeite o tempo e tokens em meta.limites; finalize com evidências, testes e PR quando aplicável. '
+                'A meta só é entregue após os gates; saída zero ou PR aberto não significa conclusão.\n')
         if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex':
             prompt += ('\nPublicação Git pelo host do escritório: não contorne proteção .git. '
                 'Após implementar e testar, salve JSON UTF-8 com cartao (inteiro), worktree (raiz absoluta), '
@@ -416,6 +428,11 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 'Depois publique a revisão de arquitetura pelo script autorizado do projeto. '
                 'Não publique checks obrigatórios à mão nem faça merge. Se publicar falhar, pare sem repetir.\n')
         medicao=controle.iniciar_execucao(token,'retomada' if retomada else 'despacho')
+        if pacote.get('meta'):
+            from metas_cartao import Execucao
+            import banco as banco_modulo
+            meta_execucao=Execucao(projeto,pasta_dados(projeto),medicao,pacote['meta'],
+                                   banco_modulo.ARQ.parent/'consumo_providers.db')
         if ao_execucao is not None:ao_execucao(token,medicao)
         inicio_execucao=time.monotonic()
         from atividade_execucao import Acompanhamento
@@ -425,12 +442,14 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 codigo = local(pacote['executor'],cfg,provider,exe,trabalho,nome,prompt,
                                projeto_consumo=projeto,tentativa_consumo=medicao,
                                ao_sessao=lambda ident:controle.vincular_sessao(token,provider.nome,ident),
-                               ao_processo=atividade.vincular,ao_evento=atividade.evento)
+                               ao_processo=atividade.vincular,ao_evento=atividade.evento,
+                               **({'limites_meta':meta_execucao} if meta_execucao else {}))
             else:
                 parametros_skills={}
+                if meta_execucao:parametros_skills['limites_meta']=meta_execucao
                 if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex' and not retomada:
                     fila_host=RAIZ/'dados'/'controlador';fila_host.mkdir(parents=True,exist_ok=True)
-                    parametros_skills={'diretorios_escrita':[fila_host],'sandbox':'workspace-write'}
+                    parametros_skills.update({'diretorios_escrita':[fila_host],'sandbox':'workspace-write'})
                 nativas=[r['nome'] for r in pacote['skills_resolvidas'] if r.get('ativacao_nativa')=='Skill']
                 if nativas:
                     parametros_skills.update({'skills_nativas':nativas,
@@ -443,6 +462,7 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                                **({**({'sandbox':pacote['executor']['sandbox']} if 'sandbox' in pacote['executor'] else {}),**parametros_skills}))
                 if nativas and not controle.skills(token).get('valida'):
                     if codigo==0: codigo=1
+        if meta_execucao and meta_execucao.encerrar_medicao():codigo=124
         controle.terminar_execucao(medicao,codigo,time.monotonic()-inicio_execucao)
         retorno_registrado=True
         if codigo:
@@ -492,6 +512,7 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                     if not controle.registrar_revisao(token, entrega.get('number'), relatorio, cfg):
                         controle.transicao(token, 'bloqueado')
                         controle.registrar_resultado(medicao,'revisao_reprovada');resultado_registrado=True
+                        if meta_execucao:meta_execucao.finalizar('bloqueado','Revisão reprovada',entrega.get('number'))
                         return {'token':token, 'codigo':codigo, 'estado':'bloqueado', 'revisao_aprovada':False}
                 conferir_cartao(k,numero,projeto,cfg,equipe,pacote,cfg['kanban']['andamento'])
                 k.mover(numero, cfg["kanban"]["revisao"])
@@ -503,8 +524,12 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
         atual = next(x for x in controle.listar(chave) if x["token"] == token)
         retorno={"token": token, "codigo": codigo, "estado": atual["estado"]}
         if atual['estado']=='bloqueado':
-            retorno['motivo']=('Console encerrou com falha; confira o registro da tentativa' if codigo
+            retorno['motivo']=(meta_execucao.motivo if meta_execucao and meta_execucao.motivo else
+                'Console encerrou com falha; confira o registro da tentativa' if codigo
                 else 'Console encerrou sem PR vinculado ao cartão e branch; entrega não comprovada')
+        if meta_execucao:
+            meta_execucao.finalizar('em_revisao' if atual['estado']=='revisao' else 'bloqueado',
+                                    retorno.get('motivo',''),(entrega or {}).get('number'))
         return retorno
     except BaseException:
         atual = next((x for x in controle.listar(chave) if x["token"] == token), None)
@@ -514,6 +539,10 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
             # Falha na projeção não deve substituir a exceção original do gate.
             try:controle.registrar_resultado(medicao,'falha_console' if codigo else 'gate_bloqueado')
             except (ValueError,OSError,sqlite3.Error):pass
+        if meta_execucao:
+            try:meta_execucao.finalizar('incerto','Falha no despacho/gate; conferir recibos antes de retomar')
+            except (ValueError,OSError,sqlite3.Error):
+                print('Registro da meta indisponível; concilie a tentativa no PC.',file=sys.stderr)
         raise
 
 

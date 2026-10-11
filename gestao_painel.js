@@ -9,6 +9,7 @@ import { formularioExecutores } from './executores_form.mjs';
 import { formularioMerge } from './merge_form.mjs';
 import { formularioRevisao } from './revisao_form.mjs';
 import { formularioCiclo } from './ciclo_form.mjs';
+import { formularioMetas, renderizarMetas } from './metas_form.mjs';
 import { linhasConsumo, linhasVisaoGeral } from './indicadores_providers.mjs';
 import { renderizarCoordenacoes } from './coordenacoes_painel.mjs';
 import { formularioCoordenacao, renderizarPedidos, botaoExecutarCoordenacao, botaoConciliarPedido } from './coordenacao_form.mjs';
@@ -125,6 +126,7 @@ async function carregar() {
       if(p.politica_versao && p.merge_config)lideranca.append(formularioMerge(p, atualizarProjeto));
       if(p.politica_versao && p.revisao)lideranca.append(formularioRevisao(p, atualizarProjeto));
       if(p.ativo && p.politica_versao && p.ciclo_config)lideranca.append(formularioCiclo(p, atualizarProjeto));
+      if(p.ativo && p.politica_versao && p.metas_config)lideranca.append(formularioMetas(p, atualizarProjeto));
       linha('h4','Consumo deste projeto · últimos 7 dias',trabalho);
       linha('p','Contadores observados neste projeto. Cotas de assinatura pertencem à conta do fornecedor e aparecem separadamente no Placar.',trabalho);
       if(p.consumo?.escopo!=='projeto')linha('p','Consumo por projeto indisponível.',trabalho);
@@ -219,6 +221,7 @@ async function carregar() {
           linha('p', `#${resultado.cartao} · ${resultado.estado === 'revisao' ? 'Em revisão' : 'Bloqueado'} · saída ${resultado.codigo}`, trabalho);
         }
       }
+      renderizarMetas(p.metas,trabalho,linha);
       linha('h4', 'Tarefas despachadas', trabalho);
       renderizarRetomadas(p.pedidos_retomada,trabalho,linha);
       for(const pedido of p.pedidos_retomada?.itens || []){

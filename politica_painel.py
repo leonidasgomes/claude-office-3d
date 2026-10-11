@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import tempfile
 
 from funcionarios import id_projeto
@@ -154,6 +155,42 @@ def api_ciclo(projetos,dados,ident):
     except Conflito as exc:return 409,{'erro':str(exc)}
     except (ValueError,OSError,TypeError,KeyError):
         return 400,{'erro':'Duração deve ser inteira entre 1 e 240 minutos; confira permissão de gravação'}
+
+
+def atualizar_metas(projeto,versao,metas):
+    raiz=Path(projeto).resolve();cfg,atual,bruto=snapshot(raiz)
+    if versao!=atual:raise Conflito('Política mudou; recarregue antes de salvar')
+    if not cfg['ativo']:raise ValueError('Projeto deve estar ativo')
+    if not isinstance(metas,dict) or set(metas)!={'ativo','tempo_min','tokens'}:
+        raise ValueError('Informe somente habilitação, tempo e tokens das metas')
+    novo=copy.deepcopy(cfg);novo['metas']=metas;novo=validar(novo)
+    if novo['metas']!=cfg['metas']:
+        from gestao_cli import pasta_dados
+        from ciclo_gdd import ATIVOS
+        pasta=pasta_dados(raiz);estado=pasta/'ciclo.json'
+        if estado.exists() and json.loads(estado.read_text(encoding='utf-8')).get('estado') in ATIVOS:
+            raise Conflito('Aguarde o ciclo terminar ou concilie antes de alterar limites das metas')
+        banco=pasta/'tarefas.db'
+        if banco.is_file():
+            import sqlite3
+            from contextlib import closing
+            with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True,timeout=2)) as db:
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='reserva'").fetchone():
+                    if db.execute("SELECT 1 FROM reserva WHERE projeto=? AND estado IN ('reservado','executando') LIMIT 1",
+                                  (cfg['kanban']['repo'],)).fetchone():
+                        raise Conflito('Há tarefa em execução ou incerta; confira antes de alterar metas')
+    return gravar(raiz,cfg,atual,bruto,novo)
+
+
+def api_metas(projetos,dados,ident):
+    if ident.get('permissao')!='pc':return 403,{'erro':'Configuração editável somente no PC'}
+    if not isinstance(dados,dict) or set(dados)!={'projeto_id','versao','metas'}:return 400,{'erro':'Pedido inválido'}
+    projeto=next((p for p in projetos if id_projeto(p)==dados['projeto_id']),None)
+    if projeto is None:return 400,{'erro':'Projeto não configurado'}
+    try:return 200,atualizar_metas(projeto,dados['versao'],dados['metas'])
+    except Conflito as exc:return 409,{'erro':str(exc)}
+    except (ValueError,OSError,TypeError,KeyError,sqlite3.Error):
+        return 400,{'erro':'Metas inválidas: tempo 1..240 minutos, tokens 1.000..10.000.000 e habilitação booleana; confira permissão de gravação'}
 
 
 def atualizar_merge(projeto,versao,merge):

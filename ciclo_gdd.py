@@ -113,7 +113,7 @@ def iniciar(projeto):
 
 def objetivos(texto):
     encontrados={}
-    for m in re.finditer(r'^#### Objetivo ([1-7])[^\n]*\n(.*?)(?=^#### |^### |\Z)',texto,re.M|re.S):
+    for m in re.finditer(r'^#### Objetivo ([1-9][0-9]*)[^\n]*\n(.*?)(?=^#### |^### |\Z)',texto,re.M|re.S):
         for n in re.findall(r'#([1-9][0-9]*)',m[0]):
             encontrados.setdefault(int(n),int(m[1]))
     return encontrados
