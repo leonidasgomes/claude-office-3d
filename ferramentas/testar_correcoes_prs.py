@@ -59,6 +59,52 @@ class Correcoes(unittest.TestCase):
         self.d['prs']*=2;self.gravar_delegacao()
         with self.assertRaises(ValueError):c.delegacao(self.p,self.cfg)
 
+    def meta_limite(self):
+        (self.p/'metas').mkdir(exist_ok=True)
+        r={'tentativa':self.tentativa,'meta':{'cartao':1,'limites':self.d['limites']},
+           'estado':'limite_tokens','fim':1,'tokens_observados':2000020}
+        (self.p/'metas'/(self.tentativa+'.json')).write_text(json.dumps(r),encoding='utf-8')
+        return r
+
+    def test_continuacao_opcional_exige_booleano_e_prova(self):
+        self.d['continuar_limite']=True;self.gravar_delegacao();self.meta_limite()
+        r=c.contexto_continuacao(self.p,self.cfg)
+        self.assertEqual(r['prs'][0]['limite_confirmado']['tokens_observados'],2000020)
+        self.assertEqual(r['limites']['tokens'],2000000)
+        self.d['continuar_limite']='sim';self.gravar_delegacao()
+        with self.assertRaises(ValueError):c.delegacao(self.p,self.cfg)
+
+    def test_limite_sem_meta_de_outro_cartao_ou_retorno_nao_autoriza(self):
+        with self.assertRaises(ValueError):c.limite_confirmado(self.p,self.d['prs'][0])
+        r=self.meta_limite();r['meta']['cartao']=2
+        (self.p/'metas'/(self.tentativa+'.json')).write_text(json.dumps(r),encoding='utf-8')
+        with self.assertRaises(ValueError):c.limite_confirmado(self.p,self.d['prs'][0])
+        self.meta_limite()
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:db.execute('UPDATE execucao_tarefa SET fim=NULL')
+        with self.assertRaises(ValueError):c.limite_confirmado(self.p,self.d['prs'][0])
+
+    def test_continuacao_usada_nao_renova_nem_consulta_chefe(self):
+        self.d['continuar_limite']=True;self.gravar_delegacao();self.meta_limite();self.contratar()
+        self.assertIsNone(c.contexto_continuacao(self.p,self.cfg))
+        chefe=Mock();despacho=Mock()
+        self.assertIsNone(c.encaminhar(self.p,self.cfg,[{'number':3}],
+            {'encaminhamentos':[{'pr':3,'acao':'etapa'}]},self.p,Mock(),chamar=chefe,despachar=despacho))
+        chefe.assert_not_called();despacho.assert_not_called()
+
+    def test_diretor_pode_encaminhar_evidencias_sem_inventar_achado(self):
+        self.d['continuar_limite']=True;self.gravar_delegacao()
+        despacho=Mock(return_value={'codigo':0,'estado':'revisao'})
+        with patch.object(c,'preparar',return_value=(self.e,(),self.reserva,self.p)):
+            r=c.encaminhar(self.p,self.cfg,[{'number':3}],{'encaminhamentos':[{'pr':3,'acao':'etapa'}]},
+                self.p,Mock(),chamar=lambda _:json.dumps({'acao':'corrigir','motivo':'completar evidências'}),despachar=despacho)
+        self.assertEqual(r['pr'],3);despacho.assert_called_once()
+
+    def test_grant_antigo_nao_despacha_etapa(self):
+        self.gravar_delegacao();despacho=Mock()
+        self.assertIsNone(c.encaminhar(self.p,self.cfg,[{'number':3}],
+            {'encaminhamentos':[{'pr':3,'acao':'etapa'}]},self.p,Mock(),despachar=despacho))
+        despacho.assert_not_called()
+
     def test_novo_contrato_arquiva_historico_sem_aprovar_entrega(self):
         token=self.contratar();self.assertNotEqual(token,self.token)
         self.assertEqual(self.ctrl.listar('o/r')[0]['estado'],'executando')

@@ -508,6 +508,11 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 json.dumps(correcao['devolutiva'],ensure_ascii=False))
         if correcao_delegada:
             prompt+=('\nO revisor encaminhou achados ao diretor; o CEO aprovou este contrato de correção. '
+                'Se o contrato contém continuacao_limite, o diretor definiu a próxima entrega concreta '
+                'após o orçamento anterior: siga diretor.objetivo e diretor.aceite, preservando o aceite '
+                'integral do pai. Regularize etapas existentes quando solicitado, sem criar duplicatas '
+                'nem implementar antecipadamente uma etapa dependente do merge. Priorize evidências '
+                'e achados do head atual; não repita leituras extensas nem medições já comprovadas. '
                 'Trabalhe no MESMO PR e worktree. Corrija os achados verificáveis e teste. '
                 'O contrato concede orçamento adicional registrado, não renova a tentativa anterior. '
                 'Não feche o cartão-pai se a entrega for parcial, não altere aceite nem gates e não declare '

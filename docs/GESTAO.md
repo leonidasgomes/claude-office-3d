@@ -2028,3 +2028,23 @@ A implementação usa o diário Office e adapters existentes. A leitura estátic
 orientou os formatos; não foi incorporado código, daemon compartilhado, `codex queue`
 ou presença baseada apenas em arquivo recente. Claude legado, OpenCode, GDD/Kanban,
 reservas, orçamentos, revisão e confirmação de merge mantêm seus contratos.
+
+
+### Continuação após limite, decidida pelos chefes
+
+Uma delegação local de correções pode incluir `continuar_limite: true`. Continua
+restrita aos PRs, reservas e heads explicitamente autorizados, com uma concessão
+por PR nos limites das metas do projeto. O diretor recebe a prova da última
+tentativa encerrada por tempo/tokens e a equipe autora. O CEO decide corrigir ou
+aguardar, sem solicitar novamente a mesma autorização ao usuário.
+
+Nesse modo, falta de um novo achado no head não impede completar evidências ou
+regularizar uma etapa futura existente, se o diretor definir uma ação concreta.
+O executor permanece a equipe autora, no mesmo PR/worktree, em sessão nova.
+Preparação não antecipa dependências nem substitui aceite, revisão ou merge.
+
+Tentativa ativa, retorno incerto, filhos não conciliados, meta de outro cartão,
+política divergente ou concessão já utilizada impedem despacho. Histórico e
+consumo anteriores ficam arquivados. O controlador não gera concessões novas
+em loop nem usa esse mecanismo para reservas fora da delegação. Instalações
+existentes continuam sem essa autorização até configuração explícita.
