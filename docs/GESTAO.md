@@ -1841,12 +1841,14 @@ para conciliação. Reservas anteriores ao novo ciclo não são retomadas automa
 ### Fila de PRs, referências seletivas e recuperação
 
 Em Gestão → CEO/diretor → Configurar operação automática, `max_prs_pendentes`
-limita PRs de entregas confirmadas da própria sessão antes de selecionar outro
-cartão. Zero desativa; de 1 a 20 habilita. A espera consulta conclusão pelo
+limita todos os PRs abertos do projeto antes de selecionar outro cartão, inclusive
+rascunhos e PRs de ciclos anteriores. Zero desativa; de 1 a 20 habilita. A espera consulta conclusão pelo
 mecanismo existente, sem inferência nem despacho. Merge confirmado libera a
-fila. Conclusão recusada fica pendente para conferência em PRs/Alertas; não
+fila. A consulta REST existente confere a fila do projeto sem chamar o diretor
+ou criar novos worktrees enquanto atingir o limite. Conclusão recusada fica pendente para conferência em PRs/Alertas; não
 reduz gates. PRs históricos e externos não são adotados nem retomados por essa
-fila: exigem conciliação explícita. Alterar o limite exige ciclo pausado.
+fila, mas também impedem acumular novas entregas: exigem conciliação explícita.
+Alterar o limite exige ciclo pausado.
 
 `memoria_referencias` (0 desativa, até 5) inclui nos novos despachos Codex/OpenCode
 referências estruturadas a entregas com conclusão registrada por merge, do

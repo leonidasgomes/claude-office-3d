@@ -13,7 +13,7 @@ export function formularioCiclo(projeto,atualizar) {
   const correcoes=document.createElement('input');correcoes.type='number';correcoes.min='0';correcoes.max='2';correcoes.step='1';
   correcoes.required=true;correcoes.value=String(projeto.ciclo_config.max_correcoes_revisao??0);
   correcoes.setAttribute('aria-label',labelCorrecoes.textContent);labelCorrecoes.append(correcoes);form.append(labelCorrecoes);
-  const labelPRs=document.createElement('label');labelPRs.textContent='PRs pendentes por sessão antes de esperar (0 desativa)';
+  const labelPRs=document.createElement('label');labelPRs.textContent='PRs abertos do projeto antes de esperar (0 desativa)';
   const pendentes=document.createElement('input');pendentes.type='number';pendentes.min='0';pendentes.max='20';pendentes.step='1';
   pendentes.required=true;pendentes.value=String(projeto.ciclo_config.max_prs_pendentes??0);
   pendentes.setAttribute('aria-label',labelPRs.textContent);labelPRs.append(pendentes);form.append(labelPRs);
@@ -21,7 +21,7 @@ export function formularioCiclo(projeto,atualizar) {
   const memoria=document.createElement('input');memoria.type='number';memoria.min='0';memoria.max='5';memoria.step='1';
   memoria.required=true;memoria.value=String(projeto.ciclo_config.memoria_referencias??0);
   memoria.setAttribute('aria-label',labelMemoria.textContent);labelMemoria.append(memoria);form.append(labelMemoria);
-  const aviso=document.createElement('p');aviso.textContent='Vale para o próximo ciclo. O modo contínuo exige metas por cartão habilitadas e dispensa o prazo global. Mantém execução sequencial, gates e pausas por erro. Sem mudanças no quadro, espera sem chamar IA. As correções exigem ciclo pausado, metas ativas e retorno confirmado; usam o mesmo PR e orçamento. A fila limita novas entregas desta sessão enquanto aguarda merge, sem chamadas de IA na espera. PRs antigos exigem recuperação explícita. Salvar não inicia trabalho nem retoma reservas antigas.';form.append(aviso);
+  const aviso=document.createElement('p');aviso.textContent='Vale para o próximo ciclo. O modo contínuo exige metas por cartão habilitadas e dispensa o prazo global. Mantém execução sequencial, gates e pausas por erro. Sem mudanças no quadro, espera sem chamar IA. As correções exigem ciclo pausado, metas ativas e retorno confirmado; usam o mesmo PR e orçamento. A fila inclui PRs antigos e rascunhos do projeto, sem chamadas de IA na espera. PRs antigos exigem recuperação explícita pelas equipes. Salvar não inicia trabalho nem retoma reservas antigas.';form.append(aviso);
   const salvar=document.createElement('button');salvar.type='submit';salvar.textContent='Salvar operação';form.append(salvar);
   const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
   let versao=projeto.politica_versao;
