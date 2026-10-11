@@ -60,6 +60,31 @@ class Correcoes(unittest.TestCase):
         self.d['prs']*=2;self.gravar_delegacao()
         with self.assertRaises(ValueError):c.delegacao(self.p,self.cfg)
 
+    def test_metas_novas_preservam_delegacao_sem_despachar(self):
+        self.d['continuar_limite']=True;self.gravar_delegacao();self.meta_limite()
+        novo=copy.deepcopy(self.cfg);novo['metas'].update(tempo_min=120,tokens=4000000)
+        arquivo=self.p/'delegacao_correcoes.json';antes=arquivo.read_bytes()
+        banco=self.ctrl.banco.read_bytes()
+        with self.assertRaises(c.PoliticaDivergente):c.delegacao(self.p,novo)
+        self.assertEqual(c.pendentes(self.p,novo),[])
+        self.assertIsNone(c.contexto_continuacao(self.p,novo))
+        contexto=c.contexto_delegacao(self.p,novo)
+        self.assertFalse(contexto['compativel']);self.assertTrue(contexto['somente_contexto'])
+        self.assertEqual(contexto['limites_originais']['tokens'],2000000)
+        self.assertEqual(contexto['limites_atuais']['tokens'],4000000)
+        chefe=Mock();despacho=Mock()
+        self.assertIsNone(c.encaminhar(self.p,novo,[{'number':3}],
+            {'encaminhamentos':[{'pr':3,'acao':'correcao'}]},self.p,Mock(),chamar=chefe,despachar=despacho))
+        chefe.assert_not_called();despacho.assert_not_called()
+        self.assertEqual(arquivo.read_bytes(),antes);self.assertEqual(self.ctrl.banco.read_bytes(),banco)
+
+    def test_historico_invalido_nao_e_silenciado(self):
+        self.d['politica']='b'*64;self.d['prs']*=2;self.gravar_delegacao()
+        with self.assertRaises(ValueError):c.pendentes(self.p,self.cfg)
+        with self.assertRaises(ValueError):c.contexto_esgotamento(self.p,self.cfg)
+        self.d['prs']=self.d['prs'][:1];self.d['limites']['tokens']=True;self.gravar_delegacao()
+        with self.assertRaises(ValueError):c.contexto_delegacao(self.p,self.cfg)
+
     def meta_limite(self):
         (self.p/'metas').mkdir(exist_ok=True)
         r={'tentativa':self.tentativa,'meta':{'cartao':1,'limites':self.d['limites']},
@@ -106,6 +131,11 @@ class Correcoes(unittest.TestCase):
         self.assertEqual(r[0]['prova']['limites_anteriores'],self.d['limites'])
         self.assertEqual(self.ctrl.banco.read_bytes(),antes)
         self.assertEqual(c.pendentes(self.p,self.cfg),[])
+        novo=copy.deepcopy(self.cfg);novo['metas'].update(tempo_min=120,tokens=4000000)
+        self.assertEqual(c.contexto_esgotamento(self.p,novo),r)
+        self.assertIsNone(c.contexto_continuacao(self.p,novo))
+        self.assertEqual(c.pendentes(self.p,novo),[])
+        self.assertEqual(self.ctrl.banco.read_bytes(),antes)
         with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
             db.execute('UPDATE atividade_execucao SET estado=? WHERE execucao=?',('interrompido',tentativa))
         with self.assertRaisesRegex(ValueError,'incertos'):c.contexto_esgotamento(self.p,self.cfg)

@@ -35,6 +35,27 @@ class Fila(unittest.TestCase):
             planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         self.assertEqual(consultar.call_count,2)
 
+    def test_delegacao_divergente_nao_interrompe_fila_e_informa_diretor(self):
+        from correcoes_prs import assinatura
+        self.cfg=politica({'ativo':True,'metas':{'ativo':True,'tempo_min':120,'tokens':4000000},
+            'ciclo':{'ativo':True,'base':'origin/main'},'kanban':{'repo':'o/r'},
+            'equipes':[{'nome':'Dev','especialidade':'Código','executor':{'console':'codex'}}]})
+        antiga={**self.cfg,'metas':{'ativo':True,'tempo_min':60,'tokens':2000000}}
+        delegacao={'id':'f'*32,'ativo':True,'repo':'o/r','politica':assinatura(antiga),
+            'origem':'Autorização anterior','limites':{'tempo_min':60,'tokens':2000000},
+            'continuar_limite':True,'prs':[{'pr':3,'cartao':1,'token':'b'*32,'head':'a'*40}]}
+        arquivo=self.p/'delegacao_correcoes.json';arquivo.write_text(json.dumps(delegacao),encoding='utf-8')
+        antes=arquivo.read_bytes();consultar=Mock(return_value=[self.d])
+        r=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(r['estado'],'classificado')
+        prompt=consultar.call_args.args[0]
+        self.assertIn('"compativel": false',prompt)
+        self.assertIn('"continuacao_delegada": null',prompt)
+        self.assertIn('"limites_originais": {"tempo_min": 60, "tokens": 2000000}',prompt)
+        self.assertIn('"limites_atuais": {"tempo_min": 120, "tokens": 4000000}',prompt)
+        self.assertIn('aumentar metas não renova saldo',prompt)
+        self.assertEqual(arquivo.read_bytes(),antes)
+
     def test_recursos_disponiveis_informam_diretor_e_invalidam_contexto(self):
         consultar=Mock(return_value=[self.d])
         with patch('recursos_host.diretorios_travas',return_value=[]):

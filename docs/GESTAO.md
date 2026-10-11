@@ -2045,7 +2045,15 @@ Preparação não antecipa dependências nem substitui aceite, revisão ou merge
 
 Tentativa ativa, retorno incerto, filhos não conciliados, meta de outro cartão,
 política divergente ou concessão já utilizada impedem despacho. Histórico e
-consumo anteriores ficam arquivados. Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
+consumo anteriores permanecem válidos como evidência após alterar as metas.
+Uma delegação de correções incompatível não interrompe a coordenação: aparece
+no pacote do diretor, sem continuação autorizada. Revisões, gates e preparação
+independente podem avançar. Concessões esgotadas mantêm a prova de esgotamento
+e seus limites originais; a mudança não reativa reservas nem renova concessões.
+Registros malformados ou cadeias incertas continuam sendo erros, sem despacho.
+Gates de entregas com fontes/política divergentes também aparecem como pendência
+de conferência ao diretor, sem executar o script nem parar a classificação da fila.
+Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada
 rodada tem um identificador determinístico, uma decisão nova e o mesmo limite
