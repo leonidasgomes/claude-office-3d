@@ -37,6 +37,29 @@ class DespachoRevisao(unittest.TestCase):
         self.executar(lambda *a,**kw:self.relatorio(),rodar=lambda *a,**kw:vistos.append(kw) or 0)
         self.assertEqual(vistos[0]['skills_contexto'],[])
 
+    def test_publicacao_falhando_bloqueia_encaminhamento_kanban(self):
+        self.cfg['merge']={'modo':'automatico','checks':['revisor-ia'],'rotulos_manuais':['merge-manual']}
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        with patch('revisor_ia.publicar_revisao_gestao',side_effect=ValueError('Publicação incerta')) as publicar:
+            with self.assertRaisesRegex(ValueError,'Publicação incerta'):
+                self.executar(lambda *a,**kw:self.relatorio())
+        publicar.assert_called_once()
+        self.assertEqual(Controle(self.db).listar('owner/repo')[0]['estado'],'bloqueado')
+        self.assertNotIn(self.cfg['kanban']['revisao'],self.moves)
+
+    def test_publicacao_aprovada_antes_de_encaminhar_kanban(self):
+        self.cfg['merge']={'modo':'automatico','checks':['revisor-ia'],'rotulos_manuais':['merge-manual']}
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        def publicar(*args):
+            self.assertNotIn(self.cfg['kanban']['revisao'],self.moves)
+            self.assertEqual(args[2]['head']['sha'],self.sha)
+            self.assertTrue(args[3]['aprovado'])
+            return {'estado':'publicado'}
+        with patch('revisor_ia.publicar_revisao_gestao',side_effect=publicar) as chamada:
+            resultado=self.executar(lambda *a,**kw:self.relatorio())
+        chamada.assert_called_once()
+        self.assertEqual(resultado['estado'],'revisao')
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.pasta=Path(self.tmp.name); (self.pasta/'.office').mkdir()

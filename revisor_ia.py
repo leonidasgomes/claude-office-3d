@@ -296,6 +296,81 @@ def revisar_com_claude(modelo, contexto, cabecalho, diff, anteriores="", mudou=N
     return sugestoes_bot._json_da_resposta(env.get("result")), env
 
 
+def publicar_revisao_gestao(projeto,cfg,entrega,relatorio,chamar=None):
+    """Publica o relatório aprovado do despacho; não chama modelo nem executa merge."""
+    from gestao_cli import pasta_dados
+    from gestao_projeto import carregar
+    from revisao_cruzada import conferir
+    from kanban_gestao import api
+    from controlador_local import atomico
+    if cfg['merge']['modo']!='automatico' or 'revisor-ia' not in cfg['merge']['checks']:
+        return {'estado':'nao_exigido'}
+    if not cfg['revisao']['ativo']:raise ValueError('Publicação exige revisão por projeto ativa')
+    sha=(entrega.get('head') or {}).get('sha');base=(entrega.get('base') or {}).get('sha');n=entrega.get('number')
+    if type(n) is not int or n<1 or not re.fullmatch('[0-9a-f]{40}',base or '') or not conferir(cfg,relatorio,sha):
+        raise ValueError('Revisão aprovada completa do commit exato é obrigatória')
+    if relatorio.get('base')!=base or not re.fullmatch('[0-9a-f]{64}',relatorio.get('contexto','')):
+        raise ValueError('Revisão sem base/contexto verificados')
+    pasta=pasta_dados(projeto);fonte=pasta/'revisoes'/(sha+'.json')
+    if fonte.is_symlink() or not fonte.is_file():
+        raise ValueError('Recibo da revisão executada ausente')
+    fonte_bytes=fonte.read_bytes()
+    if json.loads(fonte_bytes.decode('utf-8'))!=relatorio:
+        raise ValueError('Relatório não corresponde ao recibo da revisão executada')
+    import hashlib
+    digest=hashlib.sha256(fonte_bytes).hexdigest()
+    destino=pasta/'revisoes_github';destino.mkdir(parents=True,exist_ok=True)
+    recibo=destino/(str(n)+'-'+sha+'-'+digest+'.json');lock=recibo.with_suffix('.lock')
+    if destino.is_symlink() or recibo.is_symlink() or lock.is_symlink():raise ValueError('Recibo de publicação inválido')
+    chamada=chamar or api;repo=cfg['kanban']['repo']
+    def atual():
+        if carregar(projeto)!=cfg or fonte.is_symlink() or fonte.read_bytes()!=fonte_bytes:raise ValueError('Política/relatório mudou durante publicação')
+        pr=chamada(f'repos/{repo}/pulls/{n}')
+        if (pr.get('number')!=n or pr.get('state')!='open' or pr.get('draft') is not False
+            or (pr.get('head') or {}).get('sha')!=sha or (pr.get('base') or {}).get('sha')!=base
+            or pr.get('head',{}).get('repo',{}).get('full_name')!=repo
+            or pr.get('base',{}).get('repo',{}).get('full_name')!=repo):
+            raise ValueError('PR/commit/base/repositório divergente da revisão')
+        return pr
+    with lock.open('x',encoding='utf-8'):pass
+    try:
+        atual()
+        if recibo.exists():
+            anterior=json.loads(recibo.read_text(encoding='utf-8'))
+            if (anterior.get('estado')=='publicado' and anterior.get('pr')==n
+                and anterior.get('sha')==sha and anterior.get('base')==base
+                and anterior.get('relatorio_sha256')==digest and anterior.get('contexto')==relatorio['contexto']):return anterior
+            raise ValueError('Publicação anterior incerta; conferir antes de repetir')
+        comentarios=[];nomes=[]
+        for revisao in relatorio['revisoes']:
+            executor=revisao['executor'];nomes.append(revisao['nome']+' ('+executor['console']+', modelo configurado '+executor.get('modelo','')+')')
+            for achado in revisao['resposta']['achados']:
+                comentarios.append({'path':achado['arquivo'],'line':achado['linha'],'side':'RIGHT',
+                    'body':corpo_comentario({'prioridade':achado['prioridade'],'titulo':revisao['nome'],
+                                             'texto':achado['evidencia']},executor.get('modelo',''))})
+        registro={'estado':'publicando','pr':n,'sha':sha,'base':base,'relatorio_sha256':digest,'contexto':relatorio['contexto']}
+        atomico(recibo,registro)
+        try:
+            revisao=chamada(f'repos/{repo}/pulls/{n}/reviews','POST',
+                {'commit_id':sha,'event':'COMMENT','body':MARCA+' Revisão independente do despacho.\n'+
+                 '\n'.join('- '+nome for nome in nomes)+'\nSem P0/P1 no relatório verificado.','comments':comentarios})
+            if type(revisao.get('id')) is not int or revisao.get('commit_id')!=sha:
+                raise ValueError('Publicação da revisão não comprovada')
+            registro['review_id']=revisao['id'];atomico(recibo,registro)
+            atual()
+            status=chamada(f'repos/{repo}/statuses/{sha}','POST',
+                {'state':'success','context':'revisor-ia','description':'Revisão do despacho aprovada, sem P0/P1',
+                 'target_url':f'https://github.com/{repo}/pull/{n}#pullrequestreview-{revisao["id"]}'})
+            if status.get('state')!='success' or status.get('context')!='revisor-ia':
+                raise ValueError('Status da revisão não comprovado')
+            atual();registro['estado']='publicado';atomico(recibo,registro)
+            return registro
+        except Exception as exc:
+            registro.update(estado='incerto',erro=type(exc).__name__);atomico(recibo,registro)
+            raise
+    finally:lock.unlink(missing_ok=True)
+
+
 def corpo_comentario(a, modelo):
     return (f"**{a['prioridade']} — {a['titulo'][:90]}**\n\n{a['texto'][:800]}\n\n"
             f"<sub>{MARCA} revisão automática ({modelo}); trate pelo `sugestoes_bot.py`.</sub>")

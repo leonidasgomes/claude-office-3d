@@ -525,6 +525,8 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                         controle.registrar_resultado(medicao,'revisao_reprovada');resultado_registrado=True
                         if meta_execucao:meta_execucao.finalizar('bloqueado','Revisão reprovada',entrega.get('number'))
                         return {'token':token, 'codigo':codigo, 'estado':'bloqueado', 'revisao_aprovada':False}
+                    from revisor_ia import publicar_revisao_gestao
+                    publicar_revisao_gestao(projeto,cfg,atual_pr,relatorio)
                 conferir_cartao(k,numero,projeto,cfg,equipe,pacote,cfg['kanban']['andamento'])
                 k.mover(numero, cfg["kanban"]["revisao"])
                 controle.transicao(token, "revisao")
