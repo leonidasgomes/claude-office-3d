@@ -171,17 +171,30 @@ def coordenador_vivo(projeto,registro):
 
 def preservar_entregas(registro):
     """Transporta só evidências de retorno confirmado; nunca reserva ou reexecuta cartão."""
-    vinculos=[];resultados=[]
+    vinculos=[];resultados=[];finalizacoes=[]
     for item in registro.get('vinculos_conclusao',[]):
         n=item.get('cartao');token=item.get('token')
         if type(n) is not int or n<1 or not re.fullmatch('[0-9a-f]{32}',str(token)):
             raise ValueError('Checkpoint de entrega inválido; confira Gestão')
-        retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
-                  if r.get('cartao')==n and r.get('estado')=='revisao' and r.get('codigo')==0]
-        if len(retornos)!=1:
-            raise ValueError('Checkpoint sem retorno único confirmado; confira Gestão')
         if any(v['cartao']==n or v['token']==token for v in vinculos):
             raise ValueError('Checkpoint de entrega duplicado; confira Gestão')
+        retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
+                  if r.get('cartao')==n and r.get('estado')=='revisao' and r.get('codigo')==0]
+        finais=[r for r in registro.get('finalizacoes_publicadas',[])
+                if r.get('cartao')==n and r.get('token')==token and r.get('estado')=='revisao'
+                and r.get('codigo_autor')==124]
+        if not retornos and len(finais)==1:
+            f=finais[0];recibo=Path(f['recibo'])
+            r=json.loads(recibo.read_text(encoding='utf-8'))
+            if (r.get('estado')!='confirmado' or r.get('evidencia',{}).get('reserva',{}).get('token')!=token
+                or r['evidencia'].get('cartao')!=n or r['evidencia'].get('pr')!=f['pr']
+                or r['evidencia'].get('tentativa',{}).get('codigo')!=124
+                or r.get('ceo',{}).get('acao')!='revisar' or r.get('diretor',{}).get('acao')!='revisar'
+                or r.get('relatorio',{}).get('aprovado') is not True):
+                raise ValueError('Checkpoint de finalização diverge do recibo')
+            finalizacoes.append(dict(f));vinculos.append(dict(item));continue
+        if len(retornos)!=1:
+            raise ValueError('Checkpoint sem retorno único confirmado; confira Gestão')
         vinculos.append(dict(item));resultados.append(dict(retornos[0]))
     lotes=[]
     for lote in registro.get('resultados',[]):
@@ -189,6 +202,7 @@ def preservar_entregas(registro):
         if confirmados:lotes.append({**lote,'resultados':confirmados,'checkpoint':True})
     return {'vinculos_conclusao':vinculos,
             'resultados':lotes,
+            'finalizacoes_publicadas':finalizacoes,
             'conclusoes':registro.get('conclusoes',[]),
             **{key:registro[key] for key in ('retomadas_incorporadas','conclusoes_anteriores') if key in registro}}
 
@@ -598,6 +612,15 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
                 registro['encaminhamentos_prs']=fila['encaminhamentos']
                 registro['fila_politica']=versao_politica(cfg)
+                from finalizacao_publicada import encaminhar as finalizar_publicacao
+                finalizado=finalizar_publicacao(projeto,cfg,prs,fila,pasta_dados(projeto),k,
+                    ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[{'cartao':e['cartao'],'equipe':e['reserva']['equipe']}],
+                                                  proxima_acao='finalizar revisão da publicação existente; autor encerrado'))
+                if finalizado:
+                    registro.setdefault('finalizacoes_publicadas',[]).append(finalizado)
+                    if finalizado['estado']=='revisao':
+                        registro.setdefault('vinculos_conclusao',[]).append({'cartao':finalizado['cartao'],'token':finalizado['token']})
+                    atomico(p,registro);continue
                 from correcoes_prs import encaminhar
                 correcao=encaminhar(projeto,cfg,prs,fila,pasta_dados(projeto),k,
                     ao_etapa=lambda etapa,alvo,r:salvar(etapa,

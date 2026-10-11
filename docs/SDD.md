@@ -2162,6 +2162,16 @@ O módulo `correcoes_prs.py` encaminha achados pelo diretor e CEO mediante deleg
 operacional privada por projeto (`delegacao_correcoes.json`). O contrato transacional
 em `controle_tarefas.contratar_correcao` arquiva reserva e entrega anteriores em
 `contrato_correcao`, preserva histórico e limita a uma concessão por delegação/PR.
+
+`finalizacao_publicada` conserva token, tentativa, PR e registro completo da
+conciliação de uma publicação confirmada antes do limite do autor. Uma revisão
+nova, encaminhada pelo diretor e aceita pelo CEO, pode registrar a entrega em
+revisão; a tentativa, seu código 124, sessão e consumo não mudam. Falha, contexto
+divergente ou recibo incerto não libera a reserva. Essa conciliação não executa
+implementação, não renova tokens e não dispensa gates ou confirmação de merge.
+`finalizacao_publicada.py` revalida política, fontes, cadastro, cartão, processos,
+meta, publicação, worktree e PR, mantém intentos e coleta consumo dos revisores
+independentes. O ciclo incorpora somente o vínculo resultante confirmado.
 `gestao_cli.despachar_correcao` usa trava e execução comuns, sem retomar sessão antiga.
 O ciclo prioriza o encaminhamento na fila de PRs antes de novo trabalho. Decisão
 incerta, processo sem encerramento, agentes filhos, alteração de head/política ou

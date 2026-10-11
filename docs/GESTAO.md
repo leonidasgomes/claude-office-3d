@@ -2134,6 +2134,18 @@ modelo, não retoma a reserva, não adota aprovações históricas e não mexe e
 rascunhos/manuais. Recibo de publicação incerto exige conferência. Isso torna
 a pendência visível no GitHub sem renovar o orçamento do autor.
 
+Se o autor atinge seu limite depois que o host publicou o PR, o ciclo pode
+encaminhar uma finalização aos revisores. Exige publicação concluída, contexto
+íntegro, processos encerrados, worktree limpo e decisões novas do diretor e CEO.
+Não reinicia o autor nem aumenta sua meta. Código 124 e consumo ficam intactos;
+uma revisão nova aprovada registra a entrega em revisão, ainda dependente de
+todos os gates e do merge. Reprovação mantém o bloqueio. O consumo dos revisores
+é registrado separadamente, sem fingir que foi consumo adicional do autor.
+
+Recibos novos vinculam token e tentativa. Um recibo antigo só é elegível com
+origem única e horário anterior ao fim da tentativa. Divergência ou intento
+incerto exige conciliação explícita; não gera outro PR, modelo ou despacho.
+
 Essa preparação usa recibos separados, identificados pela prova do esgotamento,
 e conserva os recibos anteriores. Antes de criar o cartão, o host reconfere a
 política, o PR, o autor encerrado, a cadeia e as sub-issues. Intentos incertos
