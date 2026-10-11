@@ -410,7 +410,7 @@ function desenhar() {
       corpoEl.append(el('p', 'arq-msg', 'Painel desligado ("grafo": {"ativo": false} no config.json).'));
     } else if (dados && dados.sem_grafo) {   // o projeto ainda não tem grafo: como criar um
       const box = el('div', 'arq-msg');
-      box.append(el('p', null, 'Este projeto ainda não tem um grafo de arquitetura. Para criar um:'));
+      box.append(el('p', null, 'Não foi encontrado um grafo na referência Git configurada. Confira grafo.ref e grafo.arquivo no config.json antes de criar outro grafo.'));
       const pre = el('pre', 'arq-cmd', 'python grafo/grafo.py init --raiz <pasta do projeto> --saida docs/ARCHITECTURE_GRAPH.yaml\n'
         + 'python grafo/grafo.py validate --raiz <pasta do projeto>');
       box.append(pre, el('p', null, 'Revise nomes, camadas e descrições, faça commit e push para a ref do config.json (grafo.ref, padrão '
