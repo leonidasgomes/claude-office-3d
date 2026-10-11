@@ -11,8 +11,8 @@ from providers_console import selecionar
 def tarefa(projeto, office, base, max_cartoes):
     if not base.strip() or base.startswith('-') or any(c.isspace() for c in base):
         raise ValueError('Informe a base Git do projeto, sem opções ou espaços')
-    if type(max_cartoes) is not int or not 1 <= max_cartoes <= 4:
-        raise ValueError('Limite de cartões deve estar entre 1 e 4')
+    if type(max_cartoes) is not int or not 1 <= max_cartoes <= 2:
+        raise ValueError('Limite de cartões deve estar entre 1 e 2')
     dados=json.dumps({'projeto':str(projeto), 'office':str(office), 'base':base,
                       'max_cartoes':max_cartoes},ensure_ascii=False)
     return '''Comece agora a trabalhar como CEO deste escritório, em português. Não espere outra mensagem.
@@ -22,7 +22,7 @@ Sua tarefa inicial é dividir e iniciar um lote limitado de trabalho REAL no Kan
 Use o Python disponível e gestao_cli.py da pasta office, sempre com --projeto apontando à raiz canônica.
 1. Consulte estado e planejar --max-cartoes 20. Mostre os cartões, equipes e bloqueios encontrados.
 Não retome reserva existente/bloqueada/incerta automaticamente, nem trate uma sessão antiga como ativa.
-2. Consulte o diretor configurado com console_provider.py --papel diretor --mesa Diretor --prompt-arquivo
+2. Consulte o diretor configurado com controlador_local.py --projeto RAIZ --acao diretor --arquivo
 arquivo_utf8 (contendo os candidatos e pedido de classificação/aceite, sem executar ferramentas).
 Se a consulta falhar, pare e explique; não substitua silenciosamente o diretor.
 Escolha até max_cartoes preparáveis, pela ordem de prioridade, preferindo equipes diferentes.
@@ -31,11 +31,12 @@ Não crie tarefas artificiais para ocupar mesas. Respeite dependências, recurso
 na pasta worktrees irmã da pasta office, com identificador único. Não use/limpe worktrees existentes.
 Não altere arquivos do checkout principal, política, credenciais, hooks ou regras para permitir execução.
 4. Gere um plano UTF-8 local com {"paralelismo":1,"cartoes":[{"cartao":numero,"worktree":caminho_absoluto}]}.
-Valide pelo comando lote --plano arquivo (sem --executar). A divisão segue o campo Time do Kanban.
-5. Delegue a execução pelo mesmo comando lote --plano arquivo --executar. O controlador usa o provider,
+Valide pelo comando controlador_local.py --projeto RAIZ --acao lote --arquivo plano_utf8 (sem --executar). A divisão segue o campo Time do Kanban.
+5. Delegue a execução pelo mesmo comando controlador_local.py --projeto RAIZ --acao lote --arquivo plano_utf8 --executar. O controlador usa o provider,
 modelo e skills de cada equipe, registra sessões/eventos, reserva cartões e aplica os gates existentes.
 CEO organiza, diretor acompanha a ordem/aceite e as equipes implementam. Não substitua a delegação
 fazendo a implementação na raiz. Não lance clones nativos fora do controlador nem duplique tarefas.
+Nunca execute console_provider.py ou gestao_cli.py lote diretamente dentro do sandbox do CEO: use controlador_local.py.
 Não faça merge manual. Pare após este lote, se houver bloqueio, permissão pendente ou erro; mostre a causa
 real e como resolver. Não finja que agentes trabalharam nem que testes passaram. Ao terminar,
 mostre o resultado/PR de cada equipe e mantenha este console aberto para o usuário.
