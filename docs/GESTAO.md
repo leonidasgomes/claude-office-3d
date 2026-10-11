@@ -2060,6 +2060,13 @@ não exige alteração de arquivo, commit artificial ou push vazio. Confere rese
 em execução, recibo do worktree, PR/branch/base/head e confirmação remota do texto.
 O recibo conserva a operação; publicação incerta continua exigindo conciliação.
 
+O corpo do pedido de publicação aceita texto ou uma lista de linhas de texto
+(formato produzido por `Get-Content` sem `-Raw` no PowerShell). As linhas são
+unidas com quebras de linha, conservando linhas vazias e o limite de 16000
+caracteres. Objetos, números e listas mistas são recusados. O envelope original
+continua excluído do commit; essa compatibilidade não autoriza repetir uma
+publicação incerta. Ao criar pedidos, prefira `Get-Content -Raw -Encoding utf8`.
+
 ### Autonomia e ordem das correções
 
 O ciclo coordena seleção pelo GDD/Kanban, classificação do diretor, decisão do

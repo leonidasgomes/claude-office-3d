@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Pedidos de publicação aceitam listas de linhas de texto do PowerShell, preservando limites e exclusão do envelope operacional do commit.
+
 - Concessões de correção atendem primeiro PRs ainda sem rodada, antes de renovar outro PR; ordem original preservada nos empates, sem alterar gates ou limites.
 
 - Chefes podem decidir concessões adicionais dentro de um teto explícito por PR; cada rodada comprova a cadeia de reservas e o limite anterior, sem renovação ilimitada ou consumo apagado.

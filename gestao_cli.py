@@ -487,6 +487,7 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
             prompt += ('\nPublicação Git pelo host do escritório: não contorne proteção .git. '
                 'Após implementar e testar, salve JSON UTF-8 com cartao (inteiro), worktree (raiz absoluta), '
                 'titulo e corpo do PR (Closes #n só para entrega inteira; Parte de #n para etapa). '
+                'Corpo deve ser uma string; no PowerShell leia com Get-Content -Raw -Encoding utf8. '
                 'Salve esse pedido fora do worktree, em "'+str(RAIZ/'dados'/'controlador')+'", '
                 'com nome único por tentativa; não versione o JSON operacional. '
                 'Para corrigir um PR deste mesmo cartão já registrado pelo controlador, inclua também '

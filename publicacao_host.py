@@ -6,6 +6,18 @@ import subprocess
 from controlador_local import RAIZ, atomico
 
 
+def corpo_texto(corpo):
+    """Get-Content sem -Raw envia linhas; aceita só texto, sem coerção de objetos."""
+    if isinstance(corpo,list):
+        if (not corpo or any(not isinstance(linha,str) for linha in corpo)
+            or sum(map(len,corpo))+len(corpo)-1>16000):
+            raise ValueError('Corpo do PR exige texto ou linhas de texto, até 16000 caracteres')
+        corpo='\n'.join(corpo)
+    if not isinstance(corpo,str) or not corpo.strip() or len(corpo)>16000:
+        raise ValueError('Corpo do PR exige texto ou linhas de texto, até 16000 caracteres')
+    return corpo
+
+
 def publicar(projeto,dados):
     from gestao_cli import pasta_dados
     from controle_tarefas import Controle
@@ -14,6 +26,8 @@ def publicar(projeto,dados):
     atualizar=isinstance(dados,dict) and set(dados)==campos|{'pr','head_sha'}
     if not isinstance(dados,dict) or (set(dados)!=campos and not atualizar):
         raise ValueError('Publicação exige cartão, worktree, título e corpo')
+    pedido_original=dados
+    dados={**dados,'corpo':corpo_texto(dados['corpo'])}
     n=dados['cartao']
     if type(n) is not int or n<1 or not isinstance(dados['worktree'],str):raise ValueError('Cartão/worktree inválido')
     p=Path(dados['worktree']).resolve();cfg=carregar(projeto)
@@ -89,7 +103,7 @@ def publicar(projeto,dados):
         if (arquivo.suffix.lower()!='.json' or arquivo.is_symlink() or not arquivo.is_file()
             or arquivo.stat().st_size>128000):continue
         try:
-            if json.loads(arquivo.read_text(encoding='utf-8-sig'))==dados:pedidos.append(nome)
+            if json.loads(arquivo.read_text(encoding='utf-8-sig')) in (pedido_original,dados):pedidos.append(nome)
         except (ValueError,UnicodeError,OSError):pass
     # O envelope exato da operação é dado do controlador, não uma entrega do cartão.
     nomes.difference_update(pedidos)
@@ -97,7 +111,7 @@ def publicar(projeto,dados):
         arquivo=p/nome
         if arquivo.suffix.lower()=='.json' and arquivo.is_file() and not arquivo.is_symlink() and arquivo.stat().st_size<=128000:
             try:
-                if json.loads(arquivo.read_text(encoding='utf-8-sig'))==dados:
+                if json.loads(arquivo.read_text(encoding='utf-8-sig')) in (pedido_original,dados):
                     raise ValueError('Pedido de publicação já versionado/indexado; retire-o da entrega antes de publicar')
             except (json.JSONDecodeError,UnicodeError,OSError):pass
     registro={'estado':'publicando','cartao':n,'worktree':str(p),'branch':branch,
