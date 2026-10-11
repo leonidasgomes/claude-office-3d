@@ -1,4 +1,5 @@
-import base64,sys,unittest
+import base64,sys,unittest,subprocess,tempfile
+from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 from providers_console import ambiente_git_codex
@@ -32,5 +33,34 @@ class GitCodex(unittest.TestCase):
         for n in ('-1','101','erro'):
             with self.assertRaises(ValueError):
                 ambiente_git_codex({'OFFICE_CODEX_GIT_GITHUB':'1','GH_TOKEN':'exemplo','GIT_CONFIG_COUNT':n})
+
+class ConteudoWorktree(unittest.TestCase):
+    def test_status_desatualizado_nao_substitui_conferencia_de_conteudo_e_staging(self):
+        from gestao_cli import worktree_sujo
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)
+            def git(*args):return subprocess.run(['git','-C',tmp,*args],capture_output=True,check=True)
+            git('init','-b','work/teste');git('config','user.name','Teste');git('config','user.email','teste@example.com')
+            (p/'asset.bin').write_bytes(b'base');git('add','.');git('commit','-m','base')
+            executar=subprocess.run
+            def status_falso(args,**kw):
+                if 'status' in args:return subprocess.CompletedProcess(args,0,b' M asset.bin\0',b'')
+                return executar(args,**kw)
+            with patch('gestao_cli.subprocess.run',side_effect=status_falso):
+                self.assertFalse(worktree_sujo(p))
+                (p/'asset.bin').write_bytes(b'alterado')
+                self.assertTrue(worktree_sujo(p))
+                git('add','asset.bin');(p/'asset.bin').write_bytes(b'base')
+                self.assertTrue(worktree_sujo(p))
+            git('reset','--mixed','HEAD')
+            (p/'novo.txt').write_text('novo')
+            self.assertTrue(worktree_sujo(p))
+            (p/'novo.txt').unlink();(p/'asset.bin').unlink()
+            self.assertTrue(worktree_sujo(p))
+
+    def test_erro_git_nao_libera_worktree(self):
+        from gestao_cli import worktree_sujo
+        with patch('gestao_cli.subprocess.run',return_value=subprocess.CompletedProcess([],128,b'',b'erro')):
+            with self.assertRaises(ValueError):worktree_sujo(Path('.'))
 
 if __name__=='__main__':unittest.main()

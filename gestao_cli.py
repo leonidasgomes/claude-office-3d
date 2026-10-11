@@ -331,6 +331,21 @@ def executar_lote_paralelo(preparado, registro, salvar, despacho):
     registro['estado']='interrompido' if interrompido else 'processado'; salvar()
 
 
+def worktree_sujo(trabalho):
+    """Status pode acusar LFS hidratado; confere conteúdo e staging sem filtros de diff."""
+    def consultar(*args):
+        r=subprocess.run(['git','-C',str(trabalho),*args],capture_output=True,timeout=30)
+        if r.returncode not in (0,1):raise ValueError('Não foi possível conferir alterações do worktree')
+        return r
+    s=consultar('status','--porcelain','-z')
+    if s.returncode:raise ValueError('Não foi possível consultar status do worktree')
+    if not s.stdout:return False
+    # Arquivos novos, removidos, conflitos ou staging continuam impedindo despacho.
+    if any(not x.startswith(b' M ') for x in s.stdout.split(b'\0') if x):return True
+    return any(consultar('diff',*args,'--no-ext-diff','--no-textconv','--quiet','HEAD','--').returncode
+               for args in ((),('--cached',)))
+
+
 def validar_worktree(projeto, worktree):
     def git(pasta, *args):
         r = subprocess.run(["git", "-C", str(pasta), *args], capture_output=True, text=True,
@@ -350,7 +365,7 @@ def validar_worktree(projeto, worktree):
     branch = git(trabalho, "branch", "--show-current")
     if not branch or branch in ("main", "master", "codex/unreal-mvp"):
         raise ValueError("Despacho exige branch próprio em worktree")
-    if git(trabalho, "status", "--porcelain"):
+    if worktree_sujo(trabalho):
         raise ValueError("Worktree tem alterações; concilie antes de iniciar outro agente")
     return trabalho
 
@@ -610,7 +625,7 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                         or relatorio.get('sha') != sha or relatorio.get('autor') != pacote['executor']
                         or revisao_execucao.git(trabalho, 'rev-parse', '--verify', 'HEAD^{commit}') != sha
                         or revisao_execucao.git(trabalho, 'branch', '--show-current') != branch
-                        or revisao_execucao.git(trabalho, 'status', '--porcelain')
+                        or worktree_sujo(trabalho)
                         or cartao_atual['equipe'] != equipe or cartao_atual['status'] != cfg['kanban']['andamento']
                         or issue_atual.get('state') != 'open'):
                         raise ValueError('Entrega/política mudou durante a revisão')
