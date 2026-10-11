@@ -82,6 +82,14 @@ async function carregar() {
       }
       const lideranca=areas.lideranca||secao,equipes=areas.equipes||secao,funcionarios=areas.funcionarios||secao;
       const trabalho=areas.trabalho||secao;
+      if(p.ciclo_config?.ativo) {
+        const ciclo=p.ciclo||{};
+        linha('h4','Trabalho automático pelo GDD',trabalho);
+        linha('p',`Estado: ${ciclo.estado||'desligado'} · objetivo: ${ciclo.objetivo||'em seleção'} · tempo restante: ${ciclo.limite?Math.max(0,Math.ceil((ciclo.limite*1000-Date.now())/60000)):p.ciclo_config.duracao_min} min`,trabalho);
+        for(const c of ciclo.cartoes||[])linha('p',`#${c.cartao} · ${c.equipe}`,trabalho);
+        if(ciclo.motivo)linha('p',ciclo.motivo,trabalho);
+        if(ciclo.proxima_acao)linha('p','Próxima ação: '+ciclo.proxima_acao,trabalho);
+      }
       if(p.ativo)linha('p','Escolha o console e modelo da liderança. Salvar configurações não inicia agentes.',lideranca);
       if(p.documentacao) {
         const fontes=document.createElement('details');trabalho.append(fontes);linha('summary','Diagnóstico das fontes e instruções',fontes);

@@ -270,6 +270,11 @@ def chamar(executor, prompt, normalizador=normalizar, ao_evento=None):
             if resposta is None: raise RuntimeError('Claude sem resultado final')
             return normalizador(resposta)
         if provider.nome == 'codex':
+            if env.get('OFFICE_CODEX_SEM_DAEMON')=='1':cmd+=['--disable','daemon_auto_start']
+            windows=env.get('OFFICE_CODEX_WINDOWS_SANDBOX')
+            if windows:
+                if windows not in ('elevated','unelevated'):raise ValueError('Sandbox Windows inválido')
+                cmd+=['-c','windows.sandbox='+windows]
             verificar_flags(cmd+['exec'], pasta, env, ['--ignore-user-config', '--ignore-rules', '--sandbox', '--ephemeral'])
             args = cmd + ['exec', '--ignore-user-config', '--ignore-rules', '--sandbox', 'read-only',
                           '--skip-git-repo-check', '--ephemeral', '--json', '-c', 'web_search="disabled"']

@@ -25,6 +25,8 @@ jobs:
         run: python ferramentas/verificar.py
       - name: Controlador local e início limitado do CEO Codex
         run: |
+          python -W error ferramentas/testar_ciclo_gdd.py
+          python -W error ferramentas/testar_publicacao_host.py
           python -W error ferramentas/testar_controlador_local.py
           python -W error ferramentas/testar_inicio_equipe.py
           python -W error ferramentas/testar_git_codex.py

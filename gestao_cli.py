@@ -175,7 +175,8 @@ def conferir_disponibilidade(projeto, cfg, numero, trabalho):
                 (cfg['kanban']['repo'],str(numero))).fetchone()
         if atual and atual[0] not in ('cancelado','concluido'):
             raise ValueError('Cartão já reservado; concilie antes de iniciar lote')
-    ocupacoes=banco_worktrees(trabalho)
+    # O destino pode ainda não existir na preparação; a trava mora no Git comum.
+    ocupacoes=banco_worktrees(projeto)
     if ocupacoes.is_file():
         with closing(sqlite3.connect(ocupacoes.resolve().as_uri()+'?mode=ro',uri=True,timeout=5)) as db:
             recurso=os.path.normcase(str(Path(trabalho).resolve()))
@@ -405,6 +406,14 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
             nome = funcionarios.nome_eventos(atual)
         from skills_compartilhados import instrucoes_ativacao
         prompt += instrucoes_ativacao(pacote['skills_resolvidas'])
+        if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex':
+            prompt += ('\nPublicação Git pelo host do escritório: não contorne proteção .git. '
+                'Após implementar e testar, salve JSON UTF-8 com cartao (inteiro), worktree (raiz absoluta), '
+                'titulo e corpo do PR (Closes #n só para entrega inteira; Parte de #n para etapa). '
+                'Execute Python "'+str(RAIZ/'controlador_local.py')+'" --projeto "'+str(Path(projeto).resolve())+
+                '" --acao publicar --arquivo caminho_json. O host faz commit/push/PR, preservando hooks e gates. '
+                'Depois publique a revisão de arquitetura pelo script autorizado do projeto. '
+                'Não publique checks obrigatórios à mão nem faça merge. Se publicar falhar, pare sem repetir.\n')
         medicao=controle.iniciar_execucao(token,'retomada' if retomada else 'despacho')
         if ao_execucao is not None:ao_execucao(token,medicao)
         inicio_execucao=time.monotonic()
@@ -418,16 +427,19 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                                ao_processo=atividade.vincular,ao_evento=atividade.evento)
             else:
                 parametros_skills={}
+                if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex' and not retomada:
+                    fila_host=RAIZ/'dados'/'controlador';fila_host.mkdir(parents=True,exist_ok=True)
+                    parametros_skills={'diretorios_escrita':[fila_host],'sandbox':'workspace-write'}
                 nativas=[r['nome'] for r in pacote['skills_resolvidas'] if r.get('ativacao_nativa')=='Skill']
                 if nativas:
-                    parametros_skills={'skills_nativas':nativas,
-                                       'ao_skills':lambda e:controle.registrar_skills(token,e)}
+                    parametros_skills.update({'skills_nativas':nativas,
+                                       'ao_skills':lambda e:controle.registrar_skills(token,e)})
                 codigo = rodar(provider, exe, trabalho, nome, prompt=prompt, modelo=pacote["executor"].get("modelo") or None,
                                projeto_consumo=projeto,tentativa_consumo=medicao,
                                ao_sessao=lambda ident:controle.vincular_sessao(token,provider.nome,ident),
                                ao_processo=atividade.vincular,ao_evento=atividade.evento,
                                **({'sessao':retomada['sessao']} if retomada else {}),
-                               **({'sandbox':pacote['executor']['sandbox']} if 'sandbox' in pacote['executor'] else {}),**parametros_skills)
+                               **({**({'sandbox':pacote['executor']['sandbox']} if 'sandbox' in pacote['executor'] else {}),**parametros_skills}))
                 if nativas and not controle.skills(token).get('valida'):
                     if codigo==0: codigo=1
         controle.terminar_execucao(medicao,codigo,time.monotonic()-inicio_execucao)

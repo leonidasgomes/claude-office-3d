@@ -19,6 +19,8 @@ PADRAO = {
     "diretor": {"console": "claude", "modelo": "", "execucao": "cloud"},
     "equipes": [],
     "rotas": {},
+    "ciclo": {"ativo": False, "duracao_min": 120, "max_cartoes": 2,
+              "intervalo_seg": 300, "base": "", "criar_subtarefas": False},
     "sugestoes": {"ativo": False, "bots": [], "triagem": False},
     "auditor": {"ativo": False, "max_diff": 60000, "max_prs": 3},
     "revisao": {"ativo": False, "clouds_distintas": 2, "separar_autor": True, "revisores": []},
@@ -80,6 +82,17 @@ def _executor(valor, nome):
 
 def validar(dados):
     cfg = _mesclar(PADRAO, dados)
+    ciclo=cfg['ciclo']
+    for chave in ('ativo','criar_subtarefas'):
+        if type(ciclo[chave]) is not bool:raise ValueError('Ciclo: flags booleanas obrigatórias')
+    for chave, minimo, maximo in [('duracao_min',1,240),('max_cartoes',1,2),('intervalo_seg',60,3600)]:
+        if type(ciclo[chave]) is not int or not minimo<=ciclo[chave]<=maximo:
+            raise ValueError('Ciclo: limite inválido em '+chave)
+    if not isinstance(ciclo['base'],str):raise ValueError('Ciclo: base deve ser texto')
+    if ciclo['ativo']:
+        import re
+        if not re.fullmatch(r'origin/[A-Za-z0-9_./-]+',ciclo['base']):raise ValueError('Ciclo exige base origin/branch')
+        if not cfg['ativo']:raise ValueError('Ciclo exige projeto ativo')
     s=cfg['sugestoes']
     if type(s['triagem']) is not bool:raise ValueError('Sugestões: triagem deve ser booleana')
     if s['triagem'] and (not s['ativo'] or cfg['diretor'].get('execucao','cloud')!='cloud'):

@@ -311,6 +311,7 @@ def resumo(projetos,banco_consumo=None):
             from agentes_nativos import resumo as resumo_perfil
             membros=[{**f,'perfil_nativo':resumo_perfil(raiz,f['id'])} for f in funcionarios.listar(raiz)]
             saida.append({"nome": raiz.name, "id": funcionarios.id_projeto(raiz),
+                          "ciclo":__import__('ciclo_gdd').resumo(raiz), "ciclo_config":cfg['ciclo'],
                           "funcionarios":membros, "skills":funcionarios.skills(raiz,cfg),
                           "ativo": cfg["ativo"], "politica_versao":politica_versao, "ceo": cfg["ceo"],
                           "diretor": cfg["diretor"], "equipes": cfg["equipes"],
