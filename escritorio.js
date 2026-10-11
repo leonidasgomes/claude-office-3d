@@ -11,6 +11,7 @@ import { buscarFuncionarios, distribuirFuncionarios, assentosFuncionarios, xMesa
 import { eventoRecente, demoAutomaticaPermitida, fonteObservada } from './atividade_cena.mjs';
 import { estadoDoEscritorio } from './ciclo_ao_vivo.js';
 import { estadoNaCena } from './ciclo_cena.mjs';
+import { tarefasDaMesa, leitorGestao, desenharTrabalhoMesa } from './ficha_gestao.mjs';
 const FUNCIONARIOS = PROJETO_CENA ? distribuirFuncionarios({projetos:[PROJETO_CENA]}) : await buscarFuncionarios();
 const EXTENSAO_CENA = [...CONFIG.agentes.slice(10),...FUNCIONARIOS];
 const ASSENTOS_FUNCIONARIOS = assentosFuncionarios(EXTENSAO_CENA);
@@ -2182,12 +2183,21 @@ function aplicarFiltro() {
 // ---------------------------------------------------------------- Ficha do agente (clique no painel ou no boneco)
 const MAX_HIST = 120;
 const fichaEl = $('ficha');
-let fichaAberta = null, abaFicha = 'trabalho';
+let fichaAberta = null, abaFicha = 'trabalho', gestaoDaFicha = null, erroGestaoFicha = '';
+const consultarGestaoFicha=leitorGestao();
+async function atualizarGestaoFicha(){
+  if(!PROJETO_CENA || !fichaAberta || document.hidden)return;
+  const mesa=fichaAberta;
+  try {gestaoDaFicha=await consultarGestaoFicha();erroGestaoFicha='';}
+  catch {gestaoDaFicha=null;erroGestaoFicha='Diário indisponível; confira Gestão. Equipes não foram interrompidas.';}
+  if(fichaAberta===mesa)desenharFicha();
+}
+setInterval(atualizarGestaoFicha,30000);
 function guardarHist(a, ev, papel) {
   a.hist.push({ ev, papel });
   if (a.hist.length > MAX_HIST) a.hist.splice(0, a.hist.length - MAX_HIST);
 }
-function abrirFicha(a) { fichaAberta = a; fichaEl.hidden = false; desenharFicha(); atualizarBotaoSeguir(); atualizarChips(); }
+function abrirFicha(a) { fichaAberta = a; fichaEl.hidden = false; desenharFicha(); atualizarGestaoFicha(); atualizarBotaoSeguir(); atualizarChips(); }
 function fecharFicha() { fichaAberta = null; fichaEl.hidden = true; pararSeguir(); }   // fechou a ficha: a câmera para de seguir
 function el(tag, cls, texto) {
   const e = document.createElement(tag);
@@ -2222,6 +2232,12 @@ function desenharFicha() {
   const lista = $('fichaLista'); lista.textContent = '';
   if (abaFicha === 'xp') { desenharAbaXp(lista, a); return; }
   if (abaFicha === 'cartoes') { desenharAbaCartoes(lista, a); return; }
+  if(abaFicha==='trabalho' && PROJETO_CENA){
+    lista.append(el('li','xp-secao','Cartões e trabalho preservado'));
+    if(erroGestaoFicha)lista.append(el('li','vazio',erroGestaoFicha));
+    else if(!gestaoDaFicha)lista.append(el('li','vazio','Consultando diário do escritório…'));
+    else desenharTrabalhoMesa(lista,tarefasDaMesa(gestaoDaFicha,PROJETO_CENA.id,a.nome));
+  }
   const conversa = (x) => x.ev.tipo === 'fala' || x.ev.tipo === 'reuniao';
   const itens = a.hist.filter((x) => (abaFicha === 'conversas' ? conversa(x) : !conversa(x))).slice().reverse();
   if (!itens.length) lista.append(el('li', 'vazio', abaFicha === 'conversas' ? 'Nenhuma conversa ainda.' : 'Nenhum trabalho registrado ainda.'));

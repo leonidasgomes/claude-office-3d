@@ -1865,3 +1865,10 @@ retoma processos ou publica novamente. Caminhos absolutos, sessões e tokens
 privados não são expostos. A prévia e a confirmação de retomada existentes
 continuam obrigatórias, assim como a conferência de agentes/ferramentas.
 Correções de revisão aparecem separadamente nas métricas de tentativas.
+
+Na ficha da mesa, a aba Trabalho também apresenta esses cartões e checkpoints.
+O vínculo segue o projeto selecionado e a equipe ou ID cadastrado do funcionário.
+A consulta é compartilhada, com cache de 30 segundos, somente enquanto houver
+ficha aberta. Estado da reserva e console observado aparecem separadamente;
+consulta indisponível não interrompe equipes nem reaproveita dados antigos como
+estado vivo. O botão abre a Gestão existente para conferência assistida.
