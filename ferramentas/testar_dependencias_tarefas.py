@@ -31,6 +31,15 @@ class Dependencias(unittest.TestCase):
         self.assertEqual(relatorio['itens'][0]['origens'],['github']); self.assertTrue(self.chamadas)
         self.assertNotIn('body',str(relatorio))
 
+    def test_depende_legado_nao_ignora_bloqueador(self):
+        self.issue['state']='open'
+        with self.assertRaisesRegex(ValueError,'não concluída'):
+            verificar(self.k,42,'**Depende:** #1')
+        with self.assertRaises(ValueError):
+            declaradas('**Depende:** #1\n\n**Dependências:** #2','owner/repo')
+        with self.assertRaises(ValueError):
+            declaradas('**Depende:** após a medição','owner/repo')
+
     def test_corpo_e_nativa_sao_unidas_sem_duplicar(self):
         self.nativas = [self.issue]
         relatorio = verificar(self.k,42,'**Dependências:** #1, owner/repo#1')

@@ -104,5 +104,13 @@ class Ciclo(unittest.TestCase):
         self.assertEqual(k.chamar.call_count,4)
         corpo=k.chamar.call_args_list[0].args[2]['body'];self.assertIn('Parte de #1',corpo);self.assertNotIn('Closes #1',corpo)
 
+    def test_bancada_livre_replaneja_sem_mudar_quadro(self):
+        tempo=[0];consulta=Mock(return_value=[self.decisao(1)])
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':600,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':[self.item(1)]};k.cartoes.return_value=[self.item(1)];k._paginas.return_value=[]
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',side_effect=[True,False]),patch.object(c,'candidatos',return_value=[{**self.item(1),'preparavel':True,'objetivo_gdd':1,'issue':{'body':''}}]):
+            c.rodar(self.p,'teste',relogio=lambda:tempo[0],dormir=lambda s:tempo.__setitem__(0,tempo[0]+s),consulta=consulta)
+        self.assertEqual(consulta.call_count,2)
+
 
 if __name__=='__main__':unittest.main()

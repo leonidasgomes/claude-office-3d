@@ -18,7 +18,7 @@ def referencia(texto, repo):
 
 
 def declaradas(corpo, repo):
-    campos = list(re.finditer(r'^[ \t]*\*\*Depend[eê]ncias:\*\*[ \t]*(.*?)(?=\n[ \t]*\n|\n[ \t]*\*\*[^*]+:\*\*|\n---|\Z)',
+    campos = list(re.finditer(r'^[ \t]*\*\*(?:Depend[eê]ncias|Depende):\*\*[ \t]*(.*?)(?=\n[ \t]*\n|\n[ \t]*\*\*[^*]+:\*\*|\n---|\Z)',
                              corpo, re.I | re.M | re.S))
     if len(campos) > 1:
         raise ValueError('Campo Dependências repetido; mantenha uma única declaração')

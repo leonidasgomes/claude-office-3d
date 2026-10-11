@@ -13,9 +13,13 @@ O atalho com `iniciar_equipe.py` inicia o ciclo pelo host e abre um console de
 acompanhamento. O CEO não duplica o lote que o host está conduzindo. A área
 Trabalho e indicadores mostra estado, objetivo, cartões, causa e próxima ação.
 Após duas horas, nenhuma tarefa nova começa; o despacho em curso termina.
-Sem mudança no quadro, PRs ou evidências, a espera de cinco minutos não chama IA.
+Sem mudança no quadro, PRs, fontes, reservas ou disponibilidade da bancada,
+a espera de cinco minutos não chama IA.
 
 O diretor recebe fontes com hash, candidatos completos e inventário de evidências.
+Recebe também as reservas, sem presumir que uma sessão antiga continua ativa.
+Dependências Markdown aceitam `Dependências` e o nome legado `Depende`;
+referências ambíguas bloqueiam a preparação e precisam ser esclarecidas.
 Decide executar, desbloquear ou aguardar. Uma investigação pode virar sub-issue
 com aceite próprio, sem alterar o aceite do pai. A criação grava intenção antes
 de escrever no GitHub: falhas parciais exigem conciliação e não são repetidas.

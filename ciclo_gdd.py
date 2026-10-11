@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sqlite3
 import sys
 import time
 import uuid
@@ -29,6 +30,15 @@ def resumo(projeto):
     r=json.loads(p.read_text(encoding='utf-8'))
     return {k:r.get(k) for k in ('id','estado','inicio','limite','atualizado','objetivo',
                                 'cartoes','motivo','proxima_acao','resultados')}
+
+
+def reservas(projeto):
+    arquivo=pasta_dados(projeto)/'tarefas.db'
+    if not arquivo.exists():return []
+    with sqlite3.connect(arquivo.resolve().as_uri()+'?mode=ro',uri=True) as db:
+        db.row_factory=sqlite3.Row
+        return [dict(r) for r in db.execute(
+            'SELECT cartao,equipe,estado,sessao FROM reserva ORDER BY cartao')]
 
 
 def iniciar(projeto):
@@ -216,7 +226,7 @@ não comprovação automática de desempenho. Fontes, Kanban e instruções do u
             'issue':{k:issue.get(k) for k in ('number','title','body','state','updated_at','html_url')},
             'pacote':{k:p.get(k) for k in ('objetivo','aceite','escopo','skills','dependencias','executor')}})
     quadro=next((c['quadro_contexto'] for c in cartoes if 'quadro_contexto' in c),[])
-    dados={'fontes':docs,'equipes':cfg['equipes'],'cartoes':compactos,'quadro':quadro,
+    dados={'fontes':docs,'equipes':cfg['equipes'],'cartoes':compactos,'quadro':quadro,'reservas':reservas(projeto),
            'prs':[{k:p.get(k) for k in ('number','title','body','state','draft','updated_at')} for p in prs],
            'bancada_ocupada':ocupada,'evidencias':evidencias(projeto)}
     prompt=instrucao+json.dumps(dados,ensure_ascii=False)
@@ -294,6 +304,9 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             fonte={'campos':quadro['campos'],'itens':quadro['itens'],
                    'prs':[(pr['number'],pr.get('updated_at'),pr.get('head',{}).get('sha')) for pr in prs]}
             fonte['evidencias']=evidencias(projeto)
+            ocupada=bancada_ocupada(projeto)
+            fonte['bancada_ocupada']=ocupada
+            fonte['reservas']=reservas(projeto)
             atuais=documentos(projeto,cfg)
             fonte['documentos']=[d['sha256'] for d in atuais]
             docs=atuais;mapa=objetivos(docs[0]['conteudo'])
@@ -304,7 +317,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if assinatura==ultima:
                 salvar('aguardando',motivo='Nenhuma mudança no quadro/PRs',proxima_acao='consultar novamente sem inferência')
                 dormir(min(cfg['ciclo']['intervalo_seg'],max(0,registro['limite']-relogio())));continue
-            ultima=assinatura;ocupada=bancada_ocupada(projeto);escolhidos=[];mudou=False;desbloqueios=0
+            ultima=assinatura;escolhidos=[];mudou=False;desbloqueios=0
             fila=ordenar([c for c in cartoes if c['status']==cfg['kanban']['backlog'] and c['numero'] not in vistos],cfg,mapa)
             for inicio in range(0,len(fila),20):
                 if relogio()>=registro['limite']:break
