@@ -502,10 +502,11 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if len(set(numeros))!=len(numeros):raise ValueError('Fila de PRs duplicada; confira paginação')
             registro['prs_abertos']=len(numeros)
             if cfg['ciclo']['max_prs_pendentes'] and len(numeros)>=cfg['ciclo']['max_prs_pendentes']:
-                from fila_prs import planejar
+                from fila_prs import planejar,versao_politica
                 fila=planejar(projeto,cfg,prs,docs,pasta_dados(projeto),k,
                     ao_consulta=lambda:salvar('diretor',cartoes=[],proxima_acao='classificar revisão e etapas vinculadas dos PRs existentes'))
                 registro['encaminhamentos_prs']=fila['encaminhamentos']
+                registro['fila_politica']=versao_politica(cfg)
                 salvar('aguardando',cartoes=[],motivo='Limite de PRs abertos do projeto; priorizar revisão e recuperação',
                        proxima_acao='conferir encaminhamentos do diretor; validar revisão/etapa vinculada sem retomar reserva antiga')
                 esperar();continue

@@ -5,7 +5,9 @@ import path from 'node:path';
 const raiz=path.resolve(import.meta.dirname,'..');
 const fonte=fs.readFileSync(path.join(raiz,fs.existsSync(path.join(raiz,'office one')) ? 'office one/prs.js' : 'prs.js'),'utf8');
 class Elemento {
-  hidden=true; children=[]; style={}; textContent='';
+  hidden=true; children=[]; style={}; texto='';
+  set textContent(valor) {this.texto=valor;this.children=[];}
+  get textContent() {return this.texto;}
   append(...filhos) {this.children.push(...filhos);}
   addEventListener() {}
   setAttribute() {}
@@ -27,7 +29,8 @@ vm.runInContext(fonte.replace(/^import .*;\r?\n/gm,''),contexto);
 const inicial=respostas.length;
 const um=janela.__prs.carregar();escolhido='dois';const dois=janela.__prs.carregar(true);
 const dados=repo=>({fonte:'gestao',configurado:true,repo,prs:[{
-  numero:42,titulo:repo,url:'https://github.com/'+repo+'/pull/42',branch:'feat/x',rascunho:false,
+  numero:42,titulo:repo,url:'https://github.com/'+repo+'/pull/42',branch:'feat/x',rascunho:false,sha:'a'.repeat(40),
+  encaminhamento:{pr:42,head:'a'.repeat(40),somente_preparacao:true,acao:'etapa',equipe:'Dev',motivo:'<script>texto externo</script>'},
   rotulos:[],fecha:[],revisao:'SUCCESS',validacao:'Revisões pendentes'
 }],atualizado:'12:00'});
 respostas[inicial+1]({json:async()=>dados('owner/dois')});await dois;
@@ -36,4 +39,11 @@ assert.equal(janela.__prs.dados.repo,'owner/dois');
 assert.equal(janela.__prs.situacao(janela.__prs.dados.prs[0]).classe,'espera');
 assert.deepEqual(chamadas.slice(inicial),['/prs?projeto=um','/prs?projeto=dois&forcar=1']);
 assert.equal(elementos.get('prsConta').hidden,true);
+function textos(e) {return [e.textContent,...e.children.flatMap(textos)].join(' ');}
+const texto=textos(elementos.get('prsLista'));
+assert.ok(texto.includes('Diretor: preparar etapa vinculada · Dev'));
+assert.ok(texto.includes('Não comprova despacho'));
+assert.ok(texto.includes('<script>texto externo</script>'));
+vm.runInContext("dados.prs[0].encaminhamento.head='b'.repeat(40); desenhar();",contexto);
+assert.ok(!textos(elementos.get('prsLista')).includes('Diretor:'));
 console.log('PRs: resposta antiga descartada, seleção preservada e aprovação/sugestões legadas isoladas — OK');

@@ -19,6 +19,8 @@ def vista(projetos, ident=None, chamar=None):
     try:
         dados=(chamar or api)(f'repos/{repo}/pulls?state=open&per_page=100',paginar=True)
         if not isinstance(dados,list): raise ValueError('Lista inválida')
+        from fila_prs import projetar
+        encaminhamentos=projetar(raiz,cfg,dados[:1000])
         prs=[]; vistos=set()
         for pr in dados[:1000]:
             n=pr['number']; sha=pr['head']['sha']
@@ -33,6 +35,7 @@ def vista(projetos, ident=None, chamar=None):
                         'autor':str((pr.get('user') or {}).get('login','')),
                         'rotulos':[],'fecha':[],'revisao':'','checks':{},'conflito':False,
                         'validacao':'Gates e revisões deste projeto ainda precisam ser conferidos no commit atual.'})
+            if n in encaminhamentos:prs[-1]['encaminhamento']=encaminhamentos[n]
         # Política alterada durante a consulta não pode receber a resposta anterior.
         if carregar(raiz)!=cfg: raise ValueError('Política mudou')
         resposta.update(prs=prs,atualizado=time.strftime('%H:%M:%S'),limitado=len(dados)>1000)

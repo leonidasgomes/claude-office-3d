@@ -192,6 +192,18 @@ function desenhar() {
       const projeto = dados.projeto_id, versao = requisicao;
       li.append(detalhesEvidencias(projeto, pr, () => versao === requisicao &&
         dados?.projeto_id === projeto && dados?.prs?.some(p => p.numero === pr.numero && p.sha === pr.sha)));
+      const d = pr.encaminhamento;
+      if (d?.somente_preparacao === true && d.pr === pr.numero && d.head === pr.sha &&
+          ['revisar','correcao','etapa','aguardar'].includes(d.acao)) {
+        const proposta = el('details', 'encaminhamento-diretor');
+        const nomes = {revisar:'conferir revisão',correcao:'corrigir o PR existente',etapa:'preparar etapa vinculada',aguardar:'aguardar'};
+        proposta.append(el('summary', null, `Diretor: ${nomes[d.acao]} · ${d.equipe}`));
+        proposta.append(el('p', null, 'Proposta de preparação. Não comprova despacho, revisão aprovada ou entrega.'));
+        for (const [campo, rotulo] of [['motivo','Motivo'],['objetivo','Objetivo'],['aceite','Aceite'],['evidencias_faltantes','Falta comprovar']]) {
+          if (d[campo]) proposta.append(el('p', null, `${rotulo}: ${d[campo]}`));
+        }
+        li.append(proposta);
+      }
     }
     const sg = (sugestoes.itens || []).filter((x) => x.pr === pr.numero);
     if (sg.length) li.append(blocoSugestoes(pr.numero, sg));
