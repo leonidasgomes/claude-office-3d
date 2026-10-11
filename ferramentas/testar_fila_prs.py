@@ -1,0 +1,38 @@
+import json,sys,tempfile,unittest
+from pathlib import Path
+from unittest.mock import Mock
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+from fila_prs import validar,planejar
+from gestao_projeto import validar as politica
+
+class Fila(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.p=Path(self.tmp.name)
+        self.cfg=politica({'kanban':{'repo':'o/r'},'equipes':[{'nome':'Dev','especialidade':'Código','executor':{'console':'codex'}}]})
+        self.pr={'number':3,'state':'open','head':{'sha':'a'*40,'ref':'work/1'},'base':{'repo':{'full_name':'o/r'}},'body':'Parte de #1','draft':False}
+        self.d={'pr':3,'head':'a'*40,'equipe':'Dev','acao':'etapa','motivo':'Validação prevista em etapa separada','objetivo':'medir mapa','aceite':'registro real das medições','evidencias_faltantes':'disponibilidade da bancada'}
+        self.k=Mock();self.k.issue.return_value={'number':1,'body':'aceite original preservado'}
+    def test_classifica_uma_vez_por_contexto_sem_escrever_kanban(self):
+        consultar=Mock(return_value=[self.d]);etapa=Mock()
+        a=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar,ao_consulta=etapa)
+        b=planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar,ao_consulta=etapa)
+        self.assertEqual(a,b);consultar.assert_called_once();self.k.chamar.assert_not_called()
+        etapa.assert_called_once()
+        self.assertTrue(a['somente_preparacao']);self.assertIn('aceite original preservado',consultar.call_args.args[0])
+        self.pr['head']['sha']='b'*40;self.d['head']='b'*40
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);self.assertEqual(consultar.call_count,2)
+    def test_incerteza_nao_repete_chamada(self):
+        consultar=Mock(side_effect=RuntimeError('conexão perdida'))
+        with self.assertRaises(RuntimeError):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        with self.assertRaisesRegex(ValueError,'incerta'):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        consultar.assert_called_once()
+    def test_decisao_omissa_head_divergente_e_equipe_inventada(self):
+        for ds in ([],[{**self.d,'head':'b'*40}],[{**self.d,'equipe':'Inventada'}],[self.d,self.d]):
+            with self.assertRaises(ValueError):validar(json.dumps({'encaminhamentos':ds}),[self.pr],self.cfg)
+        self.assertEqual(validar(json.dumps({'encaminhamentos':[self.d]}),[self.pr],self.cfg),[self.d])
+    def test_pr_de_outro_repo_nao_chama_diretor(self):
+        self.pr['base']['repo']['full_name']='outro/repo';consultar=Mock()
+        with self.assertRaises(ValueError):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        consultar.assert_not_called()
+
+if __name__=='__main__':unittest.main()

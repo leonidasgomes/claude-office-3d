@@ -20,9 +20,10 @@ class Ciclo(unittest.TestCase):
             self.assertEqual(c.resumo(self.p)['estado'],'aguardando')
             self.assertEqual(c.resumo(self.p)['prs_abertos'],2)
             c.solicitar_pausa(self.p,ident);tempo[0]+=seg
-        with patch.object(c,'Kanban',return_value=k):
+        with patch.object(c,'Kanban',return_value=k),patch('fila_prs.planejar',return_value={'encaminhamentos':[]}) as encaminhar:
             c.rodar(self.p,ident,relogio=lambda:tempo[0],dormir=dormir,consulta=consulta,criar=criar,lote=lote)
         consulta.assert_not_called();criar.assert_not_called();lote.assert_not_called()
+        encaminhar.assert_called_once()
         self.assertEqual(c.resumo(self.p)['estado'],'pausado')
 
     def test_dois_limites_seguidos_param_antes_de_novo_despacho(self):

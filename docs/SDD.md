@@ -2089,3 +2089,11 @@ Claude preserva o fluxo anterior. gestao_painel.checkpoint projeta o diário,
 sem paths, sessões, tokens ou inferência; correção é um tipo de tentativa
 reconhecido e agregado separadamente. Testes: testar_ciclo_gdd,
 testar_conclusao_tarefas, testar_memoria_entregas e testar_resultados_tentativas.
+
+fila_prs.planejar classifica PRs no commit atual com o diretor configurado,
+sem ferramentas, criação de cartões ou retomada. Recebe corpos dos cartões
+citados e diagnósticos vinculados ao head; valida cobertura, SHA e equipe.
+Recibo por hash do contexto/política evita inferência repetida e preserva
+consultas incertas. Somente consulta nova anuncia a etapa diretor;
+encaminhamentos_prs é uma proposta, nunca autorização de despacho/merge.
+Testes: testar_fila_prs e testar_ciclo_gdd.
