@@ -1644,7 +1644,7 @@ Para operação autorizada sem perguntas do Codex, defina `OFFICE_CODEX_AUTONOMO
 
 ### Acompanhamento ao vivo e pausas na cena
 
-O acompanhamento fica na lateral do escritório 3D, junto à lista de agentes. Atualiza a cada dois segundos pelo estado local do projeto selecionado, sem chamadas de IA ou GitHub. Mostra a etapa do host, tempo restante, próxima ação, entregas e bloqueios. O atalho abre apenas o CEO no console. `acompanhamento_ciclo.py` continua disponível para diagnóstico manual, sem abertura automática de janela.
+O acompanhamento fica na lateral do escritório 3D, junto à lista de agentes. Atualiza a cada dois segundos pelo estado local do projeto selecionado, sem chamadas de IA ou GitHub. Mostra somente a etapa do host e o tempo restante. Entregas e revisões ficam na aba PRs; avisos ficam em Alertas; detalhes de coordenação e bloqueios ficam na Gestão. O atalho abre apenas o CEO no console. `acompanhamento_ciclo.py` continua disponível para diagnóstico manual, sem abertura automática de janela.
 
 Os personagens livres usam as áreas existentes de café/refeitório, banheiro e diversão, com as mesmas rotas e animações do Claude. Não cria eventos, sessões, tarefas ou consumo de IA. Reservas em execução, preparação ou estado desconhecido impedem pausas; revisão e bloqueio continuam visíveis durante o lazer. Eventos reais ou um despacho pedem retorno à mesa. CEO e diretor ficam na diretoria enquanto o ciclo está em andamento. Dados indisponíveis ou vencidos interrompem o lazer e exigem conferência; não liberam reservas. Pausas visuais não comprovam console ativo, ausência de bloqueio, implementação ou entrega.
 

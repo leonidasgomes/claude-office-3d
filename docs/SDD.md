@@ -1022,7 +1022,7 @@ erros parciais, decisão/proteção alteradas, identidade e integração do pain
 Fontes: https://docs.github.com/en/graphql/reference/pulls e
 https://docs.github.com/en/graphql/reference/branches.
 
-`GET /api/gestao/ciclo?projeto=ID`: projeção local somente leitura do ciclo, reservas e recibos de PR publicados. O ID seleciona apenas projeto registrado e ativo. Não consulta GitHub/modelos nem retorna tokens, PID ou caminhos de worktree. Erro de leitura impede liberar lazer na cena. `ciclo_ao_vivo.js` consulta a cada dois segundos enquanto a aba está visível; `ciclo_cena.mjs` separa status real de pausa visual e rejeita snapshots vencidos após 15 segundos. O launcher abre apenas CEO no console; o acompanhamento aparece na lateral do escritório.
+`GET /api/gestao/ciclo?projeto=ID`: projeção local somente leitura do ciclo, reservas e recibos de PR publicados. O ID seleciona apenas projeto registrado e ativo. Não consulta GitHub/modelos nem retorna tokens, PID ou caminhos de worktree. Erro de leitura impede liberar lazer na cena. `ciclo_ao_vivo.js` consulta a cada dois segundos enquanto a aba está visível; `ciclo_cena.mjs` separa status real de pausa visual e rejeita snapshots vencidos após 15 segundos. O launcher abre apenas CEO no console; o acompanhamento aparece na lateral do escritório mostrando somente etapa e tempo restante, sem duplicar PRs, Alertas ou detalhes de Gestão.
 
 `GET /api/gestao`: projeção de CEO, diretor, equipes, merge, local e tarefas das políticas
 dos projetos configurados. Sem prompts, tokens de reserva ou caminhos absolutos; só leitura,
