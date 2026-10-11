@@ -2243,3 +2243,10 @@ de tempo e tokens pelos valores registrados na meta da entrega. Só aumentos sã
 aceitos; fontes, revisão, commit, base, script e demais verificações continuam obrigatórios.
 A decisão e a diferença de orçamento ficam no recibo do gate. Essa conciliação não
 retoma o autor, não altera sua reserva e não renova concessões de correção.
+
+A preparação do gate informa quando a referência local da base está atrasada.
+No despacho de revisão, o host pode sincronizar somente essa referência, usando
+a origem HTTPS do repositório configurado e conferindo o SHA remoto antes e depois
+do fetch. Uma atualização concorrente impede a troca da referência. HEAD, arquivos
+e branches da equipe permanecem intactos; a elegibilidade completa é refeita antes
+da decisão do CEO. Origens não reconhecidas exigem conferência explícita.

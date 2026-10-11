@@ -142,7 +142,44 @@ class Gates(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'ambíguos'):g.comando_script(self.repo,self.cfg)
     def test_ref_da_base_deve_corresponder_ao_sha_remoto(self):
         self.git('update-ref','refs/remotes/origin/main',self.rel['sha'])
-        self.assertIsNone(self.preparar())
+        with self.assertRaisesRegex(g.ContextoIncompativel,'Base local'):self.preparar()
+    def test_sincronizacao_restrita_confere_origem_e_sha_sem_checkout(self):
+        import subprocess
+        chamadas=[]
+        def run(args,**kwargs):
+            cmd=args[3:];chamadas.append(cmd)
+            out=('https://github.com/owner/repo.git' if cmd[:2]==['remote','get-url'] else
+                 self.base+'\trefs/heads/main' if cmd[0]=='ls-remote' else
+                 'commit' if cmd[0]=='cat-file' else '')
+            return subprocess.CompletedProcess(args,0,out,'')
+        with patch('gates_projeto.subprocess.run',side_effect=run):
+            g.sincronizar_base(self.trabalho,'owner/repo','origin/main',self.base,'a'*40)
+        self.assertEqual(chamadas[-1],['update-ref','refs/remotes/origin/main',self.base,'a'*40])
+        self.assertEqual([c[0] for c in chamadas].count('fetch'),1)
+        self.assertFalse(any(c[0] in ('checkout','reset','merge') for c in chamadas))
+        with patch('gates_projeto.subprocess.run',return_value=subprocess.CompletedProcess([],0,'https://example.com/repo','')):
+            with self.assertRaisesRegex(ValueError,'Origin'):g.sincronizar_base(self.trabalho,'owner/repo','origin/main',self.base,'a'*40)
+
+    def test_sincronizacao_git_real_preserva_checkout_e_rejeita_ref_concorrente(self):
+        import subprocess
+        run_real=subprocess.run
+        remoto=self.repo.parent/'remoto-gate.git'
+        run_real(['git','clone','--bare',str(self.trabalho),str(remoto)],capture_output=True,check=True)
+        run_real(['git','--git-dir',str(remoto),'update-ref','refs/heads/main',self.rel['sha']],check=True)
+        url='https://github.com/owner/repo.git'
+        def run(args,**kwargs):
+            if args[3:]==['remote','get-url','origin']:return subprocess.CompletedProcess(args,0,url,'')
+            return run_real([str(remoto) if a==url else a for a in args],**kwargs)
+        before=gestao_cli.estado_git(self.trabalho)
+        with patch('gates_projeto.subprocess.run',side_effect=run):
+            g.sincronizar_base(self.trabalho,'owner/repo','origin/main',self.rel['sha'],self.base)
+            with self.assertRaises(subprocess.CalledProcessError):
+                g.sincronizar_base(self.trabalho,'owner/repo','origin/main',self.rel['sha'],self.base)
+            with self.assertRaisesRegex(ValueError,'antes'):
+                g.sincronizar_base(self.trabalho,'owner/repo','origin/main',self.base,self.rel['sha'])
+        self.assertEqual(gestao_cli.estado_git(self.trabalho),before)
+        self.assertEqual(self.git('rev-parse','origin/main'),self.rel['sha'])
+
     def test_snapshot_antigo_do_pr_nao_substitui_referencia_atual(self):
         self.pr['base']['sha']='a'*40
         e=self.preparar();self.assertEqual(e['base'],self.base);self.assertEqual(e['base_pr'],'a'*40)
