@@ -113,7 +113,10 @@ Caso contrário JSON {"subtarefa":{"titulo":"...","equipe":"nome","objetivo":"..
         proposta={**s,'objetivo':s['objetivo']+f' Referência: PR #{pr["number"]}, cartão #{pai}.'}
         registro={'estado':'criando','assinatura':assinatura,'identidade':identidade,'proposta':proposta}
         atomico(arq,registro)
-        numero=criar(projeto,cfg,k,{**cartao,'numero':pai,'objetivo_gdd':None},
+        from ciclo_gdd import objetivo_cartao,objetivos
+        texto_gdd=next((x['conteudo'] for x in docs if x.get('tipo')=='produto'),'')
+        objetivo_gdd=objetivo_cartao({**cartao,'numero':pai},objetivos(texto_gdd),texto_gdd)
+        numero=criar(projeto,cfg,k,{**cartao,'numero':pai,'objetivo_gdd':objetivo_gdd},
                      {'subtarefa':proposta},origem_pr=pr['number'])
         if numero is None:
             registro['estado']='dispensado';atomico(arq,registro);continue

@@ -2117,3 +2117,5 @@ na seleção. Não libera reservas nem dispensa metas/revisão/checks. A aprova�
 normal do diretor precede worktrees e lote, com escopo planejamento; recurso
 pesado e criação em cascata ficam fora da passagem. Testes: testar_fila_prs e
 testar_ciclo_gdd, incluindo seleção do filho com bancada ocupada.
+O criador recebe objetivo_cartao calculado das fontes canônicas; não escreve
+classificação pendente quando o GDD já prova o vínculo pela prioridade ou pai.

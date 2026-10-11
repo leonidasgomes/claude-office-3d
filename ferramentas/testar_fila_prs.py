@@ -80,6 +80,16 @@ class Fila(unittest.TestCase):
         self.assertIn('não repita',consulta.call_args.args[0].lower())
         self.assertTrue(all(len(x.args)==1 for x in self.k.chamar.call_args_list))
 
+    def test_preparacao_preserva_objetivo_do_pai_comprovado_pelo_gdd(self):
+        s=self.preparar_fixture();self.cfg['kanban']['prioridades']=['P0'];self.k.cartao.return_value['prioridade']='P0'
+        docs=[{'tipo':'produto','caminho':'PRODUTO.md','sha256':'a'*64,
+               'conteudo':'#### Objetivo 1\n#1\n'}]
+        criar=Mock(return_value=9)
+        with patch('gestao_projeto.carregar',return_value=self.cfg):
+            preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},docs,self.p,self.k,criar,
+                         lambda _:json.dumps({'subtarefa':s}))
+        self.assertEqual(criar.call_args.args[3]['objetivo_gdd'],1)
+
     def test_consulta_incerta_nao_cria_nem_repete_e_subissue_existente_impede(self):
         self.preparar_fixture();criar=Mock();consulta=Mock(side_effect=RuntimeError('rede'))
         with self.assertRaises(RuntimeError):preparar_fila(self.p,self.cfg,[self.pr],{'encaminhamentos':[self.d]},[],self.p,self.k,criar,consulta)
