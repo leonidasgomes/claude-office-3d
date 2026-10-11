@@ -2079,6 +2079,11 @@ recibo no intervalo desse ciclo, CEO já aprovou, nenhuma resposta/publicação 
 política/executor iguais. Arquiva o recibo original e revalida o pacote antes de
 iniciar a equipe; não repete o CEO nem retoma sessão. Outros erros não habilitam
 essa conciliação. Não se aplica a reservas/tentativas de implementação.
+Uma conferência conciliada em `pronto` é encaminhada antes de pedir uma nova
+classificação ao diretor. O controlador conserva a decisão do CEO e o escopo
+original, revalida o pacote completo e inicia somente a equipe. Recibos antigos
+recuperam o escopo do ciclo arquivado com hash conferido. `pronto` não comprova
+publicação; somente um recibo publicado com comentário registrado informa isso.
 Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada

@@ -118,6 +118,7 @@ def contexto(dados,prs,cfg):
             out.append({'pr':e['pr'],'head':e['head'],'equipe':e['equipe'],
                 'origem':'conferencias_prs/'+f.name,'sha256':assinatura(r),
                 'estado':r.get('estado'),'comentario':r.get('comentario'),
+                'publicado_comprovado':r.get('estado')=='publicado' and type(r.get('comentario')) is int and r['comentario']>0,
                 'parecer':parecer(r['parecer']) if r.get('estado')=='publicado' else None,
                 'decisao_ceo':r.get('ceo'),'somente_contexto':True})
     if len(out)>30:raise ValueError('Conferências excessivas; não truncar')
@@ -197,7 +198,8 @@ def encaminhar(projeto,cfg,prs,fila,docs,dados,k,ao_etapa=None,chamar=None):
         texto=json.dumps(p,ensure_ascii=False)
         if len(texto)>235000:raise ValueError('Conferência exige seleção documental explícita; não truncar')
         if anterior and anterior['pacote_sha256']!=assinatura(p):raise ValueError('Pacote mudou após conciliação; não executar')
-        pasta.mkdir(exist_ok=True);r=anterior or {'alvo':e,'identidade':identidade,'estado':'consultando','pacote_sha256':assinatura(p)};atomico(f,r)
+        pasta.mkdir(exist_ok=True);r=anterior or {'alvo':e,'identidade':identidade,'encaminhamento':d,
+            'estado':'consultando','pacote_sha256':assinatura(p)};atomico(f,r)
         def decidir(texto):
             from coordenacao import resposta
             x=resposta(texto) if isinstance(texto,str) else texto
@@ -242,3 +244,34 @@ def encaminhar(projeto,cfg,prs,fila,docs,dados,k,ao_etapa=None,chamar=None):
         r.update(estado='publicado',comentario=c['id']);atomico(f,r)
         return {'pr':e['pr'],'equipe':e['equipe'],'estado':'publicado','recibo':str(f)}
     return None
+
+
+def fila_prontas(dados,cfg,prs,docs):
+    """Contrato já autorizado e conciliado precede nova classificação por modelo."""
+    from fila_prs import validar
+    resultado=[];vistos=set()
+    for f in sorted((Path(dados)/'conferencias_prs').glob('*.json')):
+        r=ler(f)
+        if r.get('estado')!='pronto':continue
+        e=r.get('alvo') or {};pr=next((p for p in prs if p['number']==e.get('pr')),None)
+        if not pr or pr.get('state')!='open' or e.get('politica')!=assinatura(cfg):continue
+        if pr.get('head',{}).get('sha')!=e.get('head'):continue
+        if r.get('ceo',{}).get('acao')!='conferir':raise ValueError('Conferência pronta sem decisão do CEO')
+        if r.get('identidade')!={**e,'fontes':[{'caminho':x['caminho'],'sha256':x['sha256']} for x in docs]}:continue
+        d=r.get('encaminhamento')
+        if d is None:
+            # Compatibilidade com recibos anteriores que só guardavam o hash do pacote.
+            ciclo=r.get('conciliacao_inicializacao',{}).get('ciclo');originais=[]
+            if not isinstance(ciclo,str) or not re.fullmatch('[0-9a-f]{32}',ciclo):raise ValueError('Conferência sem ciclo de origem')
+            for arq in (Path(dados)/'ciclos').glob('*.json'):
+                c=ler(arq)
+                if c.get('id')!=ciclo:continue
+                if hashlib.sha256(arq.read_bytes()).hexdigest()!=arq.stem:raise ValueError('Ciclo arquivado diverge do hash')
+                originais.extend(x for x in c.get('encaminhamentos_prs',[]) if x.get('pr')==e['pr'])
+            if len(originais)!=1:raise ValueError('Escopo original da conferência ausente ou ambíguo')
+            d=originais[0]
+        validar(json.dumps({'encaminhamentos':[d]}),[pr],cfg)
+        if alvo(cfg,pr,d)!=e:continue
+        if e['pr'] in vistos:raise ValueError('Conferências prontas concorrentes para o mesmo PR')
+        vistos.add(e['pr']);resultado.append(d)
+    return {'encaminhamentos':resultado}

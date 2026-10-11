@@ -2195,6 +2195,11 @@ inferência, o encerramento do ciclo e a identidade/tempo do recibo. Preserva
 histórico com hash; estado `pronto` exige esse histórico e pacote idêntico antes
 de iniciar a equipe. Não repete decisão do CEO ou autor; não recupera modelo,
 sessão ou publicação incertos. Testes incluem rejeição de outros estágios.
+`fila_prontas` projeta contratos conciliados antes de nova classificação do
+diretor. Preserva o encaminhamento original no recibo; na compatibilidade com
+recibos antigos, confere hash e identidade do ciclo arquivado. `encaminhar`
+continua validando histórico, pacote, fontes, política e autor encerrado.
+Não usa texto do modelo para inferir publicação ou para reescrever o contrato.
 Publicação incerta só recupera comentário idêntico do mesmo usuário; não repete
 POST nem consulta. `fila_prs.planejar` inclui pareceres/esperas atuais no contexto
 e cache. `ciclo_gdd` encaminha depois de gates/correções e antes de esperar pelo
