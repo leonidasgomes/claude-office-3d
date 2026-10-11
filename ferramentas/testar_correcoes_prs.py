@@ -144,6 +144,21 @@ class Correcoes(unittest.TestCase):
         self.d['max_concessoes']=1;self.gravar_delegacao()
         self.assertEqual(c.pendentes(self.p,self.cfg),[])
 
+    def test_primeira_concessao_independente_precede_renovacao(self):
+        self.d.update(continuar_limite=True,max_concessoes=3)
+        self.d['prs'].append({'pr':4,'cartao':2,'token':'e'*32,'head':'c'*40})
+        self.gravar_delegacao()
+        token=self.contratar();tentativa=self.ctrl.iniciar_execucao(token)
+        self.ctrl.terminar_execucao(tentativa,124,30);self.ctrl.transicao(token,'bloqueado')
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            db.execute('INSERT INTO atividade_execucao VALUES (?,?,?)',(tentativa,'encerrado',124))
+        self.tentativa=tentativa;self.meta_limite()
+        with patch('gestao_cli.estado_git',return_value={'sha':'b'*40,'branch':'work/teste'}):
+            ds=c.pendentes(self.p,self.cfg)
+        self.assertEqual([(d['prs'][0]['pr'],d['rodada']) for d in ds],[(4,1),(3,2)])
+        self.assertEqual(ds[1]['prs'][0]['token'],token)
+        self.assertTrue(all(d['limites']==self.d['limites'] for d in ds))
+
     def test_concessoes_exigem_teto_finito_e_nao_renovam_revisao(self):
         for valor in (0,6,True,'2'):
             self.d.update(continuar_limite=True,max_concessoes=valor);self.gravar_delegacao()

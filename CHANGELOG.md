@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Concessões de correção atendem primeiro PRs ainda sem rodada, antes de renovar outro PR; ordem original preservada nos empates, sem alterar gates ou limites.
+
 - Chefes podem decidir concessões adicionais dentro de um teto explícito por PR; cada rodada comprova a cadeia de reservas e o limite anterior, sem renovação ilimitada ou consumo apagado.
 
 - Publicação do host atualiza título/corpo no PR reservado, inclusive sem alteração de arquivo, preservando SHA e sem commit artificial.
