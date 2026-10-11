@@ -129,6 +129,7 @@ jobs:
           node ferramentas/testar_executores_form.mjs
           node ferramentas/testar_merge_form.mjs
           node ferramentas/testar_revisao_form.mjs
+          node ferramentas/testar_ciclo_form.mjs
       - name: Codex interativo (transcritos e isolamento de sessões)
         run: python -W error ferramentas/testar_codex_observador.py
       - name: Providers no feed HTTP do escritório

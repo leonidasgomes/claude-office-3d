@@ -25,6 +25,11 @@ def caminho_estado(projeto):
     return pasta_dados(projeto)/'ciclo.json'
 
 
+def mesma_politica_em_execucao(atual,inicial):
+    # A duração editada vale para o próximo início; o prazo persistido não muda.
+    return {**atual,'ciclo':{**atual['ciclo'],'duracao_min':inicial['ciclo']['duracao_min']}}==inicial
+
+
 def resumo(projeto):
     p=caminho_estado(projeto)
     if not p.exists():return {'estado':'desligado'}
@@ -331,13 +336,14 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
     registro=json.loads(p.read_text(encoding='utf-8'))
     if registro['id']!=ident or registro['estado']!='iniciando':raise ValueError('Sessão divergente; não retomar')
     registro['pid']=os.getpid()
+    registro['duracao_futura_configuravel']=True
     cfg=carregar(projeto);docs=documentos(projeto,cfg);mapa=objetivos(docs[0]['conteudo'])
     k=Kanban(cfg,pasta_dados(projeto)/'kanban.json');vistos=set();ultima=None
     def salvar(estado,**kw):
         registro.update(estado=estado,atualizado=relogio(),**kw);atomico(p,registro)
     try:
         while relogio()<registro['limite']:
-            if carregar(projeto)!=cfg:raise ValueError('Política mudou; iniciar nova sessão após conferir')
+            if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou; iniciar nova sessão após conferir')
             salvar('consultando',proxima_acao='selecionar trabalho pelo GDD')
             quadro=k.quadro(ao_vivo=True);cartoes=k.cartoes()
             prs=k._paginas(f"repos/{cfg['kanban']['repo']}/pulls?state=open")

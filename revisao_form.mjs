@@ -11,6 +11,8 @@ export function formularioRevisao(projeto, atualizar) {
   const clouds=campo('Quantidade de fornecedores distintos','number');clouds.min='1';clouds.step='1';clouds.value=String(projeto.revisao.clouds_distintas);
   const separar=campo('Revisor de fornecedor diferente do autor','checkbox');separar.checked=projeto.revisao.separar_autor;
   function estado(){clouds.disabled=separar.disabled=!ativo.checked;}ativo.addEventListener('change',estado);estado();
+  const disponiveis=document.createElement('p');
+  disponiveis.textContent='Revisores habilitados: '+((projeto.revisao.revisores||[]).filter(r=>r.ativo).map(r=>r.nome+' ('+r.console+')').join(', ')||'nenhum')+'. Revisores suspensos não contam para a quantidade exigida.';form.append(disponiveis);
   const aviso=document.createElement('p');aviso.textContent='Vale somente para este projeto. Desativar dispensa a revisão por IA e preserva os revisores cadastrados. Checks do GitHub e regras de merge continuam obrigatórios. Reativar exige fornecedores suficientes na política; login e disponibilidade são conferidos na execução. Auditor ativo exige revisão com dois fornecedores e separação do autor. Execuções em curso precisam de nova conferência após mudança de política.';form.append(aviso);
   const salvar=document.createElement('button');salvar.type='submit';salvar.textContent='Salvar política de revisão';form.append(salvar);
   const status=document.createElement('p');status.setAttribute('role','status');form.append(status);

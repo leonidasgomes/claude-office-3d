@@ -1,5 +1,6 @@
 """Revisão opcional por projeto: isolamento, validação e gates preservados."""
 import copy,json,sys,tempfile,unittest
+from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 import politica_painel as p
@@ -7,6 +8,38 @@ from gestao_projeto import validar,revisores,decidir_merge
 from funcionarios import id_projeto
 
 class RevisaoPainel(unittest.TestCase):
+    def test_ciclo_antigo_protegido_e_novo_preserva_prazo(self):
+        dados=self.raiz/'dados';dados.mkdir();arq=dados/'ciclo.json'
+        r={'estado':'implementando','limite':123};arq.write_text(json.dumps(r))
+        with patch('gestao_cli.pasta_dados',return_value=dados):
+            with self.assertRaisesRegex(p.Conflito,'controlador anterior'):
+                p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':60})
+            self.assertEqual(self.arq.read_bytes(),self.bruto)
+            r['duracao_futura_configuravel']=True;arq.write_text(json.dumps(r));antes=arq.read_bytes()
+            p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':60})
+            self.assertEqual(arq.read_bytes(),antes)
+    def test_revisores_suspensos_nao_contam_e_api_explica(self):
+        cfg=copy.deepcopy(self.cfg);cfg['revisao']['ativo']=False
+        cfg['revisao']['revisores'][1]['ativo']=False
+        self.arq.write_text(json.dumps(cfg),encoding='utf-8');antes=self.arq.read_bytes()
+        dados={'projeto_id':id_projeto(self.raiz),'versao':p.snapshot(self.raiz)[1],
+               'revisao':{'ativo':True,'clouds_distintas':2,'separar_autor':False}}
+        codigo,r=p.api_revisao([self.raiz],dados,{'permissao':'pc'})
+        self.assertEqual(codigo,400);self.assertIn('1 habilitado',r['erro'])
+        self.assertEqual(antes,self.arq.read_bytes())
+        dados['revisao']['clouds_distintas']=1
+        self.assertEqual(p.api_revisao([self.raiz],dados,{'permissao':'pc'})[0],200)
+    def test_duracao_preserva_politica_e_sessao(self):
+        ciclo=self.raiz/'ciclo.json';ciclo.write_text('{"limite":123}')
+        resultado=p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':60})
+        cfg,sha,_=p.snapshot(self.raiz)
+        self.assertEqual(cfg['ciclo']['duracao_min'],60)
+        self.assertEqual(ciclo.read_text(),'{"limite":123}')
+        for k in set(cfg)-{'ciclo'}:self.assertEqual(cfg[k],self.cfg[k])
+        self.assertEqual(sha,resultado['versao'])
+        for n in (0,241,True,1.5):
+            with self.assertRaises(ValueError):p.atualizar_ciclo(self.raiz,sha,{'duracao_min':n})
+        with self.assertRaises(p.Conflito):p.atualizar_ciclo(self.raiz,self.hash,{'duracao_min':90})
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.raiz=Path(self.tmp.name);(self.raiz/'.office').mkdir()

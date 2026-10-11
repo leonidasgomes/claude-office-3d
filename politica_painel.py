@@ -8,10 +8,11 @@ import re
 import tempfile
 
 from funcionarios import id_projeto
-from gestao_projeto import carregar, validar
+from gestao_projeto import carregar, validar, revisores
 
 
 class Conflito(ValueError): pass
+class RevisaoInvalida(ValueError): pass
 
 
 def snapshot(projeto):
@@ -103,7 +104,14 @@ def atualizar_revisao(projeto,versao,revisao):
     if not cfg['ativo']:raise ValueError('Adote a gestão antes de editar a revisão')
     if not isinstance(revisao,dict) or set(revisao)!={'ativo','clouds_distintas','separar_autor'}:
         raise ValueError('Informe somente as opções de revisão')
-    novo=copy.deepcopy(cfg);novo['revisao'].update(revisao);novo=validar(novo)
+    novo=copy.deepcopy(cfg);novo['revisao'].update(revisao)
+    try:
+        novo=validar(novo)
+        if novo['revisao']['ativo']:
+            for equipe in novo['equipes']:
+                revisores(novo,equipe['executor'])
+    except ValueError as exc:
+        raise RevisaoInvalida(str(exc)) from exc
     return gravar(raiz,cfg,atual,bruto,novo)
 
 
@@ -114,7 +122,38 @@ def api_revisao(projetos,dados,ident):
     if projeto is None:return 400,{'erro':'Projeto não configurado no escritório'}
     try:return 200,atualizar_revisao(projeto,dados['versao'],dados['revisao'])
     except Conflito as exc:return 409,{'erro':str(exc)}
+    except RevisaoInvalida as exc:return 400,{'erro':str(exc)+'; nenhuma alteração salva'}
+    except OSError:return 400,{'erro':'Não foi possível gravar a política de revisão; confira as permissões da pasta .office'}
     except (ValueError,OSError,TypeError,KeyError):return 400,{'erro':'Revisão inválida: confira fornecedores disponíveis e auditor ativo; nenhuma alteração salva'}
+
+
+def atualizar_ciclo(projeto,versao,ciclo):
+    raiz=Path(projeto).resolve();cfg,atual,bruto=snapshot(raiz)
+    if not isinstance(versao,str) or versao!=atual:
+        raise Conflito('Política mudou; recarregue antes de salvar')
+    if not cfg['ativo']:raise ValueError('Projeto deve estar ativo')
+    if not isinstance(ciclo,dict) or set(ciclo)!={'duracao_min'}:
+        raise ValueError('Informe somente a duração')
+    from gestao_cli import pasta_dados
+    estado=pasta_dados(raiz)/'ciclo.json'
+    if estado.exists() and ciclo.get('duracao_min')!=cfg['ciclo']['duracao_min']:
+        registro=json.loads(estado.read_text(encoding='utf-8'))
+        if registro.get('estado') not in ('concluido','limite','pausado') and not registro.get('duracao_futura_configuravel'):
+            raise Conflito('Ciclo atual usa controlador anterior; aguarde finalizar para alterar a duração')
+    novo=copy.deepcopy(cfg);novo['ciclo'].update(ciclo);novo=validar(novo)
+    return gravar(raiz,cfg,atual,bruto,novo)
+
+
+def api_ciclo(projetos,dados,ident):
+    if ident.get('permissao')!='pc':return 403,{'erro':'Configuração editável somente no PC'}
+    if not isinstance(dados,dict) or set(dados)!={'projeto_id','versao','ciclo'}:
+        return 400,{'erro':'Pedido inválido'}
+    projeto=next((p for p in projetos if id_projeto(p)==dados['projeto_id']),None)
+    if projeto is None:return 400,{'erro':'Projeto não configurado'}
+    try:return 200,atualizar_ciclo(projeto,dados['versao'],dados['ciclo'])
+    except Conflito as exc:return 409,{'erro':str(exc)}
+    except (ValueError,OSError,TypeError,KeyError):
+        return 400,{'erro':'Duração deve ser inteira entre 1 e 240 minutos; confira permissão de gravação'}
 
 
 def atualizar_merge(projeto,versao,merge):
