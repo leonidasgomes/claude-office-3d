@@ -1649,3 +1649,10 @@ O acompanhamento fica na lateral do escritório 3D, junto à lista de agentes. A
 Os personagens livres usam as áreas existentes de café/refeitório, banheiro e diversão, com as mesmas rotas e animações do Claude. Não cria eventos, sessões, tarefas ou consumo de IA. Reservas em execução, preparação ou estado desconhecido impedem pausas; revisão e bloqueio continuam visíveis durante o lazer. Eventos reais ou um despacho pedem retorno à mesa. CEO e diretor ficam na diretoria enquanto o ciclo está em andamento. Dados indisponíveis ou vencidos interrompem o lazer e exigem conferência; não liberam reservas. Pausas visuais não comprovam console ativo, ausência de bloqueio, implementação ou entrega.
 
 O modo legado sem projeto gerenciado mantém as regras anteriores. Replay e demonstração não recebem projeções do ciclo atual. Fechar o navegador ou o CEO não encerra o controlador nem equipes. Não há retomada ou novo lote pelo acompanhamento.
+
+
+### Duração e revisão configuradas no painel
+
+Em Engrenagem → Gestão → CEO e diretor, **Configurar duração do ciclo** salva entre 1 e 240 minutos para o próximo início, na política única do projeto. Não inicia nem estende sessão atual; o host mantém o limite persistido mesmo após essa edição. Ciclos abertos antes desta atualização precisam terminar antes de salvar uma duração diferente. Outras mudanças de política continuam exigindo conferência entre ciclos.
+
+**Configurar revisão deste projeto** mostra revisores habilitados. Revisores suspensos não contam para fornecedores disponíveis. Ao salvar, confere quantidade, separação do autor para as equipes e requisitos do auditor; falha não grava e informa a causa. Erro de gravação é distinto de configuração inválida. Checks e merge permanecem obrigatórios.

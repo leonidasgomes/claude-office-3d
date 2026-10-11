@@ -10,6 +10,13 @@ from gestao_projeto import validar
 
 
 class Ciclo(unittest.TestCase):
+    def test_duracao_futura_nao_muda_politica_efetiva(self):
+        import copy
+        atual=copy.deepcopy(self.cfg);atual['ciclo']['duracao_min']=60
+        self.assertTrue(c.mesma_politica_em_execucao(atual,self.cfg))
+        self.assertEqual(atual['ciclo']['duracao_min'],60)
+        atual['revisao']['ativo']=True
+        self.assertFalse(c.mesma_politica_em_execucao(atual,self.cfg))
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.raiz=Path(self.tmp.name);self.p=self.raiz/'projeto';self.p.mkdir()

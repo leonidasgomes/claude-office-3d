@@ -2046,3 +2046,8 @@ OFFICE_CODEX_AUTONOMO=1 configura apenas o processo Codex com aprovação never 
 
 
 Saúde em gestão: GET /saude?projeto=ID seleciona o mesmo projeto registrado dos PRs/Kanban. A vista filtra eventos por projeto_id e não altera o ciclo, ignorados ou pedidos do vigia legado. PRs sem dados de tamanho/checks são apresentados como não consultados; duplicados são calculados com PRs e branches da raiz selecionada; parados dependentes das evidências permanecem explicitamente não avaliados. Sem projeto selecionado, pede seleção, sem atribuir a falha ao GitHub. Arquitetura lê a primeira raiz do config.json na ref grafo.ref: ausência naquela ref não significa ausência de grafo no checkout. Gestão usa cabeçalho fixo, controles escuros, foco visível e organização responsiva, coerentes com os painéis do escritório.
+
+
+`POST /api/gestao/ciclo`: edição no PC da duração do próximo ciclo (1..240 minutos), com projeto_id, versão hash e ciclo contendo somente duracao_min. Preserva outras opções e prazo atual. ciclo_form.mjs aparece em Gestão/CEO e diretor. O ciclo host ignora apenas mudanças de duracao_min ao conferir a política durante uma sessão.
+
+Revisores suspensos não contam em gestao_projeto.validar. A edição de revisão valida também disponibilidade por fornecedor para autores das equipes; erros de validação são apresentados sem salvar e erros de gravação têm mensagem própria.

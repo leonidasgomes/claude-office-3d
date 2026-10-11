@@ -1187,6 +1187,9 @@ class Handler(rede.HandlerSeguro):
         if rota == '/api/gestao/revisao':
             import politica_painel
             return politica_painel.api_revisao(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
+        if rota == '/api/gestao/ciclo':
+            import politica_painel
+            return politica_painel.api_ciclo(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)
         if rota == '/api/gestao/merge':
             import politica_painel
             return politica_painel.api_merge(cfg()['projetos'],{k:v for k,v in dados.items() if k!='_ua'},ident)

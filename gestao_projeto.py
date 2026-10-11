@@ -197,9 +197,10 @@ def validar(dados):
         _executor(revisor["executor"], f"revisor {nome}")
         if revisor["executor"].get("execucao", "cloud") != "cloud":
             raise ValueError("Revisão cruzada exige execução cloud")
-        clouds.add(cloud_executor(revisor["executor"]))
+        if revisor.get('ativo',True):
+            clouds.add(cloud_executor(revisor["executor"]))
     if revisao["ativo"] and len(clouds) < revisao["clouds_distintas"]:
-        raise ValueError("Número insuficiente de clouds distintas para revisão cruzada")
+        raise ValueError(f"Revisão exige {revisao['clouds_distintas']} fornecedores distintos, mas há {len(clouds)} habilitado(s)")
     a=cfg['auditor']
     if (type(a['ativo']) is not bool or type(a['max_diff']) is not int or not 1000<=a['max_diff']<=180000
         or type(a['max_prs']) is not int or not 1<=a['max_prs']<=10):raise ValueError('Limites do auditor inválidos')
