@@ -26,7 +26,11 @@ def ler(arq):
     return json.loads(arq.read_text(encoding='utf-8'))
 
 
-def delegacao(dados,cfg):
+class PoliticaDivergente(ValueError):
+    """Autorização histórica válida, sem permissão na política atual."""
+
+
+def delegacao(dados,cfg,*,somente_historico=False):
     arq=Path(dados)/'delegacao_correcoes.json'
     if not arq.exists():return None
     d=ler(arq)
@@ -36,8 +40,11 @@ def delegacao(dados,cfg):
         or type(d.get('max_concessoes',1)) is not int or not 1<=d.get('max_concessoes',1)<=5
         or (d.get('max_concessoes',1)>1 and d.get('continuar_limite') is not True)
         or not re.fullmatch('[0-9a-f]{32}',d.get('id','')) or d['repo']!=cfg['kanban']['repo']
-        or d['politica']!=assinatura(cfg) or not isinstance(d['origem'],str) or not d['origem'].strip()
-        or d['limites']!={'tempo_min':cfg['metas']['tempo_min'],'tokens':cfg['metas']['tokens']}
+        or not re.fullmatch('[0-9a-f]{64}',str(d.get('politica','')))
+        or not isinstance(d['origem'],str) or not d['origem'].strip()
+        or not isinstance(d['limites'],dict) or set(d['limites'])!={'tempo_min','tokens'}
+        or any(type(d['limites'][k]) is not int or not minimo<=d['limites'][k]<=maximo
+               for k,minimo,maximo in [('tempo_min',1,240),('tokens',1000,10000000)])
         or not cfg['ativo'] or not cfg['ciclo']['ativo'] or not cfg['metas']['ativo']
         or not isinstance(d['prs'],list) or not d['prs'] or len(d['prs'])>20):
         raise ValueError('Delegação de correções diverge da política; chefe precisa conferir')
@@ -48,12 +55,29 @@ def delegacao(dados,cfg):
             or not re.fullmatch('[0-9a-f]{32}',p['token']) or not re.fullmatch('[0-9a-f]{40}',p['head'])
             or p['pr'] in numeros):raise ValueError('Alvos da delegação inválidos')
         numeros.add(p['pr'])
+    if not somente_historico and (d['politica']!=assinatura(cfg)
+        or d['limites']!={'tempo_min':cfg['metas']['tempo_min'],'tokens':cfg['metas']['tokens']}):
+        raise PoliticaDivergente('Delegação de correções diverge da política; chefe precisa conferir')
     return d
+
+
+def contexto_delegacao(dados,cfg):
+    """Informa ao diretor a divergência; nunca concede saldo ou despacho."""
+    d=delegacao(dados,cfg,somente_historico=True)
+    if not d:return None
+    atual={'tempo_min':cfg['metas']['tempo_min'],'tokens':cfg['metas']['tokens']}
+    compativel=d['politica']==assinatura(cfg) and d['limites']==atual
+    return {'id':d['id'],'compativel':compativel,'somente_contexto':True,
+            'politica_original':d['politica'],'limites_originais':d['limites'],
+            'limites_atuais':atual,'prs':[p['pr'] for p in d['prs']],
+            'acao':'Conferir delegação antes de corrigir; mudança de metas não renova concessões.'
+                   if not compativel else 'Decisões e gates existentes continuam obrigatórios.'}
 
 
 def pendentes(dados,cfg):
     """Concessões finitas: chefe decide cada rodada, com cadeia de reservas comprovada."""
-    raiz=delegacao(dados,cfg)
+    try:raiz=delegacao(dados,cfg)
+    except PoliticaDivergente:return []
     if not raiz:return []
     from controle_tarefas import Controle
     from gestao_cli import estado_git
@@ -112,7 +136,8 @@ def limite_confirmado(dados,alvo):
 
 
 def contexto_continuacao(dados,cfg):
-    d=delegacao(dados,cfg)
+    try:d=delegacao(dados,cfg)
+    except PoliticaDivergente:return None
     if not d or not d.get('continuar_limite'):return None
     alvos=[{**alvo,'concessao':p['id'],'limite_confirmado':limite_confirmado(dados,alvo)}
            for p in pendentes(dados,cfg) for alvo in p['prs']]
@@ -121,7 +146,9 @@ def contexto_continuacao(dados,cfg):
 
 def contexto_esgotamento(dados,cfg):
     """Prova de concessões consumidas; não concede saldo nem libera reserva."""
-    raiz=delegacao(dados,cfg)
+    # Histórico informa esgotamento comprovado mesmo após mudança de política.
+    # Não usa pendentes/conferir_concessao nem libera execução na política nova.
+    raiz=delegacao(dados,cfg,somente_historico=True)
     if not raiz or not raiz.get('continuar_limite'):return []
     banco=Path(dados)/'tarefas.db'
     if not banco.is_file():return []
