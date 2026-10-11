@@ -2056,6 +2056,23 @@ de conferência ao diretor, sem executar o script nem parar a classificação da
 Uma autorização antiga para a pasta de travas da bancada também aparece como
 pendência, com acesso indisponível. A equipe não recebe esse diretório e nenhuma
 permissão é renovada ao salvar metas; o restante do planejamento continua.
+
+### Conferência técnica de PR pela equipe
+
+Quando o diretor encaminha `revisar` e não há gate/correção contratada executável,
+o controlador pode solicitar ao CEO uma conferência pela equipe cadastrada.
+A equipe recebe o diff completo, os cartões, fontes, checks e contexto dos
+recibos; usa o adapter isolado sem ferramentas e publica um parecer no PR.
+Também pode conferir PR em rascunho ou com merge manual: essas proteções continuam.
+O parecer apresenta evidências, pendências e próxima ação; não aprova revisão,
+gate, merge ou conclusão do cartão, nem executa código ou renova reservas.
+
+Em PRs e Alertas ficam os encaminhamentos; o acompanhamento informa equipe,
+etapa e PR. `dados/gestao/ID/conferencias_prs` guarda decisão do CEO e recibo.
+O diretor recebe pareceres existentes na próxima classificação. Uma conferência
+por equipe/head/política/fontes não é repetida; espera ou execução incerta exigem
+conferência do recibo. Uma publicação com retorno perdido só é recuperada por
+comentário idêntico do publicador comprovado, sem novo POST ou nova inferência.
 Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada
