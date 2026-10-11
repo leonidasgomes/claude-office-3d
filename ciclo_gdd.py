@@ -155,12 +155,35 @@ def coordenador_vivo(projeto,registro):
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return False
 
 
+def preservar_entregas(registro):
+    """Transporta só evidências de retorno confirmado; nunca reserva ou reexecuta cartão."""
+    vinculos=[];resultados=[]
+    for item in registro.get('vinculos_conclusao',[]):
+        n=item.get('cartao');token=item.get('token')
+        if type(n) is not int or n<1 or not re.fullmatch('[0-9a-f]{32}',str(token)):
+            raise ValueError('Checkpoint de entrega inválido; confira Gestão')
+        retornos=[r for lote in registro.get('resultados',[]) for r in lote.get('resultados',[])
+                  if r.get('cartao')==n and r.get('estado')=='revisao' and r.get('codigo')==0]
+        if len(retornos)!=1:
+            raise ValueError('Checkpoint sem retorno único confirmado; confira Gestão')
+        if any(v['cartao']==n or v['token']==token for v in vinculos):
+            raise ValueError('Checkpoint de entrega duplicado; confira Gestão')
+        vinculos.append(dict(item));resultados.append(dict(retornos[0]))
+    lotes=[]
+    for lote in registro.get('resultados',[]):
+        confirmados=[r for r in lote.get('resultados',[]) if r in resultados]
+        if confirmados:lotes.append({**lote,'resultados':confirmados,'checkpoint':True})
+    return {'vinculos_conclusao':vinculos,
+            'resultados':lotes,
+            'conclusoes':registro.get('conclusoes',[])}
+
+
 def iniciar(projeto):
     cfg=carregar(projeto)
     if not cfg['ativo'] or not cfg['ciclo']['ativo']:raise ValueError('Ciclo não habilitado pelo usuário')
     p=caminho_estado(projeto);p.parent.mkdir(parents=True,exist_ok=True)
     # Pedido inicial persistido antes do processo: resultado incerto nunca é repetido.
-    limite_anterior=None
+    limite_anterior=None;anterior=None
     if p.exists():
         anterior=json.loads(p.read_text(encoding='utf-8'))
         if anterior['estado'] not in TERMINAIS:
@@ -185,6 +208,24 @@ def iniciar(projeto):
     try:
             if p.exists() and json.loads(p.read_text(encoding='utf-8'))['estado'] not in TERMINAIS:
                 raise ValueError('Ciclo já iniciado')
+            if anterior is not None:
+                if json.loads(p.read_text(encoding='utf-8'))!=anterior:
+                    raise ValueError('Checkpoint mudou durante o início; confira Gestão')
+                preservado=preservar_entregas(anterior)
+                if preservado['vinculos_conclusao']:
+                    origem=anterior.get('id','')
+                    if not re.fullmatch('[0-9a-f]{32}',origem):
+                        raise ValueError('Origem do checkpoint inválida; confira Gestão')
+                    arquivo=p.parent/'checkpoints'/(origem+'.json')
+                    arquivo.parent.mkdir(exist_ok=True)
+                    if arquivo.is_symlink() or arquivo.parent.is_symlink():
+                        raise ValueError('Pasta de checkpoints inválida')
+                    if arquivo.exists() and json.loads(arquivo.read_text(encoding='utf-8'))!=anterior:
+                        raise ValueError('Checkpoint existente diverge; confira Gestão')
+                    atomico(arquivo,anterior)
+                    r.update(preservado)
+                    r['checkpoint_anterior']=origem
+                    r['proxima_acao']='conferir merges das entregas preservadas antes de despachar'
             atomico(p,r)
             logs=p.parent/'ciclo.log'
             with logs.open('a',encoding='utf-8') as saida:

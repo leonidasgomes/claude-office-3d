@@ -1911,3 +1911,22 @@ A consulta é compartilhada, com cache de 30 segundos, somente enquanto houver
 ficha aberta. Estado da reserva e console observado aparecem separadamente;
 consulta indisponível não interrompe equipes nem reaproveita dados antigos como
 estado vivo. O botão abre a Gestão existente para conferência assistida.
+
+
+### Entregas em revisão após reiniciar
+
+Iniciar outro ciclo preserva os vínculos privados das entregas com retorno único
+confirmado (revisão, código zero). O registro completo anterior fica em
+`dados/gestao/<projeto>/checkpoints/<ciclo>.json`. Isso conserva o acompanhamento
+do merge, sem retomar autores, reservas bloqueadas ou publicação. O limite de PRs
+pendentes considera essas entregas antes de permitir novos despachos. A conclusão
+continua exigindo merge confirmado, política compatível, vínculo e gates atuais.
+Checkpoint divergente ou sem retorno confirmado impede o novo início e pede
+conferência na Gestão. Os arquivos privados não são expostos no painel.
+
+A caixa de sugestões por projeto usa exclusão do sistema operacional: uma queda
+do processo libera a trava. O arquivo `.trava-so` persistente não significa
+processo ativo. Marcadores `.trava` de instalações anteriores continuam bloqueando
+até recuperação assistida: parar os serviços, verificar que não há processo
+usando a caixa, preservar o marcador para diagnóstico e só então removê-lo.
+Nunca remover uma trava apenas pela idade. O protocolo do Claude legado permanece.

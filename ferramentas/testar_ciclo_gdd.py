@@ -301,6 +301,44 @@ class Ciclo(unittest.TestCase):
             c.iniciar(self.p)
         self.assertEqual(c.resumo(self.p)['limite'],200)
 
+    def test_reinicio_preserva_entrega_confirmada_sem_retornar_bloqueados(self):
+        anterior={'id':'a'*32,'estado':'pausado','vinculos_conclusao':[{'cartao':1,'token':'b'*32}],
+            'resultados':[{'id':'c'*32,'estado':'processado','resultados':[
+                {'cartao':1,'estado':'revisao','codigo':0},
+                {'cartao':2,'estado':'bloqueado','codigo':124}]}],'conclusoes':[]}
+        c.atomico(c.caminho_estado(self.p),anterior)
+        with patch.object(c.subprocess,'Popen',return_value=Mock(pid=123)):
+            c.iniciar(self.p)
+        novo=json.loads(c.caminho_estado(self.p).read_text(encoding='utf-8'))
+        self.assertEqual(novo['vinculos_conclusao'],anterior['vinculos_conclusao'])
+        self.assertEqual(novo['resultados'][0]['resultados'],[{'cartao':1,'estado':'revisao','codigo':0}])
+        self.assertEqual(novo['resultados'][0]['id'],'c'*32)
+        self.assertEqual(json.loads((self.dados/'checkpoints'/('a'*32+'.json')).read_text()),anterior)
+        self.assertNotEqual(novo['id'],anterior['id'])
+
+    def test_reinicio_nao_adota_vinculo_sem_retorno_confirmado(self):
+        anterior={'id':'a'*32,'estado':'pausado','vinculos_conclusao':[{'cartao':1,'token':'b'*32}],
+                  'resultados':[{'resultados':[{'cartao':1,'estado':'bloqueado','codigo':124}]}]}
+        c.atomico(c.caminho_estado(self.p),anterior)
+        with patch.object(c.subprocess,'Popen') as iniciar:
+            with self.assertRaisesRegex(ValueError,'retorno único'):c.iniciar(self.p)
+        iniciar.assert_not_called()
+        self.assertEqual(json.loads(c.caminho_estado(self.p).read_text()),anterior)
+
+    def test_checkpoint_duplicado_ou_divergente_nao_inicia(self):
+        retorno={'cartao':1,'estado':'revisao','codigo':0}
+        anterior={'id':'a'*32,'estado':'pausado','vinculos_conclusao':[{'cartao':1,'token':'b'*32}],
+                  'resultados':[{'resultados':[retorno,retorno]}]}
+        c.atomico(c.caminho_estado(self.p),anterior)
+        with patch.object(c.subprocess,'Popen') as iniciar:
+            with self.assertRaisesRegex(ValueError,'retorno único'):c.iniciar(self.p)
+        iniciar.assert_not_called()
+        anterior['resultados']=[{'resultados':[retorno]}];c.atomico(c.caminho_estado(self.p),anterior)
+        arquivo=self.dados/'checkpoints'/('a'*32+'.json');arquivo.parent.mkdir();c.atomico(arquivo,{'estado':'outro'})
+        with patch.object(c.subprocess,'Popen') as iniciar:
+            with self.assertRaisesRegex(ValueError,'diverge'):c.iniciar(self.p)
+        iniciar.assert_not_called();self.assertEqual(json.loads(arquivo.read_text()),{'estado':'outro'})
+
     def test_reabrir_ciclo_vivo_nao_cria_processo_nem_muda_prazo(self):
         registro={'id':'a'*32,'estado':'implementando','pid':123,'limite':200,'cartoes':[{'cartao':1}]}
         c.atomico(c.caminho_estado(self.p),registro)

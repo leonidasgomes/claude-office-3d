@@ -2123,3 +2123,18 @@ identidade_preparacao projeta os campos semânticos do pai e cartão, excluindo
 envelope REST e timestamps incidentais. Recibo antigo já criado só fornece o
 mesmo filho após comparação semântica e conferência completa do vínculo/aceite;
 consulta ou POST incerto nunca é repetido nessa compatibilidade.
+
+
+preservar_entregas mantém vínculos de conclusão e retornos de revisão com código
+zero após novo início explícito do ciclo. iniciar arquiva o registro terminal
+antes de substituir ciclo.json e verifica divergência dentro do lock de criação.
+Não herda execução bloqueada nem despacha autor antigo. confirmar_sessao e
+pendencias_sessao continuam conferindo o token privado e a entrega registrada;
+a conclusão mantém todos os gates. Testes testar_ciclo_gdd cobrem reinício,
+retorno incerto, duplicidade e checkpoint divergente.
+
+sugestoes_bot.trava usa locking/flock para caixas por projeto, com exclusão e
+liberação automática pelo SO após queda. Marcador legado exige conciliação;
+expiração por idade permanece somente no protocolo legado. Testes
+testar_sugestoes_projeto (testar_sugestoes_projeto.py) cobrem concorrência,
+exceção e queda real de subprocesso em Windows/Linux.
