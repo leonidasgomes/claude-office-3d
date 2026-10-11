@@ -150,6 +150,30 @@ class trava:
 
     def __enter__(self):
         self.arq.parent.mkdir(parents=True, exist_ok=True)
+        if not self.expirar:
+            # O SO libera a exclusão quando o processo cai. Marcadores antigos
+            # continuam exigindo conciliação; nunca roubar uma trava por idade.
+            mutex=self.arq.with_name('.trava-so')
+            if mutex.is_symlink():raise ValueError('Trava de sugestões inválida')
+            self.handle=mutex.open('a+b')
+            if mutex.stat().st_size==0:self.handle.write(b'0');self.handle.flush()
+            fim=time.monotonic()+self.espera
+            while True:
+                try:
+                    if self.arq.exists():raise BlockingIOError('Marcador antigo exige conciliação')
+                    self.handle.seek(0)
+                    if os.name=='nt':
+                        import msvcrt
+                        msvcrt.locking(self.handle.fileno(),msvcrt.LK_NBLCK,1)
+                    else:
+                        import fcntl
+                        fcntl.flock(self.handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    return self
+                except OSError:
+                    if time.monotonic()>=fim:
+                        self.handle.close()
+                        raise TimeoutError('caixa de sugestões ocupada; confira a trava antiga ou o processo ativo')
+                    time.sleep(0.1)
         fim = time.time() + self.espera
         while True:
             try:
@@ -167,6 +191,17 @@ class trava:
                 time.sleep(0.1)
 
     def __exit__(self, *a):
+        if not self.expirar:
+            try:
+                self.handle.seek(0)
+                if os.name=='nt':
+                    import msvcrt
+                    msvcrt.locking(self.handle.fileno(),msvcrt.LK_UNLCK,1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.handle.fileno(),fcntl.LOCK_UN)
+            finally:self.handle.close()
+            return
         try:
             self.arq.unlink()
         except OSError:

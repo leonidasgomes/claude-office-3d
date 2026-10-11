@@ -1,5 +1,5 @@
 """Coleta/tratamento reais em caixas isoladas; GitHub e modelos simulados."""
-import json,os,sys,tempfile,time,unittest
+import json,os,sys,tempfile,time,unittest,subprocess
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
@@ -86,6 +86,24 @@ class Sugestoes(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             with sb.trava_caixa(a,espera=0):pass
         self.assertEqual(arq.read_text(),'Em uso')
+
+    def test_trava_projeto_exclusiva_e_liberada_apos_excecao(self):
+        a=self.cfg()
+        with self.assertRaisesRegex(RuntimeError,'falha'):
+            with sb.trava_caixa(a,espera=0):
+                with self.assertRaises(TimeoutError):
+                    with sb.trava_caixa(a,espera=0):pass
+                raise RuntimeError('falha')
+        with sb.trava_caixa(a,espera=0):pass
+        self.assertFalse((a['pasta']/'.trava').exists())
+
+    def test_trava_projeto_liberada_quando_processo_cai(self):
+        a=self.cfg()
+        codigo="import os,sys,sugestoes_bot as s; t=s.trava(sys.argv[1],espera=0,expirar=False); t.__enter__(); os._exit(0)"
+        r=subprocess.run([sys.executable,'-c',codigo,str(a['pasta'])],
+            cwd=Path(sb.__file__).parent,capture_output=True,timeout=10)
+        self.assertEqual(r.returncode,0,r.stderr)
+        with sb.trava_caixa(a,espera=0):pass
     def test_laco_coleta_projetos_sem_acionar_revisor_ou_auditor_global(self):
         class Parar:
             terminou=False
