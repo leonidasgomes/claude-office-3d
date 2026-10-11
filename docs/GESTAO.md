@@ -1877,6 +1877,8 @@ O cartão usa o criador e as reservas existentes, menciona PR/pai e preserva o
 aceite original. Só essa preparação leve pode passar pela fila; o backlog
 normal permanece em espera. Há nova classificação do diretor antes do lote.
 O despacho usa escopo planejamento, worktree novo, metas e gates normais.
+Quando o GDD já comprova o objetivo do pai/prioridade, a preparação preserva
+esse número. O marcador de classificação pendente só é usado para vínculo incerto.
 Não implementa nem regenera o pai, não retoma sua sessão, não troca seu orçamento
 e não aprova o PR parcial. A etapa real continua exigindo validação própria.
 Consulta/criação incerta não é repetida; um recibo criado precisa continuar
