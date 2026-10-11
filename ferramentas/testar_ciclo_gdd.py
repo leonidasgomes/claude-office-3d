@@ -240,6 +240,44 @@ class Ciclo(unittest.TestCase):
         self.assertEqual(k.chamar.call_count,4)
         corpo=k.chamar.call_args_list[0].args[2]['body'];self.assertIn('Parte de #1',corpo);self.assertNotIn('Closes #1',corpo)
 
+    def test_preparacao_e_classificada_e_despachada_sem_varrer_resto_do_quadro(self):
+        tempo=[0];consultas=[];despachos=[];itens=[self.item(1),self.item(25)]
+        filho=self.item(50)
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':10,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.side_effect=[itens,[*itens,filho]];k._paginas.return_value=[]
+        def candidatos(p,cfg,k,grupo,mapa):
+            return [{**i,'preparavel':True,'objetivo_gdd':1,
+                'pacote':{'escopo':'Planejamento/investigação deste bloqueio; não implementar o pai.'},
+                'issue':{'body':'**Objetivo GDD:** 1'}} for i in grupo]
+        def consulta(p,cfg,docs,grupo,prs,ocupada):
+            consultas.append([i['numero'] for i in grupo])
+            if grupo[0]['numero']==50:return [self.decisao(50,'executar')]
+            d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Preparar','equipe':'Dev','objetivo':'classificar','aceite':'ADR','skills':'nenhuma'}
+            return [d,self.decisao(25)]
+        def lote(p,plano):
+            despachos.extend(plano['cartoes']);tempo[0]=11
+            self.assertEqual(c.resumo(p)['estado'],'investigando')
+            return {'estado':'processado'}
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos),patch.object(c,'subtarefa',return_value=50):
+            c.rodar(self.p,'teste',relogio=lambda:tempo[0],consulta=consulta,
+                criar=lambda p,d:{'plano':{'cartoes':[{'cartao':n,'worktree':'novo'} for n in d['cartoes']]}},lote=lote)
+        self.assertEqual(consultas,[[1,25],[50]])
+        self.assertEqual([i['cartao'] for i in despachos],[50])
+        self.assertEqual(len(list((self.dados/'decisoes').glob('*preparacao-50*.json'))),1)
+
+    def test_preparacao_com_reserva_bloqueada_nao_e_retomada(self):
+        tempo=[0];consulta=Mock();itens=[self.item(1)];filho=self.item(50)
+        c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':10,'resultados':[]})
+        k=Mock();k.quadro.return_value={'campos':[],'itens':itens};k.cartoes.side_effect=[itens,[*itens,filho]];k._paginas.return_value=[]
+        d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Preparar','equipe':'Dev','objetivo':'classificar','aceite':'ADR','skills':'nenhuma'}
+        consulta.return_value=[d]
+        def candidatos(p,cfg,k,grupo,mapa):
+            if grupo[0]['numero']==50:tempo[0]=11
+            return [{**i,'preparavel':i['numero']!=50,'objetivo_gdd':1,'bloqueio':'reserva bloqueada','issue':{'body':''}} for i in grupo]
+        with patch.object(c,'Kanban',return_value=k),patch.object(c,'bancada_ocupada',return_value=False),patch.object(c,'candidatos',side_effect=candidatos),patch.object(c,'subtarefa',return_value=50),patch.object(c,'criar_worktrees') as criar:
+            c.rodar(self.p,'teste',relogio=lambda:tempo[0],consulta=consulta,criar=criar)
+        self.assertEqual(consulta.call_count,1);criar.assert_not_called()
+
     def test_bancada_livre_replaneja_sem_mudar_quadro(self):
         tempo=[0];consulta=Mock(return_value=[self.decisao(1)])
         c.atomico(c.caminho_estado(self.p),{'id':'teste','estado':'iniciando','limite':600,'resultados':[]})

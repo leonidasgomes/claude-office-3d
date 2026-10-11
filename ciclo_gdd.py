@@ -356,6 +356,8 @@ não comprovação automática de desempenho. Fontes, Kanban e instruções do u
         compactos.append({**{k:c.get(k) for k in ('numero','status','equipe','prioridade','etapa','objetivo_gdd','preparavel','bloqueio')},
             'issue':{k:issue.get(k) for k in ('number','title','body','state','updated_at','html_url')},
             'pacote':{k:p.get(k) for k in ('objetivo','aceite','escopo','skills','dependencias','executor')},
+            'meta':({'gdd':{k:p['meta']['gdd'].get(k) for k in ('numero','titulo','pai','caminho','sha256','recibo_sha256')},
+                     'limites':p['meta']['limites']} if p.get('meta') else None),
             'retorno_atual_confirmado':c.get('retorno_atual_confirmado',False),
             'retorno':c.get('retorno')})
     quadro=next((c['quadro_contexto'] for c in cartoes if 'quadro_contexto' in c),[])
@@ -446,6 +448,26 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             restante=ate-relogio()
             if not registro.get('continuo'):restante=min(restante,registro['limite']-relogio())
             dormir(min(5,max(0,restante)))
+    def avaliar_preparacao(numero,pai):
+        if not disponivel():return None
+        quadro_atual=k.cartoes(ao_vivo=True)
+        filho=next((c for c in quadro_atual if c['numero']==numero),None)
+        if (filho is None or filho['status']!=cfg['kanban']['backlog'] or numero in vistos
+            or filho['prioridade']!=pai['prioridade']):return None
+        grupo=candidatos(projeto,cfg,k,[filho],mapa)
+        if not grupo[0]['preparavel']:return None
+        grupo[0]['quadro_contexto']=quadro_atual
+        salvar('diretor',cartoes=[{'cartao':numero,'equipe':filho['equipe']}],
+               proxima_acao=f'classificar preparação #{numero} vinculada ao #{pai["numero"]}')
+        decisao=validar_decisao(json.dumps({'decisoes':consulta(projeto,cfg,docs,grupo,prs,ocupada)}),grupo,cfg)[0]
+        arquivo=pasta_dados(projeto)/'decisoes'/f'{ident}-preparacao-{numero}-{uuid.uuid4().hex}.json'
+        atomico(arquivo,{'fontes':[{'caminho':d['caminho'],'sha256':d['sha256']} for d in docs],
+                        'pai':pai['numero'],'candidatos':grupo,'decisoes':[decisao]})
+        # Não encadeia criações: avalia a entrega leve que acaba de ser preparada.
+        if (disponivel() and decisao['acao']=='executar' and decisao['recurso']=='leve'
+            and (grupo[0]['objetivo_gdd'] is not None or '**Objetivo GDD:**' in (grupo[0]['issue'].get('body') or ''))):
+            return grupo[0],decisao
+        return None
     try:
         while disponivel():
             if not mesma_politica_em_execucao(carregar(projeto),cfg):raise ValueError('Política mudou; iniciar nova sessão após conferir')
@@ -468,7 +490,7 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
             if assinatura==ultima:
                 salvar('aguardando',motivo='Nenhuma mudança no quadro/PRs',proxima_acao='consultar novamente sem inferência')
                 esperar();continue
-            ultima=assinatura;escolhidos=[];mudou=False;desbloqueios=0
+            ultima=assinatura;escolhidos=[];mudou=False;desbloqueios=0;preparacoes_avaliadas=set()
             fila=ordenar([c for c in cartoes if c['status']==cfg['kanban']['backlog'] and c['numero'] not in vistos],cfg,mapa)
             for inicio in range(0,len(fila),20):
                 if not disponivel():break
@@ -489,11 +511,17 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                     if d['acao']=='desbloquear' and d['subtarefa'] is not None and desbloqueios<cfg['ciclo']['max_cartoes']:
                         salvar('investigando',motivo=d['motivo'],proxima_acao='organizar subtarefa real')
                         novo=subtarefa(projeto,cfg,k,c,d);mudou=mudou or novo is not None
-                        if novo is not None:desbloqueios+=1
+                        if novo is not None:
+                            desbloqueios+=1
+                            if novo not in preparacoes_avaliadas:
+                                preparacoes_avaliadas.add(novo)
+                                pronta=avaliar_preparacao(novo,c)
+                                if pronta:escolhidos.append(pronta)
+                            if len(escolhidos)>=cfg['ciclo']['max_cartoes']:break
                     if (d['acao']=='executar' and c['preparavel'] and (c['objetivo_gdd'] is not None
                         or '**Objetivo GDD:**' in (c['issue'].get('body') or ''))
                         and not (ocupada and d['recurso']!='leve')):
-                        escolhidos.append((c,d))
+                        if c['numero'] not in {i['numero'] for i,_ in escolhidos}:escolhidos.append((c,d))
                         if len(escolhidos)>=cfg['ciclo']['max_cartoes']:break
                 if escolhidos:break
             if not escolhidos:
@@ -510,7 +538,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 itens=work['plano']['cartoes']
                 if len(itens)!=1 or itens[0]['cartao']!=c['numero']:raise ValueError('Worktree não corresponde ao cartão selecionado')
                 item=itens[0]
-                salvar('implementando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
+                planejamento=c.get('pacote',{}).get('escopo')=='Planejamento/investigação deste bloqueio; não implementar o pai.'
+                salvar('investigando' if planejamento else 'implementando',objetivo=c['objetivo_gdd'],cartoes=[{'cartao':c['numero'],'equipe':c['equipe']}],
                        proxima_acao='aguardar entrega real da equipe')
                 r=lote(projeto,{'paralelismo':1,'cartoes':[item]});vistos.add(item['cartao'])
                 registro['resultados'].append(r)
