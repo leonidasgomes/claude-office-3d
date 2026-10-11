@@ -24,6 +24,11 @@ export function formularioRetomada(projeto,tarefa,atualizar){
       const d=await pedido({acao:'previa'});
       if(!d.apenas_previa||d.cartao!==base.cartao||!/^[0-9a-f]{64}$/.test(d.confirmacao||'')||typeof d.console!=='string'||typeof d.equipe!=='string')throw Error('Prévia inválida');
       previa=d;status.textContent=`#${d.cartao} · ${d.equipe} · ${d.console}: prévia conferida. Declare a conferência dos agentes para retomar.`;
+      if(d.saldo_meta){
+        const s=d.saldo_meta;
+        if(!Number.isFinite(s.tempo_restante_seg)||s.tempo_restante_seg<=0||!Number.isSafeInteger(s.tokens_restantes)||s.tokens_restantes<=0){previa=null;throw Error('Saldo da meta inválido');}
+        status.textContent+=` Saldo do cartão: ${(s.tempo_restante_seg/60).toFixed(1)} min e ${s.tokens_restantes.toLocaleString('pt-BR')} tokens. O orçamento não será renovado.`;
+      }
     }catch(e){status.textContent='Não foi possível conferir: '+e.message;}
     finally{ocupado=false;botoes();}
   });
