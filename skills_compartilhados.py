@@ -81,6 +81,8 @@ def nomes_cartao(texto):
     if not isinstance(texto,str):
         raise ValueError('Skills do cartão devem ser texto')
     texto=texto.strip()
+    # Declaração inteira de ausência; não remova skills desconhecidas de uma lista.
+    if texto.casefold() in ('nenhuma','nenhuma.'):return []
     if texto.endswith('.'):
         if not re.split(r'[,;\n]',texto[:-1])[-1].strip():
             raise ValueError('Skills: use nomes do catálogo separados por vírgula ou linhas')

@@ -419,6 +419,10 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 'Ao faltar evidência, registre o bloqueio e a próxima ação. Não invente entrega nem reduza gates. '
                 'Respeite o tempo e tokens em meta.limites; finalize com evidências, testes e PR quando aplicável. '
                 'A meta só é entregue após os gates; saída zero ou PR aberto não significa conclusão.\n')
+            if pacote['meta']['gdd'].get('numero') is None:
+                prompt += ('\nEste é um despacho de planejamento do vínculo GDD, com recibo do host. '
+                    'Investigue os objetivos canônicos e registre uma decisão com evidências em documentação e PR. '
+                    'Não implemente nem encerre o cartão-pai, não presuma um objetivo numerado e não altere seu aceite.\n')
         if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex':
             prompt += ('\nPublicação Git pelo host do escritório: não contorne proteção .git. '
                 'Após implementar e testar, salve JSON UTF-8 com cartao (inteiro), worktree (raiz absoluta), '

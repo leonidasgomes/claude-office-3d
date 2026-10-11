@@ -1702,3 +1702,16 @@ novos despachos. Na espera, a pausa é percebida em até cinco segundos. Consult
 já em curso terminam antes dessa conferência. O acompanhamento mostra etapa e
 “Operação contínua”, sem prazo fictício. Alterar modo/duração vale para o próximo
 início; não transforma uma sessão limitada em contínua nem a reinicia.
+
+### Planejamento de vínculos ainda incertos
+
+Uma implementação continua exigindo um objetivo numerado existente no GDD.
+Para resolver vínculos incertos, a subtarefa de classificação criada pelo host
+pode ter uma meta de planejamento: recebe os objetivos canônicos com origem e
+hash, sem presumir um número. Exige o recibo local concluído de criação, o mesmo
+cartão, pai, equipe, título, objetivo, aceite, skills e escopo de investigação.
+Um marcador colado numa issue comum não habilita essa exceção. A entrega é uma
+decisão documentada com evidências e PR, pelos mesmos gates. Não implementa nem
+encerra o pai e não altera seu aceite. Nos campos de skills, a declaração inteira
+`nenhuma` significa ausência de skill adicional; nomes desconhecidos numa lista
+continuam sendo recusados. As regras canônicas do projeto continuam aplicáveis.

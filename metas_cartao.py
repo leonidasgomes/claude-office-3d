@@ -12,6 +12,24 @@ import threading
 import time
 
 
+def planejamento_registrado(projeto,cartao,issue,pacote):
+    """Exceção de classificação só para subtarefa criada e registrada pelo host."""
+    from gestao_cli import pasta_dados,campo
+    corpo=issue.get('body') or ''
+    marca=re.search(r'<!-- office-desbloqueio:([1-9][0-9]*) -->',corpo)
+    if not marca or campo(corpo,'Objetivo GDD')!='classificação a confirmar':return None
+    pai=int(marca[1]);pasta=pasta_dados(projeto)/'desbloqueios';arquivo=pasta/(str(pai)+'.json')
+    if not arquivo.is_file() or arquivo.is_symlink() or not arquivo.resolve().is_relative_to(pasta.resolve()):return None
+    r=json.loads(arquivo.read_text(encoding='utf-8'));s=r.get('proposta') or {}
+    if (r.get('estado')!='criado' or r.get('pai')!=pai or r.get('numero')!=cartao['numero']
+        or pacote['cartao']!=cartao['numero'] or s.get('equipe')!=cartao['equipe']
+        or s.get('titulo')!=issue.get('title') or s.get('objetivo')!=pacote['objetivo']
+        or s.get('aceite')!=pacote['aceite'] or s.get('skills')!=pacote.get('skills')
+        or pacote['escopo']!='Planejamento/investigação deste bloqueio; não implementar o pai.'):
+        return None
+    return {'pai':pai,'recibo_sha256':hashlib.sha256(arquivo.read_bytes()).hexdigest()}
+
+
 def construir(projeto,cfg,cartao,issue,pacote):
     if not cfg['metas']['ativo']:return None
     from ciclo_gdd import documentos,objetivos,objetivo_cartao
@@ -20,21 +38,29 @@ def construir(projeto,cfg,cartao,issue,pacote):
     texto=doc['conteudo'];numero=objetivo_cartao(cartao,objetivos(texto),texto)
     explicito=campo(issue.get('body') or '', 'Objetivo GDD')
     secoes=list(re.finditer(r'^#### Objetivo ([1-9][0-9]*)[^\n]*\n(.*?)(?=^#### |^### |\Z)',texto,re.M|re.S))
-    if explicito:
+    planejamento=planejamento_registrado(projeto,cartao,issue,pacote) if explicito=='classificação a confirmar' else None
+    if planejamento:
+        if numero is not None:raise ValueError('Meta: cartão já classificado no GDD; confira o planejamento')
+        if not secoes:raise ValueError('Meta: fonte GDD sem objetivos para classificar')
+        gdd={'numero':None,'titulo':'Planejamento do vínculo com o GDD','caminho':doc['caminho'],
+             'sha256':doc['sha256'],'trecho':'\n'.join(m[0] for m in secoes),**planejamento}
+    elif explicito:
         correspondencias=[int(m[1]) for m in secoes if explicito in (m[1],m[0].splitlines()[0].removeprefix('#### '))
                           or re.fullmatch(r'Objetivo '+m[1],explicito,re.I)]
         if len(correspondencias)!=1:raise ValueError('Meta: Objetivo GDD deve identificar uma seção existente')
         if numero is not None and numero!=correspondencias[0]:raise ValueError('Meta: vínculo GDD divergente do cartão')
         numero=correspondencias[0]
-    secao=next((m for m in secoes if int(m[1])==numero),None)
-    if secao is None:raise ValueError('Meta: vincule o cartão a um Objetivo GDD antes de despachar')
+    if not planejamento:
+        secao=next((m for m in secoes if int(m[1])==numero),None)
+        if secao is None:raise ValueError('Meta: vincule o cartão a um Objetivo GDD antes de despachar')
+        gdd={'numero':numero,'titulo':secao[0].splitlines()[0].removeprefix('#### '),
+             'caminho':doc['caminho'],'sha256':doc['sha256'],'trecho':secao[0]}
     bruto=json.dumps({'title':issue.get('title'),'body':issue.get('body') or ''},sort_keys=True,ensure_ascii=False).encode()
     return {'cartao':pacote['cartao'],'repo':cfg['kanban']['repo'],'url':pacote['url'],
             'equipe':cartao['equipe'],'objetivo':pacote['objetivo'],'aceite':pacote['aceite'],'escopo':pacote['escopo'],
             'dependencias':{k:v for k,v in pacote['dependencias'].items() if k!='verificadas_em'},
             'issue_sha256':hashlib.sha256(bruto).hexdigest(),
-            'gdd':{'numero':numero,'titulo':secao[0].splitlines()[0].removeprefix('#### '),
-                   'caminho':doc['caminho'],'sha256':doc['sha256'],'trecho':secao[0]},
+            'gdd':gdd,
             'limites':{'tempo_min':cfg['metas']['tempo_min'],'tokens':cfg['metas']['tokens']}}
 
 
