@@ -1,8 +1,9 @@
-import json,sys,tempfile,unittest
+import json,sys,tempfile,unittest,sqlite3
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
-from fila_prs import validar,planejar,projetar,versao_politica,preparar_fila,autor_encerrado
+from fila_prs import validar,planejar,projetar,versao_politica,preparar_fila,autor_encerrado,contexto_preparacao
 from gestao_projeto import validar as politica
 
 class Fila(unittest.TestCase):
@@ -43,6 +44,61 @@ class Fila(unittest.TestCase):
         self.assertIn('"estado": "success"',consultar.call_args.args[0])
         run['conclusion']='failure';planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         self.assertEqual(consultar.call_count,2)
+
+    def contexto_fixture(self):
+        self.cfg['merge']['checks']=['ci']
+        s={'titulo':'Preparação','equipe':'Dev','objetivo':'Investigar fase','aceite':'Registrar evidências','skills':'nenhuma'}
+        ident={'repo':'o/r','pr':3,'head':'a'*40,'pai':1,'politica':versao_politica(self.cfg),'fontes':[]}
+        for pasta,nome,d in [('preparacoes_prs','3',{'estado':'criado','numero':9,'identidade':ident,'proposta':s}),
+            ('desbloqueios','1',{'estado':'criado','pai':1,'numero':9,'origem_pr':3,'proposta':s})]:
+            p=self.p/pasta;p.mkdir();(p/(nome+'.json')).write_text(json.dumps(d),encoding='utf-8')
+        self.filho={'number':9,'title':'Preparação','state':'closed','html_url':'https://github.com/o/r/issues/9',
+                    'body':'**Objetivo:** Investigar fase\n\n**Aceite:** Registrar evidências\n\n'
+                    '**Escopo:** Planejamento/investigação deste bloqueio; não implementar o pai.\n\n**Skills:** nenhuma'}
+        self.futuro={'number':10,'title':'Validar fase','state':'open','html_url':'https://github.com/o/r/issues/10',
+                     'body':'Depende da integração; medições ainda pendentes'}
+        self.k.issue.side_effect=lambda n:{9:self.filho,10:self.futuro,1:{'number':1,'body':'aceite original preservado'}}[n]
+        self.k._paginas.side_effect=lambda url:[self.futuro] if '/sub_issues?' in url else []
+        self.k.cartoes.return_value=[{'numero':10,'equipe':'Dev','status':'Backlog','prioridade':'P1','etapa':'L2'}]
+        self.ev={'repo':'o/r','cartao':9,'pr':11,'head':'b'*40,'merge_commit':'c'*40,'merged_at':'2026-10-11T00:00:00Z',
+                 'politica_sha256':versao_politica(self.cfg),'checks':{'gates':[{'nome':'ci','estado':'success'}]}}
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:
+            db.execute('CREATE TABLE reserva (projeto TEXT,cartao TEXT,token TEXT,estado TEXT)')
+            db.execute('CREATE TABLE conclusao (token TEXT,evidencia TEXT)')
+            db.execute('INSERT INTO reserva VALUES (?,?,?,?)',('o/r','9','PRIVATE_TOKEN','concluido'))
+            db.execute('INSERT INTO conclusao VALUES (?,?)',('PRIVATE_TOKEN',json.dumps(self.ev)))
+
+    def test_preparacao_concluida_e_futuro_real_entram_no_diretor_sem_aprovar_pai(self):
+        self.contexto_fixture();antes=(self.p/'tarefas.db').read_bytes();consultar=Mock(return_value=[self.d])
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        texto=consultar.call_args.args[0]
+        self.assertIn('"entrega_por_merge": {"pr": 11',texto)
+        self.assertIn('medições ainda pendentes',texto)
+        self.assertIn('"aceite": false',texto)
+        self.assertIn('"prioridade": "P1"',texto)
+        self.assertNotIn('PRIVATE_TOKEN',texto);self.assertEqual(antes,(self.p/'tarefas.db').read_bytes())
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);consultar.assert_called_once()
+        self.futuro['body']='Aceite futuro alterado'
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);self.assertEqual(consultar.call_count,2)
+
+    def test_preparacao_bloqueada_nao_inventa_entrega_ou_atividade(self):
+        self.contexto_fixture()
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:db.execute("UPDATE reserva SET estado='bloqueado'")
+        r=contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
+        self.assertEqual(r['preparacao']['reserva'],'bloqueado');self.assertIsNone(r['preparacao']['entrega_por_merge'])
+
+    def test_prova_falha_head_mudado_e_issue_de_outro_repo_nao_sao_adotados(self):
+        self.contexto_fixture();self.ev['checks']['gates'][0]['estado']='failure'
+        with closing(sqlite3.connect(self.p/'tarefas.db')) as db,db:db.execute('UPDATE conclusao SET evidencia=?',(json.dumps(self.ev),))
+        self.assertIsNone(contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)['preparacao']['entrega_por_merge'])
+        self.pr['head']['sha']='d'*40
+        self.assertEqual(contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)['estado'],'vinculo_desatualizado')
+        self.pr['head']['sha']='a'*40;self.futuro['html_url']='https://github.com/outro/repo/issues/10'
+        with self.assertRaisesRegex(ValueError,'outro repositório'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
+
+    def test_subissues_excessivas_nao_sao_truncadas(self):
+        self.contexto_fixture();self.k._paginas.side_effect=None;self.k._paginas.return_value=[self.futuro]*21
+        with self.assertRaisesRegex(ValueError,'sem truncar'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
 
     def test_projecao_exige_politica_head_e_equipe_sem_expor_recibo(self):
         estado={'fila_politica':versao_politica(self.cfg),'encaminhamentos_prs':[self.d],
