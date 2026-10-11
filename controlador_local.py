@@ -61,6 +61,7 @@ def criar_worktrees(projeto,dados):
     quadro={c['numero']:c for c in k.cartoes(ao_vivo=True)}
     for anterior in (RAIZ/'dados'/'worktrees').glob('*.json'):
         r=json.loads(anterior.read_text(encoding='utf-8'))
+        if r.get('estado')=='cancelado_antes_despacho' and r.get('conciliacao'):continue
         if r.get('projeto')==str(projeto) and set(numeros).intersection(
             i['cartao'] for i in r['plano']['cartoes']):
             raise ValueError('Criação anterior exige conciliação; não repetir. Confira '+str(anterior))

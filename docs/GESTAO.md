@@ -20,6 +20,13 @@ Decide executar, desbloquear ou aguardar. Uma investigação pode virar sub-issu
 com aceite próprio, sem alterar o aceite do pai. A criação grava intenção antes
 de escrever no GitHub: falhas parciais exigem conciliação e não são repetidas.
 Reservas antigas e cartões em andamento não são retomados automaticamente.
+Criações Git usam `GIT_LFS_SKIP_SMUDGE=1`; conteúdo binário necessário exige
+preparação da equipe, sem download automático para um cartão de documentação.
+Um recibo parcial permanece bloqueado até conciliação explícita. Se for
+comprovado que não houve despacho nem reserva e os processos próprios acabaram,
+o operador pode registrar `cancelado_antes_despacho` com a justificativa em
+`conciliacao`, preservando o branch/worktree parcial. O próximo início cria
+outro destino; não reaproveita nem limpa o anterior.
 
 O controlador aceita `--acao ciclo --arquivo` com `{}` e `--projeto` canônico.
 Para publicação limitada, `--acao publicar` recebe cartão, worktree, título e

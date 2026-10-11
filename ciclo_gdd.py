@@ -141,6 +141,11 @@ def candidatos(projeto,cfg,k,cartoes,mapa):
         item={**c,'objetivo_gdd':mapa.get(c['numero']),'issue':k.issue(c['numero']),
               'preparavel':False,'bloqueio':''}
         try:
+            for arquivo in (RAIZ/'dados'/'worktrees').glob('*.json'):
+                r=json.loads(arquivo.read_text(encoding='utf-8'))
+                if (r.get('projeto')==str(projeto) and r.get('estado')!='cancelado_antes_despacho'
+                    and any(i['cartao']==c['numero'] for i in r['plano']['cartoes'])):
+                    raise ValueError('Criação anterior de worktree exige conciliação; não duplicar')
             pacote=preparar(projeto,c['numero'],c['equipe'],kanban=k,ao_vivo=False)[4]
             conferir_disponibilidade(projeto,cfg,c['numero'],projeto)
             item.update(preparavel=True,pacote=pacote)

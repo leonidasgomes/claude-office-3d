@@ -94,6 +94,7 @@ class Controlador(unittest.TestCase):
     def test_falha_parcial_deixa_recibo_sem_limpar(self):
         self.ambiente_git();self.preparar_mocks();original=c.subprocess.run
         def rodar(args,**kwargs):
+            if 'worktree' in args:self.assertEqual(kwargs['env']['GIT_LFS_SKIP_SMUDGE'],'1')
             if 'worktree' in args and any('office-8-' in a for a in args):
                 return subprocess.CompletedProcess(args,1,'','falha simulada')
             return original(args,**kwargs)
