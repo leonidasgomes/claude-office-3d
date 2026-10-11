@@ -2,6 +2,7 @@
 import { PROJETO_CENA } from './config.js';
 import { nomeCiclo } from './ciclo_cena.mjs';
 let dados=null;
+let ultimaVista='';
 export const estadoDoEscritorio = () => dados;
 const painel=document.createElement('section');painel.id='cicloAoVivo';painel.hidden=!PROJETO_CENA;
 painel.setAttribute('aria-label','Acompanhamento ao vivo');
@@ -35,7 +36,11 @@ async function consultar() {
     dados=novo;
   }catch{dados={ok:false,erro:'Acompanhamento indisponível; confira Gestão. Equipes não foram interrompidas.'};}
   finally{clearTimeout(timeout);}
-  desenhar();if(aberto&&painel.querySelector('details'))painel.querySelector('details').open=true;
+  const vista=JSON.stringify([dados?.ok,dados?.erro,dados?.ciclo,dados?.tarefas,dados?.publicacoes,
+    Math.ceil(((dados?.ciclo?.limite||0)-Date.now()/1000)/60)]);
+  if(vista!==ultimaVista){
+    ultimaVista=vista;desenhar();if(aberto&&painel.querySelector('details'))painel.querySelector('details').open=true;
+  }
   setTimeout(consultar,2000);
 }
 desenhar();consultar();
