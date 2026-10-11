@@ -17,7 +17,8 @@ class Fontes(unittest.TestCase):
         p=self.raiz/nome;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(texto,encoding='utf-8')
     def test_revisor_suspenso_nao_marca_wrapper_como_usado(self):
         cfg={'ativo':True,'ceo':{'console':'codex'},'diretor':{'console':'codex'},
-             'revisao':{'ativo':True,'revisores':[
+             'revisao':{'ativo':True,'clouds_distintas':1,'separar_autor':False,'revisores':[
+                 {'nome':'QA Codex','executor':{'console':'codex'}},
                  {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
                  {'nome':'QA Gemini','executor':{'console':'gemini'},'ativo':False}]}}
         r=resumo(self.raiz,cfg)

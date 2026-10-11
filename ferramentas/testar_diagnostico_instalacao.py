@@ -31,7 +31,8 @@ class Diagnostico(unittest.TestCase):
         self.assertEqual(r['faltam'],['claude'])
     def test_revisor_suspenso_nao_obriga_instalar_seu_console(self):
         cfg=self.politica();cfg['diretor']={'console':'codex'}
-        cfg['revisao']={'ativo':True,'revisores':[
+        cfg['revisao']={'ativo':True,'clouds_distintas':1,'separar_autor':False,'revisores':[
+            {'nome':'QA Codex','executor':{'console':'codex'}},
             {'nome':'QA Claude','executor':{'console':'claude'},'ativo':False},
             {'nome':'QA Gemini','executor':{'console':'gemini'},'ativo':False}]}
         r=self.verificar(cfg,{'git','gh','codex','opencode'})
