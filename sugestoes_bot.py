@@ -880,11 +880,13 @@ def publicar_gate_gestao(projeto,n,chamar=None):
     cfg=configuracao(projeto);repo=cfg['repo'];consulta=chamar or api
     def atual(sha=None,base=None):
         conferir_projeto(cfg)
+        if carregar(projeto)!=politica:raise ValueError('Política mudou; não publicar sugestões')
         pr=consulta(f'repos/{repo}/pulls/{n}')
         if (pr.get('number')!=n or pr.get('state')!='open' or pr.get('draft') is not False
             or pr.get('head',{}).get('repo',{}).get('full_name')!=repo
             or pr.get('base',{}).get('repo',{}).get('full_name')!=repo
             or not re.fullmatch('[0-9a-f]{40}',pr.get('head',{}).get('sha',''))
+            or not re.fullmatch('[0-9a-f]{40}',pr.get('base',{}).get('sha',''))
             or (sha is not None and (pr['head']['sha']!=sha or pr['base']['sha']!=base))):
             raise ValueError('PR/commit/base divergente; não publicar sugestões')
         return pr
