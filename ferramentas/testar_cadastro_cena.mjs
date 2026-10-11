@@ -10,6 +10,7 @@ assert.equal(lista.length,2);assert.equal(selecionarProjeto(lista,b.id),b);
 assert.equal(selecionarProjeto(lista,'removido'),a);assert.equal(selecionarProjeto([],a.id),null);
 const mesas=mesasDoProjeto(a,[{nome:'Team_Dev',titulo:'Team Dev',cor:'#123456',outros_nomes:['Dev antigo']}]);
 assert.deepEqual(mesas.map(m=>m.titulo),['CEO','Diretor','Team Dev']);
+assert.equal(mesas[0].sala,'diretoria');assert.equal(mesas[1].sala,'diretoria');
 assert.equal(mesas[0].lider,true);assert.equal(mesas[2].lider,false);
 assert.equal(mesas[2].console,'codex');assert.equal(mesas[2].cor,'#123456');
 assert.ok(mesas[2].outros_nomes.includes('Team_Dev'));assert.ok(mesas[2].funcao.includes('codex'));

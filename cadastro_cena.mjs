@@ -14,7 +14,7 @@ export function mesasDoProjeto(p, antigos=[]) {
     return {...(antigo||{}),nome,titulo:nome,cargo:tipo,lider,auxiliar:tipo==='Diretor',
       console:e?.console,modelo:e?.modelo||'',projeto_id:p.id,
       cor:antigo?.cor || cores[e?.console] || '#64748b',
-      mesa:lider?'lider':antigo?.mesa||'padrao',sala:tipo==='Diretor'?'diretoria':'',
+      mesa:lider?'lider':antigo?.mesa||'padrao',sala:['CEO','Diretor'].includes(tipo)?'diretoria':'',
       outros_nomes:tipo==='CEO'?['main','lead','leader','team_lead']:
         [...new Set([antigo?.nome,...(antigo?.outros_nomes||[])].filter(Boolean))],
       funcao:`${tipo} · ${e?.console||'console não informado'}${e?.execucao==='local'?' local':''}${especialidade?' · '+especialidade:''}`.slice(0,200),

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Próxima versão
+
+- Início da equipe Codex com tarefa de coordenação no Kanban e limite de cartões; CEO e diretor dividem a sala em mesas distintas.
 - Cena e Gestão compartilham CEO, diretor, equipes e funcionários por projeto, com seletor de projeto e vínculo explícito de novos eventos.
 - Cena distingue cadastros, histórico e atividade observada; falhas de conexão HTTP não ligam a demonstração automaticamente.
 

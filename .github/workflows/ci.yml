@@ -58,6 +58,7 @@ jobs:
       - name: Providers (Claude, Codex e OpenCode)
         run: |
           python -W error ferramentas/testar_providers.py
+          python -W error ferramentas/testar_inicio_equipe.py
           python -W error ferramentas/testar_compatibilidade_skills.py
           python -W error ferramentas/testar_skills_execucao.py
           python -W error ferramentas/testar_coordenacao.py

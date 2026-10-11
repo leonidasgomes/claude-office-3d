@@ -1556,3 +1556,21 @@ Novos despachos e retomadas gerenciados encaminham o ID da tentativa ao coletor 
 Gestão mostra quantas tentativas têm consumo observado, totais com cobertura por amostra e equivalente teórico de API quando as tarifas válidas e a identidade informada permitem. Na última tentativa há um detalhamento com os modelos observados. O modelo do grupo de duração continua sendo o configurado no despacho. Leitura é por projeto, em lote e somente leitura; IDs internos não aparecem na API. Erro do ledger não oculta as durações ou tarefas.
 
 A janela é móvel de sete dias: despachos selecionados por início e amostras por data de registro. Uma tentativa longa pode ter parte do consumo fora dessa janela; contadores cumulativos seguem a data da primeira gravação. Esses números não medem qualidade, aceite, velocidade do modelo ou toda a atividade de filhos, e não autorizam merge. Equivalente de API não é fatura ou custo da assinatura; cotas permanecem por conta/fornecedor. Não há divisão de tokens por segundos ou por saídas zero para sugerir eficiência sem cobertura comprovada.
+
+
+### Iniciar a equipe Codex com trabalho
+
+`python iniciar_equipe.py --projeto CAMINHO --base origin/BRANCH --max-cartoes 2`
+abre o CEO interativo com uma tarefa inicial: consultar o Kanban e o diretor, dividir
+até dois cartões preparáveis e delegar pelo controlador `gestao_cli.py lote`.
+A base é explícita e depende das regras de cada projeto. `--verificar` mostra
+a tarefa sem consumir modelo. O padrão é um cartão; execução sequencial.
+
+A sessão usa `workspace-write` e continua aberta depois do lote. O CEO precisa
+conseguir executar Git, Python e GitHub CLI; permissões/login pendentes aparecem
+no próprio console. Não é uma garantia de execução autônoma: bloqueios, falta
+de cartões preparáveis ou erro do modelo interrompem o lote. Reservas antigas
+não são retomadas automaticamente. Equipes são processos geridos pelo escritório;
+não se pressupõe o recurso nativo de Agent Teams do Claude.
+
+Na cena gerenciada, CEO e diretor ocupam mesas separadas na mesma diretoria.
