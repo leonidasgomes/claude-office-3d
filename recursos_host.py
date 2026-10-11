@@ -12,6 +12,10 @@ from pathlib import Path
 from controlador_local import RAIZ,atomico
 
 
+class PoliticaRecursosDivergente(ValueError):
+    """Acesso antigo permanece negado, sem invalidar o planejamento da fila."""
+
+
 def diretorios_travas(projeto,dados,cfg,equipe):
     """Autorização operacional do host; ausente nunca amplia escrita do console."""
     f=Path(dados)/'recursos_escrita.json'
@@ -20,7 +24,8 @@ def diretorios_travas(projeto,dados,cfg,equipe):
     r=json.loads(f.read_text(encoding='utf-8'))
     politica=hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if (not isinstance(r,dict) or set(r)!={'projeto','politica','origem','equipes','travas'}
-        or r['projeto']!=str(Path(projeto).resolve()) or r['politica']!=politica
+        or r['projeto']!=str(Path(projeto).resolve())
+        or not re.fullmatch('[0-9a-f]{64}',str(r['politica']))
         or not isinstance(r['origem'],str) or not r['origem'].strip()
         or not isinstance(r['equipes'],list) or not r['equipes']
         or any(e not in {t['nome'] for t in cfg['equipes']} for e in r['equipes'])
@@ -30,7 +35,21 @@ def diretorios_travas(projeto,dados,cfg,equipe):
     if (not p.is_absolute() or not p.is_dir() or p.is_symlink() or p.is_junction()
         or p.resolve().parent!=raiz or p.name not in ('travas','locks')):
         raise ValueError('Recurso deve ser somente a pasta de travas do cache do escritório')
+    if r['politica']!=politica:
+        raise PoliticaRecursosDivergente('Autorização da pasta de travas pertence a outra política')
     return [p.resolve()] if equipe in r['equipes'] else []
+
+
+def contexto_travas(projeto,dados,cfg):
+    """Somente leitura para o diretor; não revalida permissões antigas."""
+    nomes=[e['nome'] for e in cfg['equipes']]
+    try:
+        travas={nome:[str(p) for p in diretorios_travas(projeto,dados,cfg,nome)] for nome in nomes}
+    except PoliticaRecursosDivergente as exc:
+        return {'travas_por_equipe':{nome:[] for nome in nomes},
+                'pendencias':[{'recurso':'travas','motivo':str(exc),
+                    'acao':'Conferir autorização de recursos; acesso antigo não está disponível.'}]}
+    return {'travas_por_equipe':travas,'pendencias':[]}
 
 
 def hidratar_lfs(projeto,dados):

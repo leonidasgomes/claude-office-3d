@@ -405,9 +405,9 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     pacote['gates_contextos_pendentes']=[]
     pacote['gates_pelo_revisor']=gates_revisaveis(projeto,cfg,prs,dados,k,
         pendencias=pacote['gates_contextos_pendentes'])
-    from recursos_host import diretorios_travas
+    from recursos_host import contexto_travas
     pacote['recursos_host']={'assets':'Hidratação de pointers versionados do cache LFS local, sem download; a equipe solicita --acao assets.',
-        'travas_por_equipe':{e['nome']:[str(p) for p in diretorios_travas(projeto,dados,cfg,e['nome'])] for e in cfg['equipes']}}
+        **contexto_travas(projeto,dados,cfg)}
     for p in prs:
         if (type(p.get('number')) is not int or p['number']<1 or p.get('state')!='open'
             or not re.fullmatch('[0-9a-f]{40}',p.get('head',{}).get('sha',''))
@@ -492,6 +492,9 @@ Preserve aceite do pai e gates: regularizar uma etapa não executa sua dependên
 aprova o PR. Não invente achados; se realmente não houver ação executável, use aguardar
 e explique recurso/dependência. A concessão não permite retomar sessões incertas.
 recursos_host descreve capacidades restritas agora disponíveis, não resultados.
+Se recursos_host.pendencias indicar autorização de outra política, a pasta de travas
+não está disponível. Não peça à equipe contornar permissões; organize conferência
+ou trabalho independente, sem declarar que houve acesso à bancada.
 Quando um bloqueio era falta de acesso a assets locais ou à trava, considere essa
 mudança antes de decidir. Cache LFS local não comprova relatórios de importação,
 build empacotada, medição ou mapa pronto. Não renove apenas para repetir o mesmo

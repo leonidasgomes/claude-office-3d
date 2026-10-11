@@ -2053,6 +2053,9 @@ e seus limites originais; a mudança não reativa reservas nem renova concessõe
 Registros malformados ou cadeias incertas continuam sendo erros, sem despacho.
 Gates de entregas com fontes/política divergentes também aparecem como pendência
 de conferência ao diretor, sem executar o script nem parar a classificação da fila.
+Uma autorização antiga para a pasta de travas da bancada também aparece como
+pendência, com acesso indisponível. A equipe não recebe esse diretório e nenhuma
+permissão é renovada ao salvar metas; o restante do planejamento continua.
 Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada

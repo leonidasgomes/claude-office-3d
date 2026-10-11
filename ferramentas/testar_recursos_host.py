@@ -92,5 +92,19 @@ class Assets(unittest.TestCase):
         f.write_text(json.dumps({**r,'politica':'a'*64}),encoding='utf-8')
         with self.assertRaises(ValueError):diretorios_travas(self.proj,self.dados,cfg,'Dev')
 
+    def test_politica_antiga_informa_diretor_sem_liberar_travas(self):
+        cfg=validar({'ativo':True,'equipes':[{'nome':'Dev','especialidade':'Código','executor':{'console':'codex'}}]})
+        p=self.root/'travas';p.mkdir()
+        r={'projeto':str(self.proj),'politica':'a'*64,'origem':'Autorização anterior',
+           'equipes':['Dev'],'travas':str(p)}
+        f=self.dados/'recursos_escrita.json';f.write_text(json.dumps(r),encoding='utf-8');antes=f.read_bytes()
+        with self.assertRaises(h.PoliticaRecursosDivergente):h.diretorios_travas(self.proj,self.dados,cfg,'Dev')
+        contexto=h.contexto_travas(self.proj,self.dados,cfg)
+        self.assertEqual(contexto['travas_por_equipe'],{'Dev':[]})
+        self.assertEqual(contexto['pendencias'][0]['recurso'],'travas')
+        self.assertEqual(f.read_bytes(),antes);self.assertEqual(list(p.iterdir()),[])
+        f.write_text(json.dumps({**r,'travas':str(self.proj)}),encoding='utf-8')
+        with self.assertRaises(ValueError):h.contexto_travas(self.proj,self.dados,cfg)
+
 
 if __name__=='__main__':unittest.main()
