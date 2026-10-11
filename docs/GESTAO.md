@@ -1575,3 +1575,15 @@ não são retomadas automaticamente. Equipes são processos geridos pelo escrit�
 não se pressupõe o recurso nativo de Agent Teams do Claude.
 
 Na cena gerenciada, CEO e diretor ocupam mesas separadas na mesma diretoria.
+
+
+No Windows, a versão 0.162.x do Codex pode falhar antes do comando com
+`setup refresh had errors` e erro 32 ao validar `node_repl.exe` em uso.
+Diagnostique pelo log `.sandbox/sandbox.*.log` do CODEX_HOME. Uma instalação
+separada do CLI 0.160.1 permite testar compatibilidade mantendo o sandbox:
+`codex sandbox -P :workspace -C CAMINHO powershell -NoProfile -Command Get-Location`.
+A correção upstream está sendo acompanhada em https://github.com/openai/codex/issues/51601.
+Não há downgrade automático no instalador. Ao usar uma instalação isolada,
+selecione seu binário pelo PATH e defina `OFFICE_CODEX_SEM_DAEMON=1` para não
+reutilizar o daemon de outra versão; modelos, política e credenciais permanecem
+as configuradas. Verifique com `codex --version` e um comando real antes de despachar.

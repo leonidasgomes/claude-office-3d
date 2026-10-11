@@ -30,6 +30,12 @@ class Inicio(unittest.TestCase):
             self.assertIn('workspace-write',args);self.assertEqual(args[-1],'Comece agora')
             self.assertIn('--add-dir',args);self.assertIn(str(raiz.resolve()),args)
             self.assertNotIn('exec',args);self.assertNotIn('--json',args)
+    def test_daemon_isolado_so_codex_sem_alterar_sandbox(self):
+        with patch.dict('os.environ',{'OFFICE_CODEX_SEM_DAEMON':'1'}),patch('providers_console.comando_nativo',side_effect=lambda exe,nome:[exe]):
+            args=PROVIDERS['codex'].comando('codex',Path('.'),sandbox='workspace-write')
+            self.assertEqual(args,['codex','--disable','daemon_auto_start','--sandbox','workspace-write'])
+            self.assertNotIn('--disable',PROVIDERS['claude'].comando('claude',Path('.')))
+            self.assertNotIn('--disable',PROVIDERS['opencode'].comando('opencode',Path('.')))
     def test_prompt_inicial_rejeita_modo_errado_antes_de_lancar(self):
         with self.assertRaises(ValueError):executar(PROVIDERS['claude'],'claude',Path('.'),'CEO',prompt_inicial='tarefa')
         with self.assertRaises(ValueError):executar(PROVIDERS['codex'],'codex',Path('.'),'CEO',prompt='exec',prompt_inicial='tarefa')
