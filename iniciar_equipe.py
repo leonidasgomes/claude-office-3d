@@ -62,9 +62,13 @@ def main(argv=None):
         ciclo=cfg.get('ciclo',{})
         if ciclo.get('ativo'):
             if ciclo['base']!=args.base:raise ValueError('Base do launcher diverge da política do ciclo')
+            from gestao_cli import pasta_dados
             prompt=('O controlador host coordena automaticamente as equipes pelo GDD e Kanban. '
                     'Não crie outro lote, não retome reservas e não duplique tarefas. '
-                    'Consulte o estado em dados/gestao e no painel de gestão; explique bloqueios ao usuário. '
+                    'Consulte o estado em '+str(pasta_dados(projeto))+' e no painel de gestão; explique bloqueios ao usuário. '
+                    'Confira publicacoes/*.json para localizar PRs publicados pelo host. '
+                    'Candidatos do diretor, reservas e revisão desativada não comprovam implementação ativa nem ausência de PR. '
+                    'A janela Acompanhamento ao vivo mostra mudanças automaticamente; esta conversa responde ao usuário. '
                     'O usuário pode conversar com você enquanto as equipes trabalham. Projeto: '+str(projeto))
         if args.verificar:
             print(prompt);return 0
@@ -79,6 +83,8 @@ def main(argv=None):
         worktrees=office.parent/'worktrees'
         worktrees.mkdir(exist_ok=True)
         if ciclo.get('ativo'):
+            from acompanhamento_ciclo import abrir
+            abrir(projeto)
             print('CEO: abrindo acompanhamento do ciclo host; equipes continuam nas worktrees.',flush=True)
         else:
             print('CEO: iniciando coordenação do Kanban; equipes executam em worktrees. Limite:',args.max_cartoes,flush=True)

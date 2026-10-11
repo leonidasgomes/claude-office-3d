@@ -1110,6 +1110,7 @@ StatusLine: `{"type": "command", "command": "<python do escritório> \"<pasta>/s
 | `iniciar_projeto.py` | Preparação integrada de nova instalação e política; `--projeto`, `--destino`, `--politica`, `--porta`, `--aplicar`, `--exigir-requisitos`, `--cadastrar-projeto`. Diagnostica requisitos locais, detecta consoles, preserva contas e cria somente arquivos novos do projeto. Repetição preserva config/dados. Cadastro explícito acrescenta outro projeto sem substituir os existentes. |
 | `iniciar_equipe.py` | CEO Codex interativo com tarefa inicial limitada e delegação pelo Kanban; `--projeto`, `--base`, `--max-cartoes`, `--verificar` (sem modelo). |
 | `controlador_local.py` | Ponte de processos locais para diretor, worktrees, publicação e equipes; `--servir` inicia o servidor; cliente `--projeto`, `--acao` (`diretor`, `worktrees`, `lote`, `ciclo`, `publicar`), `--arquivo`; `--executar` somente para efetivar lote. |
+| `acompanhamento_ciclo.py` | Monitor local somente leitura do ciclo, reservas e PRs publicados; `--projeto`, `--uma-vez`; atualização a cada 2 segundos sem chamadas de IA. O launcher Windows abre janela independente do CEO. Fechar o monitor não interrompe o host. |
 | `ciclo_gdd.py` | Processo host de coordenação limitada; `--projeto` e `--sessao` vinculam o início persistido pelo controlador, sem retomar sessão antiga. |
 | `publicacao_host.py` | Commit/push/PR limitados a worktrees com recibo e reserva em execução; sem shell arbitrário, alteração de regras ou merge. |
 
