@@ -1,5 +1,6 @@
 """Entrega no Kanban exige aprovação independente do head/base exatos, sem merge."""
 import copy
+from contextlib import closing
 import json
 from pathlib import Path
 import sys
@@ -95,6 +96,99 @@ class DespachoRevisao(unittest.TestCase):
     def relatorio(self, aprovado=True):
         return revisar(self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','Deve passar','regras',
                        lambda *_:{'veredito':'aprovado' if aprovado else 'reprovado','achados':[]})
+
+    def test_reprovacao_devolve_achado_a_equipe_sem_inventar_falta_de_pr(self):
+        achado={'prioridade':'P2','arquivo':'src/teste.py','linha':4,'evidencia':'O caso X falha.'}
+        def relatorio(*args,**kwargs):
+            return revisar(self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','aceite','regras',
+                           lambda *_:{'veredito':'reprovado','achados':[achado]})
+        r=self.executar(relatorio)
+        self.assertEqual(r['motivo'],'revisao_reprovada')
+        self.assertEqual(r['devolutiva']['acao'],'corrigir')
+        self.assertEqual(r['devolutiva']['equipe'],'Dev')
+        self.assertEqual(r['devolutiva']['pr'],12)
+        self.assertEqual(r['devolutiva']['sha'],self.sha)
+        self.assertEqual(len(r['devolutiva']['achados']),2)
+        self.assertEqual(r['devolutiva']['achados'][0]['evidencia'],achado['evidencia'])
+        self.assertEqual(Controle(self.db).listar('owner/repo')[0]['estado'],'bloqueado')
+        self.assertEqual(self.moves,['Em andamento'])
+
+    def test_falha_de_revisor_nao_vira_bug_para_autor_corrigir(self):
+        def relatorio(*args,**kwargs):
+            def falhar(*args): raise ValueError('Provider indisponível')
+            return revisar(self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','aceite','regras',falhar)
+        r=self.executar(relatorio)
+        self.assertEqual(r['devolutiva']['acao'],'conferir_revisao')
+        self.assertEqual(r['devolutiva']['achados'],[])
+        self.assertEqual(r['devolutiva']['pr'],12)
+
+    def test_devolutiva_recusa_cobertura_incompleta_e_commit_divergente(self):
+        from revisao_execucao import devolutiva
+        original=self.relatorio(False)
+        autor=self.cfg['equipes'][0]['executor']
+        for r in ({**original,'sha':'c'*40}, {**original,'revisoes':original['revisoes'][:1]},
+                  {**original,'revisoes':[None,None]}, {**original,'politica':'c'*64}):
+            resultado=devolutiva(self.cfg,autor,r,self.sha,12,'Dev')
+            self.assertEqual(resultado['acao'],'conferir_revisao')
+            self.assertEqual(resultado['achados'],[])
+
+    def test_equipe_corrige_e_revisa_mesmo_cartao_no_orcamento_compartilhado(self):
+        self.fluxo_correcao()
+
+    def test_reprovacao_repetida_para_no_limite_sem_novo_pr_ou_reserva(self):
+        self.fluxo_correcao(reprovar_sempre=True)
+
+    def test_agente_filho_observado_impede_correcao_automatica(self):
+        self.fluxo_correcao(bloquear_filhos=True)
+
+    def fluxo_correcao(self,reprovar_sempre=False,bloquear_filhos=False):
+        import metas_cartao
+        self.cfg['ciclo'].update(ativo=True,base='origin/main',max_correcoes_revisao=1)
+        self.cfg['metas'].update(ativo=True,tokens=2000000)
+        self.cfg['equipes'][0]['executor']={'console':'codex'}
+        self.cfg['revisao']['revisores'][1]['executor']={'console':'gemini'}
+        (self.pasta/'PRODUTO.md').write_text('#### Objetivo 1 — Navegar\nEntregar #42.',encoding='utf-8')
+        (self.pasta/'CLAUDE.md').write_text('Preservar gates.',encoding='utf-8')
+        (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
+        chamadas=[];metas=[];revisoes=[]
+        real=metas_cartao.Execucao
+        def meta(*args,**kwargs):
+            kwargs['leitor']=lambda *_:(10000,'observado')
+            m=real(*args,**kwargs);metas.append(m);return m
+        def rodar(*args,**kwargs):
+            chamadas.append(kwargs)
+            kwargs['ao_sessao']('sessao'+str(len(chamadas)))
+            kwargs['ao_processo'](SimpleNamespace(pid=12345,poll=lambda:0))
+            if bloquear_filhos:
+                from emit_evento import TIPOS
+                kwargs['ao_evento']({'tipo':next(iter(TIPOS)),'sessao_pai':'agente-nativo'})
+            if len(chamadas)==2:
+                self.assertIn('O caso X falha',kwargs['prompt'])
+                self.assertNotIn('sessao',kwargs)
+                self.sha='c'*40;self.pr['head']['sha']=self.sha
+            return 0
+        def revisar(*args,**kwargs):
+            revisoes.append(1)
+            achados=[] if len(revisoes)==2 and not reprovar_sempre else [{'prioridade':'P2','arquivo':'src/a.py','linha':4,'evidencia':'O caso X falha'}]
+            return globals()['revisar'](self.cfg,self.cfg['equipes'][0]['executor'],self.sha,'diff','aceite','regras',
+                lambda *_:{'veredito':'aprovado' if not achados else 'reprovado','achados':achados})
+        with patch('metas_cartao.Execucao',side_effect=meta),patch('gestao_cli.pasta_dados',return_value=self.pasta/'dados'):
+            if bloquear_filhos:
+                with self.assertRaisesRegex(ValueError,'agentes nativos'):self.executar(revisar,rodar=rodar)
+                self.assertEqual(len(chamadas),1)
+                self.assertEqual(Controle(self.db).listar('owner/repo')[0]['estado'],'bloqueado')
+                return
+            r=self.executar(revisar,rodar=rodar)
+        self.assertEqual(r['estado'],'bloqueado' if reprovar_sempre else 'revisao');self.assertEqual(len(chamadas),2)
+        self.assertEqual(self.moves,['Em andamento'] if reprovar_sempre else ['Em andamento','Em revisão'])
+        self.assertEqual(metas[1].registro['tokens_observados'],20000)
+        self.assertEqual(metas[1].inicio,metas[0].inicio)
+        self.assertEqual(metas[1].registro['limite'],metas[0].registro['limite'])
+        c=Controle(self.db);self.assertEqual(len(c.listar('owner/repo')),1)
+        self.assertEqual(c.revisao(r['token'])['sha'],'c'*40)
+        with closing(c._abrir()) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM correcao_tarefa').fetchone()[0],1)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM execucao_tarefa').fetchone()[0],2)
 
     def test_revisao_opcional_encaminha_entrega_sem_chamar_revisor(self):
         self.cfg['revisao']['ativo']=False

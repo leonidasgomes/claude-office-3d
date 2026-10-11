@@ -14,6 +14,7 @@ class Painel(unittest.TestCase):
             p=Path(tmp);(p/'publicacoes').mkdir()
             (p/'ciclo.json').write_text(json.dumps({'id':'privado','pid':123,'estado':'diretor','cartoes':[]}))
             for nome,r in [('bom',{'estado':'publicado','cartao':52,'pr':'https://github.com/a/b/pull/668'}),
+                           ('correcao',{'estado':'publicado','cartao':52,'pr':'https://github.com/a/b/pull/668','operacao':'atualizar_pr'}),
                            ('incerto',{'estado':'criando','cartao':270,'pr':'https://github.com/a/b/pull/670'}),
                            ('url',{'estado':'publicado','cartao':1,'pr':'javascript:123/666'})]:
                 (p/'publicacoes'/f'{nome}.json').write_text(json.dumps(r))

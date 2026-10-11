@@ -106,7 +106,7 @@ class Controle:
 
     def iniciar_execucao(self, token, tipo='despacho'):
         """Tentativa do controlador, não comprovação de PID ou modelo efetivo."""
-        if tipo not in ('despacho','retomada'):raise ValueError('Tipo de tentativa inválido')
+        if tipo not in ('despacho','retomada','correcao'):raise ValueError('Tipo de tentativa inválido')
         ident=uuid.uuid4().hex
         with closing(self._abrir()) as db,db:
             db.execute('BEGIN IMMEDIATE')
@@ -164,6 +164,34 @@ class Controle:
             if db.execute('SELECT 1 FROM execucao_tarefa WHERE token=? AND fim IS NULL',(esperado['token'],)).fetchone():
                 raise ValueError('Tentativa sem retorno; retomada bloqueada')
             db.execute('UPDATE reserva SET estado=?,atualizado=? WHERE token=?',
+                ('executando',time.time(),esperado['token']))
+
+    def iniciar_correcao(self, esperado, tentativa, pr, sha):
+        """Continuação de revisão desta chamada; não é retomada de reserva antiga."""
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            r=db.execute('SELECT * FROM reserva WHERE token=?',(esperado['token'],)).fetchone()
+            atual=dict(r,pacote=json.loads(r['pacote'])) if r else None
+            ultima=db.execute('SELECT e.id,e.fim,e.codigo,a.estado,a.codigo_console,x.resultado '
+                'FROM execucao_tarefa e JOIN atividade_execucao a ON a.execucao=e.id '
+                'JOIN execucao_resultado x ON x.execucao=e.id WHERE e.token=? ORDER BY e.inicio DESC,e.id DESC LIMIT 1',
+                (esperado['token'],)).fetchone()
+            entrega=db.execute('SELECT pr,sha,aprovado FROM entrega WHERE token=?',(esperado['token'],)).fetchone()
+            filhos=db.execute('SELECT eventos_filhos FROM atividade_eventos WHERE execucao=?',(tentativa,)).fetchone()
+            if (atual!=esperado or not atual or atual['estado']!='bloqueado'
+                or atual['console'] not in ('codex','opencode') or not atual['sessao']
+                or not ultima or ultima['id']!=tentativa or ultima['fim'] is None or ultima['codigo']!=0
+                or ultima['estado']!='encerrado' or ultima['codigo_console']!=0
+                or ultima['resultado']!='revisao_reprovada' or not entrega
+                or entrega['pr']!=pr or entrega['sha']!=sha or entrega['aprovado']!=0
+                or (filhos and filhos[0])
+                or db.execute('SELECT 1 FROM execucao_tarefa WHERE token=? AND fim IS NULL',(esperado['token'],)).fetchone()):
+                raise ValueError('Correção sem retorno principal confirmado ou com agentes nativos; concilie')
+            db.execute('CREATE TABLE IF NOT EXISTS correcao_tarefa('
+                'tentativa TEXT PRIMARY KEY,token TEXT NOT NULL,pr INTEGER NOT NULL,sha TEXT NOT NULL,sessao_anterior TEXT NOT NULL)')
+            db.execute('INSERT INTO correcao_tarefa VALUES (?,?,?,?,?)',
+                (tentativa,esperado['token'],pr,sha,atual['sessao']))
+            db.execute('UPDATE reserva SET estado=?,sessao=NULL,atualizado=? WHERE token=?',
                 ('executando',time.time(),esperado['token']))
 
     def terminar_execucao(self, ident, codigo, duracao_seg):
