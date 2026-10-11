@@ -18,7 +18,7 @@ class Correcoes(unittest.TestCase):
         self.pacote={'objetivo':'entrega','aceite':'aceite integral preservado','escopo':'implementar',
             'skills':'nenhuma','cartao':1,'url':'https://github.com/o/r/issues/1',
             'executor':{'console':'codex','modelo':'modelo','execucao':'cloud'},
-            'contexto_execucao':{'worktree':str(self.p),'branch':'work/teste'},
+            'contexto_execucao':{'worktree':str(self.p),'branch':'work/teste','escopo':'implementar'},
             'dependencias':{'verificadas_em':1,'itens':[]},
             'meta':{'limites':{'tempo_min':60,'tokens':2000000}}}
         self.token=self.ctrl.reservar('o/r','1','Dev','codex',self.pacote,quadro_atual=True)
