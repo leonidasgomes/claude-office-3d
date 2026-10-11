@@ -639,7 +639,8 @@ def rodar(projeto,ident,relogio=time.time,dormir=time.sleep,consulta=consultar,c
                 from conferencias_prs import encaminhar as conferir_pr
                 conferencia=conferir_pr(projeto,cfg,prs,fila,docs,pasta_dados(projeto),k,
                     ao_etapa=lambda etapa,e:salvar(etapa,cartoes=[],
-                        proxima_acao=e['equipe']+' conferindo PR #'+str(e['pr'])+'; autor não retomado'))
+                        proxima_acao=('CEO decidindo conferência pela '+e['equipe'] if etapa=='diretor'
+                            else e['equipe']+' conferindo PR')+' #'+str(e['pr'])+'; autor não retomado'))
                 if conferencia:
                     registro.setdefault('conferencias_equipes',[]).append(conferencia)
                     atomico(p,registro);continue
