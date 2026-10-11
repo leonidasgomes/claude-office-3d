@@ -82,7 +82,7 @@ class DespachoRevisao(unittest.TestCase):
         self.cfg['revisao']['revisores'][0]['ativo']=False
         (self.pasta/'.office/projeto.json').write_text(json.dumps(self.cfg),encoding='utf-8')
         chamadas=[]
-        with self.assertRaisesRegex(ValueError,'revisores suficientes'):
+        with self.assertRaisesRegex(ValueError,'Revisão exige 2 fornecedores distintos, mas há 1 habilitado'):
             self.executar(lambda *a,**kw:chamadas.append('revisor'),rodar=lambda *a,**kw:chamadas.append('autor'))
         self.assertEqual(chamadas,[])
         self.assertEqual(self.moves,[])
