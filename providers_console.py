@@ -1,11 +1,36 @@
 """Adapters da nova versão; todos os consoles usam eventos comuns."""
 import importlib.util
+import base64
 import json
 import os
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def ambiente_git_codex(env):
+    """GitHub HTTPS por processo, sem Schannel/helper MSYS dentro do sandbox."""
+    if env.get('OFFICE_CODEX_GIT_GITHUB')!='1':return env
+    token=env.get('GH_TOKEN','')
+    if not token or any(c.isspace() for c in token):
+        raise ValueError('GitHub do Codex exige GH_TOKEN válido no ambiente do launcher')
+    try:quantidade=int(env.get('GIT_CONFIG_COUNT','0'))
+    except ValueError:raise ValueError('GIT_CONFIG_COUNT inválido') from None
+    if not 0<=quantidade<=100:raise ValueError('GIT_CONFIG_COUNT fora do limite')
+    saida=env.copy()
+    autorizacao=base64.b64encode(('x-access-token:'+token).encode('utf-8')).decode('ascii')
+    ajustes=[('credential.https://github.com.helper',''),
+             ('http.https://github.com/.sslBackend','openssl'),
+             ('http.https://github.com/.sslVerify','true'),
+             ('http.https://github.com/.extraHeader',''),
+             ('http.https://github.com/.extraHeader','Authorization: Basic '+autorizacao)]
+    for i,(chave,valor) in enumerate(ajustes,quantidade):
+        saida['GIT_CONFIG_KEY_'+str(i)]=chave
+        saida['GIT_CONFIG_VALUE_'+str(i)]=valor
+    saida['GIT_CONFIG_COUNT']=str(quantidade+len(ajustes))
+    saida['GIT_TERMINAL_PROMPT']='0'
+    return saida
 
 
 def comando_nativo(exe, nome):

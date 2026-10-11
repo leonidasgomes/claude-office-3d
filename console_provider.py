@@ -75,6 +75,9 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         entrada = prompt
         args[-1] = "Siga a tarefa e as referências recebidas na entrada padrão."
     env = os.environ.copy()
+    if provider.nome=='codex':
+        from providers_console import ambiente_git_codex
+        env=ambiente_git_codex(env)
     funcionario_cloud = bool(re.fullmatch(r'Office_[0-9a-f]{32}',mesa))
     if adaptar_local:
         args = adaptar_local(args, env)
