@@ -203,6 +203,17 @@ class Fila(unittest.TestCase):
         self.pr['head']['sha']='a'*40;self.futuro['html_url']='https://github.com/outro/repo/issues/10'
         with self.assertRaisesRegex(ValueError,'outro repositório'):contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
 
+    def test_politica_nova_preserva_etapas_como_contexto_sem_autorizar(self):
+        self.contexto_fixture()
+        self.cfg['metas']['tokens']+=1000
+        r=contexto_preparacao(self.cfg,self.pr,[],self.p,self.k)
+        self.assertEqual(r['estado'],'vinculo_desatualizado')
+        self.assertFalse(r['politica_compativel']);self.assertTrue(r['somente_contexto'])
+        self.assertTrue(r['sub_issues_do_pai'])
+        self.assertEqual(r['sub_issues_do_pai'][0]['number'],self.futuro['number'])
+        r=contexto_preparacao(self.cfg,self.pr,[{'caminho':'PRODUTO.md','sha256':'f'*64}],self.p,self.k)
+        self.assertFalse(r['fontes_compativeis']);self.assertTrue(r['sub_issues_do_pai'])
+
     def test_subissues_excessivas_nao_sao_truncadas(self):
         self.contexto_fixture();original=self.k._paginas.side_effect
         self.k._paginas.side_effect=lambda url:[self.futuro]*21 if '/sub_issues?' in url else original(url)
