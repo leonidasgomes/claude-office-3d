@@ -496,6 +496,12 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 'Execute Python "'+str(RAIZ/'controlador_local.py')+'" --projeto "'+str(Path(projeto).resolve())+
                 '" --acao publicar --arquivo caminho_json. O host faz commit/push/PR, preservando hooks e gates. '
                 'Depois publique a revisão de arquitetura pelo script autorizado do projeto. '
+                'Para arquivos LFS que ainda sejam pointers, o host oferece --acao assets '
+                'com JSON {"cartao":n,"worktree":"raiz absoluta","arquivos":["caminho/relativo"]}. '
+                'Ele hidrata somente arquivos versionados deste worktree a partir do cache LFS local '
+                'verificado por hash, sem rede, cópia do checkout principal ou alteração de refs. '
+                'Isso não prepara relatórios de importação nem comprova aceite; se faltar objeto, '
+                'registre a lacuna para o diretor. Não repita preparação interrompida. '
                 'O launcher fornece cache de objetos Git por tentativa para merge-tree; '
                 'use o ambiente herdado, sem alterar .git, refs, index ou permissões. '
                 'Não publique checks obrigatórios à mão nem faça merge. Se publicar falhar, pare sem repetir.\n')
@@ -545,7 +551,9 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 if meta_execucao:parametros_skills['limites_meta']=meta_execucao
                 if cfg.get('ciclo',{}).get('ativo') and provider.nome=='codex':
                     fila_host=RAIZ/'dados'/'controlador';fila_host.mkdir(parents=True,exist_ok=True)
-                    parametros_skills.update({'diretorios_escrita':[fila_host],'sandbox':'workspace-write',
+                    from recursos_host import diretorios_travas
+                    travas=diretorios_travas(projeto,pasta_dados(projeto),cfg,equipe)
+                    parametros_skills.update({'diretorios_escrita':[fila_host,*travas],'sandbox':'workspace-write',
                                               'objetos_git':fila_host/('git-objetos-'+medicao)})
                 nativas=[r['nome'] for r in pacote['skills_resolvidas'] if r.get('ativacao_nativa')=='Skill']
                 if nativas:

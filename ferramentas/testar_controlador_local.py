@@ -27,6 +27,13 @@ class Controlador(unittest.TestCase):
         resultado=c.executar_pedido(self.pedido('diretor','Classifique'),[str(self.projeto)],
             consulta=lambda p,d: chamados.append((p,d)) or {'codigo':0,'saida':'aceite'})
         self.assertEqual(chamados,[(self.projeto.resolve(),'Classifique')]);self.assertEqual(resultado['codigo'],0)
+
+    def test_assets_delegam_somente_ao_servico_restrito(self):
+        dados={'cartao':7,'worktree':'worktree','arquivos':['mapa.umap']}
+        with patch('recursos_host.hidratar_lfs',return_value={'estado':'preparado'}) as preparar:
+            r=c.executar_pedido(self.pedido('assets',dados),[str(self.projeto)])
+        preparar.assert_called_once_with(self.projeto.resolve(),dados)
+        self.assertEqual(r['estado'],'preparado')
     def test_validacao_nao_executa_e_execucao_delega(self):
         plano={'paralelismo':1,'cartoes':[{'cartao':7,'worktree':str(self.raiz/'worktrees'/'novo')}]}
         for executar in (False,True):

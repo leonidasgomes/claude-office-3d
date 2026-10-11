@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Host hidrata assets versionados do cache LFS local com hash e reserva conferidos; acesso à pasta compartilhada de travas pode ser autorizado por projeto e equipe, sem ampliar escrita em Git ou no checkout principal.
+
 - Pedidos de publicação aceitam listas de linhas de texto do PowerShell, preservando limites e exclusão do envelope operacional do commit.
 
 - Concessões de correção atendem primeiro PRs ainda sem rodada, antes de renovar outro PR; ordem original preservada nos empates, sem alterar gates ou limites.

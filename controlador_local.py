@@ -120,6 +120,9 @@ def executar_pedido(pedido,projetos,consulta=None,lote=None):
     if acao=='publicar':
         from publicacao_host import publicar
         return publicar(projeto,dados)
+    if acao=='assets':
+        from recursos_host import hidratar_lfs
+        return hidratar_lfs(projeto,dados)
     if acao=='ciclo':
         if dados!={}:raise ValueError('Ciclo usa somente a política aprovada do projeto')
         from ciclo_gdd import iniciar
@@ -192,7 +195,7 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--servir',action='store_true')
     p.add_argument('--projeto',type=Path)
-    p.add_argument('--acao',choices=['diretor','worktrees','lote','ciclo','publicar','conciliar-ciclo'])
+    p.add_argument('--acao',choices=['diretor','worktrees','lote','ciclo','publicar','assets','conciliar-ciclo'])
     p.add_argument('--arquivo',type=Path,help='prompt do diretor ou plano JSON de lote')
     p.add_argument('--executar',action='store_true',help='lote: efetivar pelo controlador comum')
     args=p.parse_args(argv)
@@ -202,7 +205,7 @@ def main(argv=None):
     from funcionarios import id_projeto
     if args.arquivo.stat().st_size>128000:raise ValueError('Arquivo grande demais')
     texto=args.arquivo.read_text(encoding='utf-8-sig')
-    dados=texto if args.acao=='diretor' else (json.loads(texto) if args.acao in ('worktrees','ciclo','publicar','conciliar-ciclo')
+    dados=texto if args.acao=='diretor' else (json.loads(texto) if args.acao in ('worktrees','ciclo','publicar','assets','conciliar-ciclo')
         else {'plano':json.loads(texto),'executar':args.executar})
     FILA.mkdir(parents=True,exist_ok=True);ident=uuid.uuid4().hex
     try:
