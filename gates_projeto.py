@@ -7,6 +7,10 @@ from correcoes_prs import assinatura,ler
 CHECK='architecture-guardian'
 
 
+class ContextoIncompativel(ValueError):
+    """Entrega histórica não autoriza gate na política/fontes atuais."""
+
+
 def comando_script(projeto,cfg):
     raiz=Path(projeto).resolve();fonte=(raiz/cfg['fontes']['regras']).resolve()
     if not fonte.is_relative_to(raiz):raise ValueError('Fonte de regras fora do projeto')
@@ -58,7 +62,7 @@ def preparar(projeto,cfg,pr,dados,k):
             a=db.execute('SELECT estado,codigo_console FROM atividade_execucao WHERE execucao=?',(t['id'],)).fetchone()
             filhos=db.execute('SELECT eventos_filhos FROM atividade_eventos WHERE execucao=?',(t['id'],)).fetchone()
             if not a or a['estado']!='encerrado' or type(a['codigo_console']) is not int or (filhos and filhos[0]):raise ValueError('Gate com processos filhos incertos')
-    if (ctx.get('politica_sha256')!=assinatura(cfg) or fontes_resolvidas(projeto,cfg)!=pacote.get('fontes_resolvidas')):raise ValueError('Fontes/política de gate mudaram')
+    if (ctx.get('politica_sha256')!=assinatura(cfg) or fontes_resolvidas(projeto,cfg)!=pacote.get('fontes_resolvidas')):raise ContextoIncompativel('Fontes/política de gate mudaram')
     if not re.search(rf'(?i)\b(?:Closes|Fixes|Resolves|Parte de)\s+#{row["cartao"]}\b',pr.get('body') or ''):raise ValueError('Gate sem vínculo com cartão')
     trabalho=validar_worktree(projeto,ctx['worktree']);git=estado_git(trabalho)
     if (git['sha']!=sha or git['branch']!=ctx['branch'] or pr['head'].get('ref')!=ctx['branch']
@@ -88,10 +92,15 @@ def preparar(projeto,cfg,pr,dados,k):
                 'conferido_pelo_host':['politica','fontes','script','worktree_limpo','base','autor_encerrado','revisao']}}
 
 
-def candidatos(projeto,cfg,prs,dados,k):
+def candidatos(projeto,cfg,prs,dados,k,*,pendencias=None):
     out=[]
     for pr in prs:
-        e=preparar(projeto,cfg,pr,dados,k)
+        try:e=preparar(projeto,cfg,pr,dados,k)
+        except ContextoIncompativel as exc:
+            if pendencias is not None:
+                pendencias.append({'pr':pr['number'],'head':pr['head']['sha'],'motivo':str(exc),
+                    'acao':'Conferir contexto da entrega; não executar gate nem retomar autor automaticamente.'})
+            continue
         if e:out.append(e)
     return out
 
@@ -131,7 +140,8 @@ def encaminhar(projeto,cfg,prs,fila,dados,k,chamar=None,rodar=executar,ao_etapa=
     for pr in prs:
         d=next((x for x in fila['encaminhamentos'] if x['pr']==pr['number'] and x['head']==pr['head']['sha'] and x['acao']=='revisar'),None)
         if not d:continue
-        e=preparar(projeto,cfg,pr,dados,k)
+        try:e=preparar(projeto,cfg,pr,dados,k)
+        except ContextoIncompativel:continue
         if not e:continue
         pasta=Path(dados)/'gates_projeto';pasta.mkdir(exist_ok=True)
         arq=pasta/(assinatura(e)+'.json')

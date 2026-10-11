@@ -2051,6 +2051,8 @@ no pacote do diretor, sem continuação autorizada. Revisões, gates e preparaç
 independente podem avançar. Concessões esgotadas mantêm a prova de esgotamento
 e seus limites originais; a mudança não reativa reservas nem renova concessões.
 Registros malformados ou cadeias incertas continuam sendo erros, sem despacho.
+Gates de entregas com fontes/política divergentes também aparecem como pendência
+de conferência ao diretor, sem executar o script nem parar a classificação da fila.
 Com `max_concessoes` explícito (1 a 5, padrão 1), o controlador pode apresentar
 a próxima rodada ao diretor/CEO após limite confirmado. A cadeia comprova que
 a reserva atual veio do contrato anterior e confere o novo head no PR. Cada

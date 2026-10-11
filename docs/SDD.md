@@ -2171,6 +2171,10 @@ como histórico somente leitura. Alterar metas não renova concessões e não de
 as outras ações da fila. Erros de estrutura e processos incertos permanecem erros.
 Regressões: `testar_correcoes_prs` e `testar_fila_prs`, incluindo mudança de metas
 com delegação antiga, ausência de despacho/escrita e prova de esgotamento preservada.
+`gates_projeto.ContextoIncompativel` conserva a recusa do gate de uma entrega cujas
+fontes/política mudaram. A seleção informa `gates_contextos_pendentes` ao diretor
+e exclui somente esse candidato; o encaminhamento não consulta CEO nem executa
+worker nesse contexto. Revalidação após decisão continua obrigatória e estrita.
 
 `finalizacao_publicada` conserva token, tentativa, PR e registro completo da
 conciliação de uma publicação confirmada antes do limite do autor. Uma revisão

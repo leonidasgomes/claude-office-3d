@@ -402,7 +402,9 @@ def planejar(projeto,cfg,prs,docs,dados,k,chamar=None,ao_consulta=None):
     from finalizacao_publicada import candidatos as publicacoes_revisaveis
     pacote['publicacoes_apos_limite']=publicacoes_revisaveis(projeto,cfg,prs,dados,k)
     from gates_projeto import candidatos as gates_revisaveis
-    pacote['gates_pelo_revisor']=gates_revisaveis(projeto,cfg,prs,dados,k)
+    pacote['gates_contextos_pendentes']=[]
+    pacote['gates_pelo_revisor']=gates_revisaveis(projeto,cfg,prs,dados,k,
+        pendencias=pacote['gates_contextos_pendentes'])
     from recursos_host import diretorios_travas
     pacote['recursos_host']={'assets':'Hidratação de pointers versionados do cache LFS local, sem download; a equipe solicita --acao assets.',
         'travas_por_equipe':{e['nome']:[str(p) for p in diretorios_travas(projeto,dados,cfg,e['nome'])] for e in cfg['equipes']}}
@@ -454,6 +456,9 @@ gates_pelo_revisor lista gates ausentes com script autorizado pelas regras, entr
 revisada e autor encerrado. Encaminhe revisar para o revisor cadastrado executar
 esse script em sandbox e publicar seu relatório, sem nova implementação, sessão
 do autor ou concessão. Não declare que um gate passou antes dessa execução.
+gates_contextos_pendentes identifica entregas cujo contexto diverge das fontes/política
+atuais. Não são candidatos à execução automática do gate; encaminhe conferência do
+contexto sem retomar autor ou tratar a entrega histórica como aprovação atual.
 não trate falha antiga de build como atual quando o check atual passou, nem confunda
 build aprovado com prova de benchmark, Drive ou Validate que não foram apresentados.
 revisao_registrada traz os vereditos e achados já salvos para este head, com origem e hash.

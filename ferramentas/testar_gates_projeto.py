@@ -64,6 +64,17 @@ class Gates(unittest.TestCase):
         before=self.ctrl.banco.read_bytes();e=self.preparar()
         self.assertEqual(e['revisor']['nome'],'QA Codex');self.assertEqual(e['regra']['script'],self.script)
         self.assertEqual(before,self.ctrl.banco.read_bytes())
+
+    def test_metas_novas_bloqueiam_gate_antigo_sem_parar_fila(self):
+        self.cfg['metas'].update(tempo_min=120,tokens=4000000)
+        antes=self.ctrl.banco.read_bytes();pendencias=[]
+        with self.assertRaises(g.ContextoIncompativel):self.preparar()
+        self.assertEqual(g.candidatos(self.repo,self.cfg,[self.pr],self.dados,self.k,pendencias=pendencias),[])
+        self.assertEqual(pendencias[0]['pr'],42)
+        self.assertIn('política',pendencias[0]['motivo'])
+        chefe=Mock();worker=Mock();self.assertIsNone(self.encaminhar(chefe,worker))
+        chefe.assert_not_called();worker.assert_not_called()
+        self.assertEqual(self.ctrl.banco.read_bytes(),antes)
     def test_publicacao_nao_reinicia_autor_e_nao_repete(self):
         before=self.ctrl.banco.read_bytes();r=self.encaminhar()
         self.assertEqual(r['estado'],'publicado');self.assertFalse(r['inferencia'])
