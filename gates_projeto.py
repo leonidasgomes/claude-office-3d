@@ -150,7 +150,21 @@ def candidatos(projeto,cfg,prs,dados,k,*,pendencias=None):
                 pendencias.append({'pr':pr['number'],'head':pr['head']['sha'],'motivo':str(exc),
                     'acao':'Conferir contexto da entrega; não executar gate nem retomar autor automaticamente.'})
             continue
-        if e:out.append(e)
+        if not e:continue
+        recibo=Path(dados)/'gates_projeto'/(assinatura(e)+'.json')
+        if recibo.exists():
+            r=ler(recibo)
+            if r.get('evidencia')!=e:raise ValueError('Recibo de gate diverge da identidade')
+            if pendencias is not None:
+                resultado=r.get('resultado') or {}
+                pendencias.append({'pr':pr['number'],'head':pr['head']['sha'],
+                    'motivo':'Gate já registrado neste contexto: '+str(r.get('estado')),
+                    'estado':r.get('estado'),'recibo':recibo.name,'recibo_sha256':assinatura(r),
+                    'ceo':r.get('ceo'),'resultado':{k:resultado.get(k) for k in ('codigo','stdout_sha256','stderr_sha256','inferencia')},
+                    'acao':'Tratar a causa registrada; não solicitar repetição no mesmo contexto nem retomar autor. '
+                           'Estado em curso ou incerto exige conferir processo e recibos antes de qualquer decisão.'})
+            continue
+        out.append(e)
     return out
 
 

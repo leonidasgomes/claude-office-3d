@@ -266,10 +266,11 @@ def contexto_preparacao(cfg,pr,docs,dados,k):
     fontes=[{'caminho':d['caminho'],'sha256':d['sha256']} for d in docs]
     pai=ident.get('pai');n=r.get('numero');repo=cfg['kanban']['repo']
     if (ident.get('repo')!=repo or ident.get('pr')!=pr['number']
-        or ident.get('politica')!=versao_politica(cfg) or ident.get('fontes')!=fontes
         or type(pai) is not int or pai<1 or type(n) is not int or n<1
         or not re.search(rf'\b(?:Parte de|Closes|Fixes|Resolves)\s+#{pai}\b',pr.get('body') or '',re.I)):
         return {'estado':'vinculo_desatualizado','somente_contexto':True}
+    politica_compativel=ident.get('politica')==versao_politica(cfg)
+    fontes_compativeis=ident.get('fontes')==fontes
     vinculo=Path(dados)/'desbloqueios'/(str(pai)+'.json')
     if not vinculo.is_file() or vinculo.is_symlink() or vinculo.stat().st_size>128000:
         raise ValueError('Vínculo de preparação não comprovado')
@@ -355,7 +356,9 @@ def contexto_preparacao(cfg,pr,docs,dados,k):
                               'dependencias':bool(campo(i.get('body') or '', 'Dependências')),
                               'objetivo_gdd':bool(campo(i.get('body') or '', 'Objetivo GDD'))}
         proximos.append(i)
-    return {'estado':'vinculado' if ident.get('head')==pr['head']['sha'] else 'vinculo_desatualizado',
+    return {'estado':'vinculado' if ident.get('head')==pr['head']['sha'] and politica_compativel and fontes_compativeis else 'vinculo_desatualizado',
+            'politica_compativel':politica_compativel,'fontes_compativeis':fontes_compativeis,
+            'politica_original':ident.get('politica'),'politica_atual':versao_politica(cfg),
             'head_preparado':ident.get('head'),'head_atual':pr['head']['sha'],
             'pai':pai,'preparacao':filho,'sub_issues_do_pai':proximos,'somente_contexto':True}
 
