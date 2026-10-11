@@ -2138,3 +2138,5 @@ liberação automática pelo SO após queda. Marcador legado exige conciliação
 expiração por idade permanece somente no protocolo legado. Testes
 testar_sugestoes_projeto (testar_sugestoes_projeto.py) cobrem concorrência,
 exceção e queda real de subprocesso em Windows/Linux.
+
+salvar no ciclo_gdd limpa motivo quando a etapa nova não fornece um. Motivos explícitos de espera, bloqueio e erro permanecem. Preparação distingue criação de worktree da validação do despacho. testar_ciclo_gdd verifica que o motivo da espera não acompanha a implementação.

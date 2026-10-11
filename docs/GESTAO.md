@@ -1930,3 +1930,5 @@ processo ativo. Marcadores `.trava` de instalações anteriores continuam bloque
 até recuperação assistida: parar os serviços, verificar que não há processo
 usando a caixa, preservar o marcador para diagnóstico e só então removê-lo.
 Nunca remover uma trava apenas pela idade. O protocolo do Claude legado permanece.
+
+O motivo mostrado pertence à etapa atual. Ao sair da espera para consultar, preparar ou executar, o motivo antigo é removido; bloqueios novos continuam explícitos. A criação de worktree aparece como preparação, antes de validar e registrar a execução.
