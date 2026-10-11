@@ -313,6 +313,8 @@ def _eh_resumo_vazio(corpo):
     """Revisão só com a casca do bot (sem achado próprio): não vira item."""
     if MARCA_REVISOR + " Revisão automática" in (corpo or "") and "\n- **" not in (corpo or ""):
         return True   # resumo do revisor_ia.py sem achado no corpo
+    if (corpo or '').startswith(MARCA_REVISOR+' Revisão independente do despacho.\n'):
+        return True   # achados desse protocolo são comentários em linha, não o cabeçalho de cobertura
     t = RE_TAGS.sub("", RE_IMG.sub("", limpar_texto(corpo)))
     t = re.sub(r"[#*_`>\-\s]+", " ", t).strip().lower()
     t = re.sub(r"[^\w\s]", " ", t)
@@ -429,10 +431,11 @@ def _achados_do_indice(corpo):
     return saida
 
 
-def _revisoes(cfg, n, prs, existentes):
+def _revisoes(cfg, n, prs, existentes, dados=None):
     """(itens, gravidades) do PR n: itens de revisão (COMMENTED, com texto próprio) dos bots e, do índice do Copilot,
     {id do comentário em linha: prioridade} pela gravidade (Critical/High/Medium/Low -> P0..P3)."""
-    status, dados, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
+    if dados is None:
+        status, dados, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
     saida, gravidades = [], {}
     for r in dados if isinstance(dados, list) else []:
         if not (eh_bot((r.get("user") or {}).get("login"), cfg["bots"]) or MARCA_REVISOR in (r.get("body") or "")) \
@@ -801,7 +804,7 @@ def resumo(cfg=None):
             "triagem": (est.get("triagem") or {}).get("ultima"), "intervalo_min": cfg["intervalo_min"]}
 
 
-def pronto(cfg, n, coletar_antes=True, info=None):
+def pronto(cfg, n, coletar_antes=True, info=None, evidencias=None):
     """(ok, motivos) para dizer que o PR n está pronto para o merge, do ponto de vista dos bots: nenhuma sugestão sem
     decisão ou encaminhada e ainda não corrigida, cada bot "por push" que já revisou o PR revisou também o commit atual,
     e PR novo não passa antes de algum bot revisar (ESPERA_BOTS_MIN). Avisos (bot de abertura, bot atrasado além de
@@ -815,8 +818,10 @@ def pronto(cfg, n, coletar_antes=True, info=None):
     for x in sorted(pend, key=_ordem):
         o_que = "encaminhada, ainda não corrigida" if x["situacao"] == "encaminhada" else "sem decisão"
         motivos.append(f"sugestão {x['prioridade']} {x['id']} ({o_que}): {x['titulo'][:80]}")
-    _, pr, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}")
-    _, revs, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
+    if evidencias is None:
+        _, pr, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}")
+        _, revs, _ = gh_api(cfg, f"repos/{cfg['repo']}/pulls/{n}/reviews?per_page=100")
+    else:pr,revs,_=evidencias
     cabeca = (pr or {}).get("head", {}).get("sha", "")
     if info is not None:
         info["sha"] = cabeca
@@ -842,7 +847,8 @@ def pronto(cfg, n, coletar_antes=True, info=None):
     data_cabeca = None
     if cabeca:
         try:
-            _, c, _ = gh_api(cfg, f"repos/{cfg['repo']}/commits/{cabeca}")
+            if evidencias is None:_, c, _ = gh_api(cfg, f"repos/{cfg['repo']}/commits/{cabeca}")
+            else:c=evidencias[2]
             data_cabeca = _ler_iso(((c or {}).get("commit") or {}).get("committer", {}).get("date", ""))
         except ErroApi:
             data_cabeca = None
@@ -860,6 +866,80 @@ def pronto(cfg, n, coletar_antes=True, info=None):
     if not por_bot and criado and (_agora() - criado).total_seconds() < ESPERA_BOTS_MIN * 60:
         motivos.append(f"nenhum bot revisou ainda (PR aberto há menos de {ESPERA_BOTS_MIN} min); espere e rode de novo")
     return not motivos, motivos + [f"(aviso) {a}" for a in avisos]
+
+
+def publicar_gate_gestao(projeto,n,chamar=None):
+    """Confere todas as sugestões do PR e publica somente o gate exigido pelo projeto, sem modelo."""
+    from gestao_projeto import carregar
+    from kanban_gestao import api
+    from controlador_local import atomico
+    politica=carregar(projeto)
+    if politica['merge']['modo']!='automatico' or 'sugestoes' not in politica['merge']['checks']:
+        return {'estado':'nao_exigido'}
+    if type(n) is not int or n<1:raise ValueError('Número de PR inválido')
+    cfg=configuracao(projeto);repo=cfg['repo'];consulta=chamar or api
+    def atual(sha=None,base=None):
+        conferir_projeto(cfg)
+        if carregar(projeto)!=politica:raise ValueError('Política mudou; não publicar sugestões')
+        pr=consulta(f'repos/{repo}/pulls/{n}')
+        if (pr.get('number')!=n or pr.get('state')!='open' or pr.get('draft') is not False
+            or pr.get('head',{}).get('repo',{}).get('full_name')!=repo
+            or pr.get('base',{}).get('repo',{}).get('full_name')!=repo
+            or not re.fullmatch('[0-9a-f]{40}',pr.get('head',{}).get('sha',''))
+            or not re.fullmatch('[0-9a-f]{40}',pr.get('base',{}).get('sha',''))
+            or (sha is not None and (pr['head']['sha']!=sha or pr['base']['sha']!=base))):
+            raise ValueError('PR/commit/base divergente; não publicar sugestões')
+        return pr
+    with trava_caixa(cfg):
+        pr=atual();sha=pr['head']['sha'];base=pr['base']['sha']
+        comentarios=consulta(f'repos/{repo}/pulls/{n}/comments?per_page=100',paginar=True)
+        revisoes=consulta(f'repos/{repo}/pulls/{n}/reviews?per_page=100',paginar=True)
+        if any(not isinstance(x,list) or len(x)>10000 for x in (comentarios,revisoes)):
+            raise ValueError('Coleta de sugestões inválida ou excessiva; não publicar')
+        caixa=ler_caixa(cfg);existentes={str(i['id']):i for i in caixa};fontes={}
+        prs={str(n):{'branch':pr['head'].get('ref',''),'time':_time_do_pr(cfg,pr.get('labels'))}}
+        novos=[]
+        for comentario in comentarios:
+            if ((eh_bot((comentario.get('user') or {}).get('login',''),cfg['bots'])
+                 or MARCA_REVISOR in (comentario.get('body') or ''))
+                and not comentario.get('in_reply_to_id')):
+                item=_item(cfg,{**comentario,'pull_request_url':f'https://api.github.com/repos/{repo}/pulls/{n}'},prs)
+                novos.append(item);fontes[str(item['id'])]=comentario
+        extra,gravidades=_revisoes(cfg,n,prs,set(),dados=revisoes)
+        for item in novos:
+            if item['prioridade']=='?' and str(item['id']) in gravidades:item['prioridade']=gravidades[str(item['id'])]
+        for item in novos+extra:
+            fonte=fontes.get(str(item['id']))
+            if fonte is None:
+                fonte=next((r for r in revisoes if re.fullmatch('r'+re.escape(str(r['id']))+'(?:m[0-9]+)?',str(item['id']))),None)
+            digest=hashlib.sha256(json.dumps({k:(fonte or {}).get(k) for k in
+                ('body','path','line','original_line','commit_id')},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            antigo=existentes.get(str(item['id']))
+            igual=(antigo and (antigo.get('fonte_sha256')==digest if antigo.get('fonte_sha256') else
+                   all(antigo.get(k)==item.get(k) for k in ('texto','titulo','arquivo','linha','prioridade','tipo'))))
+            if igual:antigo['fonte_sha256']=digest
+            else:
+                item['fonte_sha256']=digest
+                if antigo:caixa[caixa.index(antigo)]=item
+                else:caixa.append(item)
+                existentes[str(item['id'])]=item
+        gravar_caixa(cfg,caixa)
+        commit=consulta(f'repos/{repo}/commits/{sha}')
+        ok,motivos=pronto(cfg,n,coletar_antes=False,evidencias=(pr,revisoes,commit))
+        atual(sha,base)
+        estado='success' if ok else 'pending'
+        recibo=cfg['pasta']/f'gate-{n}.json'
+        if recibo.is_symlink():raise ValueError('Recibo de sugestões inválido')
+        registro={'sha':sha,'base':base,'politica':cfg['politica_versao'],'estado':estado,'motivos':motivos}
+        anterior=json.loads(recibo.read_text(encoding='utf-8')) if recibo.exists() else None
+        if anterior!=registro:
+            resposta=consulta(f'repos/{repo}/statuses/{sha}','POST',{
+                'context':'sugestoes','state':estado,'description':('Sugestões conferidas; sem pendências' if ok else 'Sugestões aguardando decisão/correção'),
+                'target_url':f'https://github.com/{repo}/pull/{n}'})
+            if resposta.get('context')!='sugestoes' or resposta.get('state')!=estado:
+                raise ValueError('Publicação do gate de sugestões não comprovada')
+            atual(sha,base);atomico(recibo,registro)
+        return registro
 
 
 # ---------------------------------------------------------------- linha de comando

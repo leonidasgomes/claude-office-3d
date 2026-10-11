@@ -1761,6 +1761,26 @@ o orçamento em poucas chamadas, mesmo com pouca saída.
 
 ### Publicação da revisão dos providers
 
+O gate obrigatório `sugestoes` também é conferido por projeto, a cada três
+minutos, no commit e base atuais. O verificador consulta todos os comentários
+e revisões do PR com paginação, sem janela de dias nem chamada de modelo.
+Comentários `[revisor-ia]` e bots habilitados na política entram na caixa de
+sugestões já existente; decisões do líder são preservadas. Cabeçalhos de cobertura
+sem achados não viram pendência; os achados da revisão ficam nos comentários
+em linha. Pendências publicam `pending`; ausência de pendências após conferência
+publica `success`. Falha de API, mudança de política/commit/base ou PR rascunho
+impede a publicação. Os recibos ficam na caixa isolada do projeto (`gate-N.json`).
+
+Comentários ou revisões editados têm a evidência novamente conferida: mudança
+de conteúdo reabre a sugestão, sem reaproveitar uma decisão tomada sobre outro
+achado. Conteúdo inalterado preserva a decisão e não duplica itens.
+
+Essa conferência decorre de `merge.checks` exigir `sugestoes`: desligar bots extras
+e triagem paga não dispensa o gate nem desativa a leitura das revisões internas.
+Projetos sem esse check e o fluxo legado preservam o comportamento anterior.
+Não resolve ou ignora achados automaticamente, não faz merge e não substitui
+revisão por IA, arquitetura, build ou outros gates.
+
 Quando o projeto usa merge automático e exige `revisor-ia`, o despacho publica
 a revisão independente aprovada antes de encaminhar o cartão para revisão no
 Kanban. Usa o relatório já produzido pelos revisores cadastrados, sem uma nova

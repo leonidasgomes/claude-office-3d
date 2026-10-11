@@ -652,6 +652,17 @@ def pronto_laco(parar):
         try:
             import kanban_painel
             if kanban_painel.habilitado(cfg()['projetos']):
+                ativos,_=kanban_painel.catalogo(cfg()['projetos'])
+                for raiz,politica,_ in ativos:
+                    if politica['merge']['modo']!='automatico' or 'sugestoes' not in politica['merge']['checks']:continue
+                    from kanban_gestao import api
+                    prs=api(f"repos/{politica['kanban']['repo']}/pulls?state=open&per_page=100",paginar=True)
+                    if not isinstance(prs,list) or len(prs)>10000:raise ValueError('Lista de PRs inválida ou excessiva')
+                    for pr in prs:
+                        if not pr.get('draft'):
+                            try:sugestoes_bot.publicar_gate_gestao(raiz,pr['number'])
+                            except (ValueError,OSError,TypeError,RuntimeError,subprocess.SubprocessError):
+                                print('[pronto] Gate de sugestões indisponível; conferir PR e política',flush=True)
                 parar.wait(PRONTO_A_CADA_S);continue
             c = sugestoes_bot.configuracao()
             if (c["bots"] or c["revisor"]) and c["repo"]:

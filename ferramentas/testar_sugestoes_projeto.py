@@ -124,4 +124,95 @@ class Sugestoes(unittest.TestCase):
         finally:
             con.close();srv.shutdown();srv.server_close();th.join(5);servidor.Handler.rede=anterior
 
+class Gate(unittest.TestCase):
+    setUp=Sugestoes.setUp
+    cfg=Sugestoes.cfg
+
+    def preparar(self):
+        dados=json.loads((self.a/'.office/projeto.json').read_text())
+        dados['merge']={'modo':'automatico','checks':['sugestoes']}
+        dados['sugestoes']={'ativo':False,'bots':[],'triagem':False}
+        (self.a/'.office/projeto.json').write_text(json.dumps(dados))
+        self.pr={'number':42,'state':'open','draft':False,'created_at':'2020-01-01T00:00:00Z',
+                 'head':{'sha':'a'*40,'ref':'feat/42','repo':{'full_name':'owner/a'}},
+                 'base':{'sha':'b'*40,'repo':{'full_name':'owner/a'}}}
+        self.comentarios=[];self.revisoes=[{'id':1,'state':'COMMENTED','commit_id':'a'*40,
+            'body':'[revisor-ia] Revisão independente do despacho.\n- QA (codex)\nSem P0/P1 no relatório verificado.'}]
+        self.calls=[]
+        def api(caminho,metodo='GET',dados=None,**kw):
+            import copy
+            self.calls.append((caminho,metodo,dados,kw))
+            if metodo=='POST':return {'context':'sugestoes','state':dados['state']}
+            if '/comments?' in caminho:
+                self.assertTrue(kw['paginar']);return copy.deepcopy(self.comentarios)
+            if '/reviews?' in caminho:
+                self.assertTrue(kw['paginar']);return copy.deepcopy(self.revisoes)
+            if '/commits/' in caminho:return {'commit':{'committer':{'date':'2020-01-01T00:00:00Z'}}}
+            return copy.deepcopy(self.pr)
+        return api
+
+    def test_cabecalho_sem_achados_nao_vira_sugestao_e_gate_e_isolado(self):
+        api=self.preparar()
+        with patch.object(sb,'triar',side_effect=AssertionError('Nenhum modelo')):
+            r=sb.publicar_gate_gestao(self.a,42,api)
+            self.assertEqual(r['estado'],'success')
+            self.assertEqual(sb.publicar_gate_gestao(self.a,42,api),r)
+        self.assertEqual(len([x for x in self.calls if x[1]=='POST']),1)
+        self.assertEqual(sb.ler_caixa(self.cfg()),[])
+        self.assertFalse(self.cfg(self.b)['pasta'].exists())
+
+    def test_achado_antigo_e_coletado_sem_janela_e_fica_pending_ate_decisao(self):
+        api=self.preparar()
+        self.comentarios=[{'id':7,'body':'**P2 — Verificar teste**\nFalta o teste.\n<sub>[revisor-ia]</sub>',
+            'created_at':'2020-01-01T00:00:00Z','path':'app.py','line':3,'user':{'login':'autor'}}]
+        self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'pending')
+        self.assertEqual(sb.ler_caixa(self.cfg())[0]['situacao'],'nova')
+        self.assertTrue(sb.tratar(self.cfg(),'7','resolvida','Teste existente conferido')[0])
+        self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'success')
+        self.assertEqual(len(sb.ler_caixa(self.cfg())),1)
+        self.comentarios[0]['body']='**P1 — Outro erro**\nAchado novo comprovado. [revisor-ia]'
+        self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'pending')
+        self.assertEqual(sb.ler_caixa(self.cfg())[0]['situacao'],'nova')
+
+    def test_falha_de_coleta_ou_head_mudou_nao_publica(self):
+        api=self.preparar()
+        def falha(caminho,*args,**kw):
+            if '/reviews?' in caminho:raise ValueError('API indisponível')
+            return api(caminho,*args,**kw)
+        with self.assertRaises(ValueError):sb.publicar_gate_gestao(self.a,42,falha)
+        def mudou(caminho,*args,**kw):
+            r=api(caminho,*args,**kw)
+            if '/reviews?' in caminho:self.pr['head']['sha']='c'*40
+            return r
+        with self.assertRaisesRegex(ValueError,'divergente'):sb.publicar_gate_gestao(self.a,42,mudou)
+        self.assertFalse(any(x[1]=='POST' for x in self.calls))
+
+    def test_paginacao_com_mais_de_cem_comentarios_inclui_ultimo_achado(self):
+        api=self.preparar()
+        self.comentarios=[{'id':n,'body':'Conversa','user':{'login':'humano'}} for n in range(1,101)]
+        self.comentarios.append({'id':101,'body':'**P1 — Erro**\nFalha comprovada. [revisor-ia]',
+                                 'path':'app.py','line':2,'user':{'login':'autor'}})
+        self.assertEqual(sb.publicar_gate_gestao(self.a,42,api)['estado'],'pending')
+        self.assertEqual(sb.ler_caixa(self.cfg())[0]['id'],'101')
+
+    def test_politica_mudou_ou_pr_rascunho_nao_publica(self):
+        api=self.preparar();self.pr['draft']=True
+        with self.assertRaises(ValueError):sb.publicar_gate_gestao(self.a,42,api)
+        self.pr['draft']=False
+        def mudou(caminho,*args,**kw):
+            r=api(caminho,*args,**kw)
+            if '/commits/' in caminho:
+                arq=self.a/'.office/projeto.json';arq.write_bytes(arq.read_bytes()+b' ')
+            return r
+        with self.assertRaisesRegex(ValueError,'Política mudou'):sb.publicar_gate_gestao(self.a,42,mudou)
+        self.assertFalse(any(x[1]=='POST' for x in self.calls))
+
+    def test_laco_publica_somente_gate_exigido_e_pula_rascunho(self):
+        self.preparar();parar=unittest.mock.Mock();parar.wait.side_effect=[False,False];parar.is_set.side_effect=[False,True]
+        with patch('kanban_gestao.api',return_value=[{'number':42,'draft':False},{'number':43,'draft':True}]), \
+             patch.object(sb,'publicar_gate_gestao',return_value={'estado':'success'}) as gate:
+            servidor.pronto_laco(parar)
+        gate.assert_called_once_with(self.a,42)
+
+
 if __name__=='__main__':unittest.main()
