@@ -2025,3 +2025,5 @@ após editar o funcionário; regeneração continua explícita.
 Iniciar_equipe fornece prompt inicial ao Codex interativo (`workspace-write`), sem executar o modelo na verificação. O modelo organiza candidatos pelo diretor e delega pelo controlador existente; execução depende das permissões nativas e dos gates, não há garantia de despacho. Limite padrão de um cartão, máximo quatro, execução sequencial; reservas existentes não são retomadas automaticamente. CEO e diretor compartilham a diretoria em duas mesas com rotas próprias.
 
 OFFICE_CODEX_SEM_DAEMON=1 acrescenta `--disable daemon_auto_start` somente aos comandos Codex, para instalações isoladas não reutilizarem o app-server compartilhado. Não muda sandbox, conta ou configuração global; padrão preservado.
+
+OFFICE_CODEX_AUTONOMO=1 configura apenas o processo Codex com aprovação never e sandbox_workspace_write.network_access=true. Opt-in explícito do operador para rede sem confirmação, mantendo as raízes de escrita e o sandbox escolhidos; outros providers e padrão não mudam. Não permite escalada fora do sandbox: comandos negados devem bloquear, não ser repetidos com acesso irrestrito.
