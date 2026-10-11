@@ -1,7 +1,7 @@
 """Ponte local: controlador hospeda consultas e lotes, sem Codex dentro de Codex."""
 import argparse
 from contextlib import redirect_stdout
-import io,json,os,sys,time,uuid
+import io,json,os,re,subprocess,sys,time,uuid
 from pathlib import Path
 
 RAIZ=Path(__file__).resolve().parent
@@ -32,6 +32,72 @@ def atomico(arq,dados):
     tmp.write_text(json.dumps(dados,ensure_ascii=False),encoding='utf-8');tmp.replace(arq)
 
 
+def criar_worktrees(projeto,dados):
+    """Git no host; somente branches novos e caminhos gerados pelo controlador."""
+    if not isinstance(dados,dict) or set(dados)!={'base','cartoes'}:
+        raise ValueError('Informe base remota e cartoes')
+    base=dados['base'];numeros=dados['cartoes']
+    if (not isinstance(base,str) or not re.fullmatch(r'origin/[A-Za-z0-9_./-]+',base)
+        or not isinstance(numeros,list) or not 1<=len(numeros)<=2
+        or any(type(n) is not int or n<1 for n in numeros) or len(set(numeros))!=len(numeros)):
+        raise ValueError('Base exige origin/branch; até dois cartões distintos')
+    def git(*args):
+        p=subprocess.run(['git','-C',str(projeto),*args],capture_output=True,text=True,
+                         encoding='utf-8',errors='replace',timeout=120)
+        if p.returncode:raise ValueError('Git: '+p.stderr.strip()[-2000:])
+        return p.stdout.strip()
+    git('check-ref-format','refs/heads/'+base[len('origin/'):])
+    if Path(git('rev-parse','--show-toplevel')).resolve()!=projeto.resolve():
+        raise ValueError('Projeto deve ser a raiz canônica do repositório')
+    pasta=RAIZ.parent/'worktrees'
+    if pasta.is_symlink() or pasta.resolve().is_relative_to(projeto.resolve()):
+        raise ValueError('Pasta worktrees inválida ou dentro do checkout principal')
+    from gestao_cli import preparar,conferir_disponibilidade,pasta_dados
+    from gestao_projeto import carregar
+    from kanban_gestao import Kanban
+    cfg=carregar(projeto);k=Kanban(cfg,pasta_dados(projeto)/'kanban.json')
+    quadro={c['numero']:c for c in k.cartoes(ao_vivo=True)}
+    for anterior in (RAIZ/'dados'/'worktrees').glob('*.json'):
+        r=json.loads(anterior.read_text(encoding='utf-8'))
+        if r.get('projeto')==str(projeto) and set(numeros).intersection(
+            i['cartao'] for i in r['plano']['cartoes']):
+            raise ValueError('Criação anterior exige conciliação; não repetir. Confira '+str(anterior))
+    ident=uuid.uuid4().hex;itens=[]
+    for numero in numeros:
+        cartao=quadro.get(numero)
+        if not cartao:raise ValueError('Cartão não está no Kanban do projeto')
+        atual,*_=preparar(projeto,numero,cartao['equipe'],kanban=k)
+        if atual!=cfg:raise ValueError('Política mudou durante preparação')
+        caminho=(pasta/(projeto.name+'-'+str(numero)+'-'+ident)).resolve()
+        if not caminho.is_relative_to(pasta.resolve()) or caminho.exists():
+            raise ValueError('Destino existente ou inválido; não reutilizar')
+        conferir_disponibilidade(projeto,cfg,numero,caminho)
+        itens.append({'cartao':numero,'worktree':str(caminho),
+                      'branch':'work/office-'+str(numero)+'-'+ident})
+    # Confirma a ref exata no remoto; fetch não muda HEAD nem checkout principal.
+    remoto='refs/heads/'+base[len('origin/'):]
+    linhas=git('ls-remote','--exit-code','--heads','origin',remoto).splitlines()
+    if len(linhas)!=1 or linhas[0].split()[1]!=remoto:raise ValueError('Base remota não confirmada')
+    sha=linhas[0].split()[0]
+    git('fetch','--no-tags','origin',remoto)
+    if git('rev-parse','FETCH_HEAD^{commit}')!=sha:raise ValueError('Base mudou durante fetch; confira novamente')
+    if carregar(projeto)!=cfg:raise ValueError('Política mudou antes da criação')
+    pasta.mkdir(exist_ok=True)
+    recibo=RAIZ/'dados'/'worktrees'/(ident+'.json');recibo.parent.mkdir(parents=True,exist_ok=True)
+    registro={'projeto':str(projeto),'base':base,'sha':sha,'estado':'criando','criados':[],
+              'plano':{'paralelismo':1,'cartoes':[{'cartao':i['cartao'],'worktree':i['worktree']} for i in itens]}}
+    atomico(recibo,registro)
+    try:
+        for item in itens:
+            git('worktree','add','-b',item['branch'],item['worktree'],sha)
+            registro['criados'].append(item);atomico(recibo,registro)
+        registro['estado']='criado';atomico(recibo,registro)
+    except Exception as exc:
+        registro['estado']='incerto';registro['erro']=str(exc);atomico(recibo,registro)
+        raise ValueError('Criação interrompida; não repetir nem limpar. Confira '+str(recibo)+': '+str(exc)) from exc
+    return {**registro,'recibo':str(recibo)}
+
+
 def executar_pedido(pedido,projetos,consulta=None,lote=None):
     from funcionarios import id_projeto
     from gestao_projeto import carregar
@@ -40,6 +106,7 @@ def executar_pedido(pedido,projetos,consulta=None,lote=None):
     projeto=next((Path(p).resolve() for p in projetos if id_projeto(p)==pedido['projeto_id']),None)
     if projeto is None or not carregar(projeto)['ativo']:raise ValueError('Projeto não configurado/ativo')
     dados=pedido['dados'];acao=pedido['acao']
+    if acao=='worktrees':return criar_worktrees(projeto,dados)
     if acao=='diretor':
         if not isinstance(dados,str) or not dados.strip() or len(dados)>128000:raise ValueError('Consulta inválida')
         if consulta is not None:return consulta(projeto,dados)
@@ -104,17 +171,18 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--servir',action='store_true')
     p.add_argument('--projeto',type=Path)
-    p.add_argument('--acao',choices=['diretor','lote'])
+    p.add_argument('--acao',choices=['diretor','worktrees','lote'])
     p.add_argument('--arquivo',type=Path,help='prompt do diretor ou plano JSON de lote')
     p.add_argument('--executar',action='store_true',help='lote: efetivar pelo controlador comum')
     args=p.parse_args(argv)
     if args.servir:servir();return 0
     if not args.projeto or not args.acao or not args.arquivo:p.error('Informe projeto, ação e arquivo')
-    if args.acao=='diretor' and args.executar:p.error('--executar é exclusivo de lote')
+    if args.acao!='lote' and args.executar:p.error('--executar é exclusivo de lote')
     from funcionarios import id_projeto
     if args.arquivo.stat().st_size>128000:raise ValueError('Arquivo grande demais')
     texto=args.arquivo.read_text(encoding='utf-8-sig')
-    dados=texto if args.acao=='diretor' else {'plano':json.loads(texto),'executar':args.executar}
+    dados=texto if args.acao=='diretor' else (json.loads(texto) if args.acao=='worktrees'
+        else {'plano':json.loads(texto),'executar':args.executar})
     FILA.mkdir(parents=True,exist_ok=True);ident=uuid.uuid4().hex
     try:
         vivo=json.loads((FILA/'servidor.json').read_text(encoding='utf-8'))
