@@ -24,6 +24,55 @@ class Fila(unittest.TestCase):
         self.assertTrue(a['somente_preparacao']);self.assertIn('aceite original preservado',consultar.call_args.args[0])
         self.pr['head']['sha']='b'*40;self.d['head']='b'*40
         planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);self.assertEqual(consultar.call_count,2)
+    def revisao_fixture(self):
+        from revisao_cruzada import assinatura
+        pasta=self.p/'revisoes';pasta.mkdir(exist_ok=True)
+        r={'sha':'a'*40,'politica':assinatura(self.cfg),'revisoes':[{'nome':'Revisor',
+            'sha':'a'*40,'resposta':{'veredito':'reprovado','achados':[{
+                'prioridade':'P1','arquivo':'src/world.py','linha':3,'evidencia':'Falta cobertura real da emissão.'}]}}]}
+        arq=pasta/('a'*40+'.json');arq.write_text(json.dumps(r),encoding='utf-8')
+        return arq,r
+
+    def test_revisao_registrada_informa_diretor_e_mudanca_invalida_cache(self):
+        arq,r=self.revisao_fixture();antes=arq.read_bytes();consultar=Mock(return_value=[self.d])
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        texto=consultar.call_args.args[0]
+        self.assertIn('Falta cobertura real da emissão.',texto)
+        self.assertIn('"politica_revisao_compativel": true',texto)
+        self.assertIn('"somente_contexto": true',texto)
+        self.assertNotIn(str(self.p),texto);self.assertEqual(antes,arq.read_bytes())
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar);consultar.assert_called_once()
+        r['revisoes'][0]['resposta']['achados'][0]['evidencia']='Nova evidência registrada'
+        arq.write_text(json.dumps(r),encoding='utf-8')
+        planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        self.assertEqual(consultar.call_count,2)
+
+    def test_revisao_antiga_incompativel_e_falha_nao_viram_aprovacao(self):
+        from fila_prs import contexto_revisao
+        arq,r=self.revisao_fixture();r['politica']='politica anterior'
+        r['revisoes'][0]={'nome':'Revisor','sha':'a'*40,'erro':'credencial privada'}
+        arq.write_text(json.dumps(r),encoding='utf-8')
+        d=contexto_revisao(self.cfg,'a'*40,self.p)
+        self.assertFalse(d['politica_revisao_compativel'])
+        self.assertEqual(d['revisoes'][0]['estado'],'falha_console')
+        self.assertNotIn('credencial privada',json.dumps(d));self.assertNotIn('aprovado',d)
+
+    def test_revisao_de_outro_head_ou_grande_nao_chama_modelo(self):
+        arq,r=self.revisao_fixture();r['sha']='b'*40
+        arq.write_text(json.dumps(r),encoding='utf-8');consultar=Mock()
+        with self.assertRaisesRegex(ValueError,'outro commit'):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        arq.write_text(' '*128001,encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'sem truncar'):
+            planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
+        consultar.assert_not_called()
+
+    def test_caminho_de_revisao_exige_sha_completo(self):
+        from fila_prs import contexto_revisao
+        for sha in ('../outro','a'*39,'A'*40,None):
+            with self.assertRaisesRegex(ValueError,'commit completo'):
+                contexto_revisao(self.cfg,sha,self.p)
+
     def test_incerteza_nao_repete_chamada(self):
         consultar=Mock(side_effect=RuntimeError('conexão perdida'))
         with self.assertRaises(RuntimeError):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
