@@ -113,7 +113,9 @@ def executar(e,pasta,ao_processo=None):
     if ajuda.returncode or '--permission-profile' not in ajuda.stdout:raise ValueError('Codex sem adapter sandbox por perfil')
     pasta=Path(pasta).resolve();objetos=pasta/'objects';objetos.mkdir()
     comuns=subprocess.run(['git','-C',e['worktree'],'rev-parse','--path-format=absolute','--git-common-dir'],capture_output=True,text=True,check=True,timeout=30).stdout.strip()
+    temporario=pasta/'tmp';temporario.mkdir()
     env=os.environ.copy();env['PYTHONDONTWRITEBYTECODE']='1';env['PYTHONUTF8']='1'
+    for chave in ('TMP','TEMP','TMPDIR'):env[chave]=str(temporario)
     env['GIT_OBJECT_DIRECTORY']=str(objetos);env['GIT_ALTERNATE_OBJECT_DIRECTORIES']=str(Path(comuns)/'objects')
     # Inline table evita que pontos de host/caminho virem segmentos do override TOML.
     perfil='{office-gate={extends=":workspace",filesystem={'+json.dumps(pasta.as_posix())+'="write"},network={enabled=true,domains={"api.github.com"="allow","github.com"="allow"}}}}'

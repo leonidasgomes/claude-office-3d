@@ -145,6 +145,10 @@ class Gates(unittest.TestCase):
               patch('gates_projeto.subprocess.CREATE_NO_WINDOW',0,create=True)):
             cb=Mock();r=g.executar(e,pasta,cb)
         args=popen.call_args.args[0];cb.assert_called_once_with(99)
+        ambiente=popen.call_args.kwargs['env']
+        for chave in ('TMP','TEMP','TMPDIR'):
+            self.assertEqual(Path(ambiente[chave]),pasta.resolve()/'tmp')
+            self.assertTrue(Path(ambiente[chave]).is_dir())
         self.assertEqual(args[:4],['codex.exe','sandbox','--permission-profile','office-gate'])
         override=next(a for a in args if a.startswith('permissions='))
         profile=tomllib.loads(override)['permissions']['office-gate']
