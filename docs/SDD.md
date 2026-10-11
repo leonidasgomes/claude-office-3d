@@ -2093,6 +2093,8 @@ testar_conclusao_tarefas, testar_memoria_entregas e testar_resultados_tentativas
 fila_prs.planejar classifica PRs no commit atual com o diretor configurado,
 sem ferramentas, criação de cartões ou retomada. Recebe corpos dos cartões
 citados e diagnósticos vinculados ao head; valida cobertura, SHA e equipe.
+Inclui checks/statuses do commit atual por paginação REST e projetar_checks;
+falha ou cobertura incompleta impede classificação com estado remoto incerto.
 Recibo por hash do contexto/política evita inferência repetida e preserva
 consultas incertas. Somente consulta nova anuncia a etapa diretor;
 encaminhamentos_prs é uma proposta, nunca autorização de despacho/merge.
