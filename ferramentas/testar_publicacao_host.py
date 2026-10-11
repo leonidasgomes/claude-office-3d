@@ -33,12 +33,24 @@ class Publicacao(unittest.TestCase):
                 if args[0]=='gh':return subprocess.CompletedProcess(args,0,'https://github.com/teste/projeto/pull/1','')
                 return original(args,**kwargs)
             pedido={'cartao':7,'worktree':str(work),'titulo':'Entrega','corpo':'Closes #7\nTeste real'}
+            operacional=work/'pedido operação.json'
+            operacional.write_text(json.dumps(pedido),encoding='utf-8-sig')
+            (work/'dados.json').write_text(json.dumps({'cartao':7,'entrega':'dados reais'}))
             with patch.object(h,'RAIZ',office),patch('gestao_cli.pasta_dados',return_value=dados),patch('gestao_projeto.carregar',return_value=cfg),patch.object(h.subprocess,'run',side_effect=rodar):
                 with self.assertRaises(ValueError):h.publicar(projeto,{**pedido,'worktree':str(projeto)})
+                git('-C',work,'add','--',operacional.name)
+                with self.assertRaisesRegex(ValueError,'já versionado/indexado'):h.publicar(projeto,pedido)
+                self.assertFalse((dados/'publicacoes'/'7.json').exists())
+                git('-C',work,'restore','--staged','--',operacional.name)
                 resultado=h.publicar(projeto,pedido)
                 self.assertEqual(resultado['estado'],'publicado')
                 self.assertEqual(git('--git-dir',remoto,'rev-parse','refs/heads/work/teste'),resultado['sha'])
                 self.assertEqual(git('-C',projeto,'branch','--show-current'),'main')
+                self.assertEqual(resultado['arquivos_pedido_excluidos'],[operacional.name])
+                arquivos=git('-C',work,'ls-tree','--name-only','HEAD').splitlines()
+                self.assertNotIn(operacional.name,arquivos)
+                self.assertIn('dados.json',arquivos);self.assertIn('entrega.txt',arquivos)
+                self.assertTrue(operacional.exists())
                 with self.assertRaisesRegex(ValueError,'anterior'):h.publicar(projeto,pedido)
 
 if __name__=='__main__':unittest.main()
