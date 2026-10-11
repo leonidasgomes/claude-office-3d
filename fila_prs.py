@@ -304,6 +304,8 @@ def contexto_preparacao(cfg,pr,docs,dados,k):
 def contexto_revisao(cfg,sha,dados):
     """Relatório local com proveniência; não adota entrega ou aprova o PR."""
     from revisao_cruzada import assinatura, normalizar
+    if not isinstance(sha,str) or not re.fullmatch('[0-9a-f]{40}',sha):
+        raise ValueError('Revisão exige commit completo')
     arquivo=Path(dados)/'revisoes'/(sha+'.json')
     if arquivo.is_symlink():raise ValueError('Relatório de revisão inválido')
     if not arquivo.exists():return None

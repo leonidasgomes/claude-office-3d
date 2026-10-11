@@ -67,6 +67,12 @@ class Fila(unittest.TestCase):
             planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
         consultar.assert_not_called()
 
+    def test_caminho_de_revisao_exige_sha_completo(self):
+        from fila_prs import contexto_revisao
+        for sha in ('../outro','a'*39,'A'*40,None):
+            with self.assertRaisesRegex(ValueError,'commit completo'):
+                contexto_revisao(self.cfg,sha,self.p)
+
     def test_incerteza_nao_repete_chamada(self):
         consultar=Mock(side_effect=RuntimeError('conexão perdida'))
         with self.assertRaises(RuntimeError):planejar(self.p,self.cfg,[self.pr],[],self.p,self.k,consultar)
