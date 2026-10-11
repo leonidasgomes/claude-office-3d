@@ -119,6 +119,40 @@ def contexto_continuacao(dados,cfg):
     return {'delegacao':d['id'],'limites':d['limites'],'max_concessoes':d.get('max_concessoes',1),'prs':alvos} if alvos else None
 
 
+def contexto_esgotamento(dados,cfg):
+    """Prova de concessões consumidas; não concede saldo nem libera reserva."""
+    raiz=delegacao(dados,cfg)
+    if not raiz or not raiz.get('continuar_limite'):return []
+    banco=Path(dados)/'tarefas.db'
+    if not banco.is_file():return []
+    resultado=[]
+    with closing(sqlite3.connect(banco.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='contrato_correcao'").fetchone():return []
+        for inicial in raiz['prs']:
+            alvo=dict(inicial);cadeia=[]
+            for rodada in range(raiz.get('max_concessoes',1)):
+                ident=raiz['id'] if rodada==0 else assinatura({'raiz':raiz['id'],'pr':alvo['pr'],'rodada':rodada})[:32]
+                contrato=db.execute('SELECT anterior,token FROM contrato_correcao WHERE delegacao=? AND pr=?',
+                                    (ident,alvo['pr'])).fetchone()
+                if not contrato:break
+                if contrato[0]!=alvo['token']:raise ValueError('Cadeia de concessões esgotadas inválida')
+                cadeia.append({'delegacao':ident,'anterior':contrato[0],'token':contrato[1]})
+                alvo['token']=contrato[1]
+            else:
+                # Uma execução ativa, revisão ou retorno normal não é esgotamento.
+                row=db.execute('SELECT estado FROM reserva WHERE projeto=? AND cartao=? AND token=?',
+                               (raiz['repo'],str(alvo['cartao']),alvo['token'])).fetchone()
+                t=db.execute('SELECT fim,codigo FROM execucao_tarefa WHERE token=? ORDER BY inicio DESC,id DESC LIMIT 1',
+                             (alvo['token'],)).fetchone()
+                if not row or row[0]!='bloqueado' or not t or t[0] is None or t[1]!=124:continue
+                prova=limite_confirmado(dados,alvo)
+                if prova['limites_anteriores']!=raiz['limites']:raise ValueError('Meta esgotada diverge da concessão')
+                resultado.append({'pr':alvo['pr'],'cartao':alvo['cartao'],'token':alvo['token'],
+                    'raiz':raiz['id'],'max_concessoes':len(cadeia),'cadeia':cadeia,'prova':prova,
+                    'acao':'Preparação independente ou espera; não renovar nem retomar esta reserva.'})
+    return resultado
+
+
 def conferir_concessao(dados,cfg,contrato,reserva):
     alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
           'token':reserva['token'],'head':contrato['head']}

@@ -92,6 +92,32 @@ class Correcoes(unittest.TestCase):
             {'encaminhamentos':[{'pr':3,'acao':'etapa'}]},self.p,Mock(),chamar=chefe,despachar=despacho))
         chefe.assert_not_called();despacho.assert_not_called()
 
+    def test_esgotamento_exige_cadeia_completa_limite_e_encerramento(self):
+        self.d.update(continuar_limite=True,max_concessoes=1);self.gravar_delegacao()
+        self.assertEqual(c.contexto_esgotamento(self.p,self.cfg),[])
+        token=self.contratar();tentativa=self.ctrl.iniciar_execucao(token)
+        self.assertEqual(c.contexto_esgotamento(self.p,self.cfg),[])
+        self.ctrl.terminar_execucao(tentativa,124,30);self.ctrl.transicao(token,'bloqueado')
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            db.execute('INSERT INTO atividade_execucao VALUES (?,?,?)',(tentativa,'encerrado',124))
+        self.tentativa=tentativa;self.meta_limite()
+        antes=self.ctrl.banco.read_bytes();r=c.contexto_esgotamento(self.p,self.cfg)
+        self.assertEqual(r[0]['token'],token);self.assertEqual(r[0]['max_concessoes'],1)
+        self.assertEqual(r[0]['prova']['limites_anteriores'],self.d['limites'])
+        self.assertEqual(self.ctrl.banco.read_bytes(),antes)
+        self.assertEqual(c.pendentes(self.p,self.cfg),[])
+        with closing(sqlite3.connect(self.ctrl.banco)) as db,db:
+            db.execute('UPDATE atividade_execucao SET estado=? WHERE execucao=?',('interrompido',tentativa))
+        with self.assertRaisesRegex(ValueError,'incertos'):c.contexto_esgotamento(self.p,self.cfg)
+
+    def test_esgotamento_nao_confunde_revisao_nem_concessao_restante(self):
+        self.d.update(continuar_limite=True,max_concessoes=2);self.gravar_delegacao()
+        token=self.contratar();tentativa=self.ctrl.iniciar_execucao(token)
+        self.ctrl.terminar_execucao(tentativa,0,30);self.ctrl.transicao(token,'bloqueado')
+        self.assertEqual(c.contexto_esgotamento(self.p,self.cfg),[])
+        self.d['max_concessoes']=1;self.gravar_delegacao()
+        self.assertEqual(c.contexto_esgotamento(self.p,self.cfg),[])
+
     def test_diretor_pode_encaminhar_evidencias_sem_inventar_achado(self):
         self.d['continuar_limite']=True;self.gravar_delegacao()
         despacho=Mock(return_value={'codigo':0,'estado':'revisao'})

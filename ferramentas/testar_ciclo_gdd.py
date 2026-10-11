@@ -432,6 +432,26 @@ class Ciclo(unittest.TestCase):
         self.assertEqual(k.chamar.call_count,4)
         corpo=k.chamar.call_args_list[0].args[2]['body'];self.assertIn('Parte de #1',corpo);self.assertNotIn('Closes #1',corpo)
 
+    def test_preparacao_apos_teto_preserva_recibo_antigo_e_nao_repete_post(self):
+        from correcoes_prs import assinatura
+        k=Mock();k._paginas.return_value=[{'state':'open','number':10}];k.cache=self.raiz/'cache'
+        k.base='users/test/projectsV2/4'
+        k.quadro.return_value={'campos':[{'id':i,'name':nome,'options':[{'id':str(i),'name':valor}]} for i,(nome,valor) in enumerate([
+            ('Status','Backlog'),('Time','Dev'),('Prioridade','P0'),('Etapa GDD','L1')],1)]}
+        k.chamar.side_effect=[{'number':50,'id':123},{},{'value':{'id':9}},{}]
+        d=self.decisao(1,'desbloquear');d['subtarefa']={'titulo':'Preparar insumos','equipe':'Dev','objetivo':'Auditar cache local','aceite':'Manifesto verificado','skills':'nenhuma'}
+        prova={'pr':3,'cartao':1,'max_concessoes':3};subs=[{'number':10,'body':'Benchmark futuro'}]
+        prep={'chave':assinatura(prova),'sub_issues':subs,'independencia':'Insumos são pré-requisito distinto da medição #10.'}
+        pasta=self.dados/'desbloqueios';pasta.mkdir();antigo=pasta/'1.json';antigo.write_text('historico preservado')
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[prova]),patch('fila_prs.subissues_preparacao',return_value=subs):
+            self.assertEqual(c.subtarefa(self.p,self.cfg,k,self.item(1),d,origem_pr=3,preparacao=prep),50)
+            self.assertEqual(c.subtarefa(self.p,self.cfg,k,self.item(1),d,origem_pr=3,preparacao=prep),50)
+        self.assertEqual(k.chamar.call_count,4);self.assertEqual(antigo.read_text(),'historico preservado')
+        self.assertEqual(len(list(pasta.glob('1-*.json'))),1)
+        with patch('correcoes_prs.contexto_esgotamento',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'esgotamento'):
+                c.subtarefa(self.p,self.cfg,k,self.item(1),d,origem_pr=3,preparacao=prep)
+
     def test_preparacao_e_classificada_e_despachada_sem_varrer_resto_do_quadro(self):
         tempo=[0];consultas=[];despachos=[];itens=[self.item(1),self.item(25)]
         filho=self.item(50)
