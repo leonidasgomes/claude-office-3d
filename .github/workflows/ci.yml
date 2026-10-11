@@ -28,6 +28,7 @@ jobs:
           python -W error ferramentas/testar_ciclo_gdd.py
           python -W error ferramentas/testar_memoria_entregas.py
           python -W error ferramentas/testar_fila_prs.py
+          python -W error ferramentas/testar_correcoes_prs.py
           python -W error ferramentas/testar_publicacao_host.py
           python -W error ferramentas/testar_controlador_local.py
           python -W error ferramentas/testar_inicio_equipe.py

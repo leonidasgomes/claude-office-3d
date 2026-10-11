@@ -167,6 +167,52 @@ class Controle:
             db.execute('UPDATE reserva SET estado=?,atualizado=? WHERE token=?',
                 ('executando',time.time(),esperado['token']))
 
+    def contratar_correcao(self, esperado, pacote, contrato):
+        """Novo orçamento explicitamente delegado; arquiva a reserva e não apaga tentativas."""
+        with closing(self._abrir()) as db,db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT * FROM reserva WHERE token=?',(esperado['token'],)).fetchone()
+            atual=dict(row,pacote=json.loads(row['pacote'])) if row else None
+            if atual!=esperado or atual['estado'] not in ('bloqueado','revisao'):
+                raise ValueError('Reserva mudou antes do contrato de correção')
+            ts=db.execute('SELECT e.fim,e.codigo,a.estado,a.codigo_console,v.eventos_filhos '
+                'FROM execucao_tarefa e LEFT JOIN atividade_execucao a ON a.execucao=e.id '
+                'LEFT JOIN atividade_eventos v ON v.execucao=e.id WHERE e.token=?',(esperado['token'],)).fetchall()
+            if not ts or any(t[0] is None or type(t[1]) is not int or t[2]!='encerrado'
+                            or type(t[3]) is not int or t[4] for t in ts):
+                raise ValueError('Correção exige retorno confirmado sem agentes filhos incertos')
+            if (contrato.get('token_anterior')!=esperado['token'] or contrato.get('cartao')!=int(atual['cartao'])
+                or contrato.get('equipe')!=atual['equipe'] or pacote.get('contrato_correcao')!=contrato
+                or not re.fullmatch('[0-9a-f]{64}',contrato.get('assinatura',''))
+                or not re.fullmatch('[0-9a-f]{40}',contrato.get('head',''))
+                or type(contrato.get('pr')) is not int or contrato['pr']<1
+                or not re.fullmatch('[0-9a-f]{32}',contrato.get('delegacao',''))):
+                raise ValueError('Contrato de correção inválido')
+            from correcoes_prs import assinatura
+            evidencia={k:v for k,v in contrato.items() if k not in ('assinatura','ceo')}
+            if (assinatura({'estado':'decidido','evidencia':evidencia,'ceo':contrato.get('ceo')})!=contrato['assinatura']
+                or contrato.get('ceo',{}).get('acao')!='corrigir'
+                or assinatura(atual)!=contrato.get('reserva_sha256')
+                or assinatura({k:v for k,v in pacote.items() if k!='contrato_correcao'})!=contrato.get('pacote_sha256')
+                or pacote.get('meta',{}).get('limites')!={'tempo_min':contrato['limites']['tempo_min'],'tokens':contrato['limites']['tokens']}
+                or any(pacote.get(k)!=atual['pacote'].get(k) for k in ('objetivo','aceite','escopo','skills','cartao','url'))):
+                raise ValueError('Contrato/aceite/orçamento mudou após a decisão do chefe')
+            db.execute('CREATE TABLE IF NOT EXISTS contrato_correcao ('
+                'delegacao TEXT NOT NULL,pr INTEGER NOT NULL,token TEXT UNIQUE NOT NULL,'
+                'anterior TEXT NOT NULL,contrato TEXT NOT NULL,reserva_anterior TEXT NOT NULL,'
+                'entrega_anterior TEXT,criado REAL NOT NULL,PRIMARY KEY(delegacao,pr))')
+            token=uuid.uuid4().hex
+            entrega=db.execute('SELECT * FROM entrega WHERE token=?',(atual['token'],)).fetchone()
+            db.execute('INSERT INTO contrato_correcao VALUES (?,?,?,?,?,?,?,?)',
+                (contrato['delegacao'],contrato['pr'],token,atual['token'],json.dumps(contrato,ensure_ascii=False),
+                 json.dumps(atual,ensure_ascii=False),json.dumps(dict(entrega)) if entrega else None,time.time()))
+            db.execute('UPDATE reserva SET token=?,console=?,estado=?,sessao=NULL,pacote=?,atualizado=? WHERE token=?',
+                (token,pacote['executor']['console'],'executando',json.dumps(pacote,ensure_ascii=False),time.time(),atual['token']))
+            # Vínculo para ATUALIZAR o PR. Não é aprovação nem comprovação de entrega.
+            db.execute('INSERT INTO entrega VALUES (?,?,?,?,?,?)',
+                (token,contrato['head'],contrato['pr'],0,json.dumps({'correcao_pendente':contrato['assinatura']}),time.time()))
+            return token
+
     def iniciar_correcao(self, esperado, tentativa, pr, sha):
         """Continuação de revisão desta chamada; não é retomada de reserva antiga."""
         with closing(self._abrir()) as db,db:

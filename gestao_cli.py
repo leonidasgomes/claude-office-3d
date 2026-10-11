@@ -383,7 +383,32 @@ def despachar(projeto, numero, equipe, escopo, worktree, banco=None, kanban=None
         return _despachar(projeto,numero,equipe,escopo,trabalho,banco,rodar,revisar,funcionario,preparado,ao_execucao=ao_execucao)
 
 
-def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None, saldo_retomada=None):
+def despachar_correcao(projeto,preparado,reserva,trabalho,contrato,rodar=executar,revisar=None):
+    """Entrada exclusiva do encaminhamento CEO/diretor, com trava compartilhada."""
+    with ocupar_worktree(banco_worktrees(trabalho),trabalho):
+        from correcoes_prs import delegacao,assinatura
+        cfg,_,_,k,pacote=preparado
+        d=delegacao(pasta_dados(projeto),cfg)
+        alvo={'pr':contrato['pr'],'cartao':contrato['cartao'],
+              'token':reserva['token'],'head':contrato['head']}
+        if (not d or d['id']!=contrato['delegacao'] or alvo not in d['prs']
+            or carregar(projeto)!=cfg or assinatura(pacote)!=contrato['pacote_sha256']):
+            raise ValueError('Delegação/política mudou antes de executar a correção')
+        validar_worktree(projeto,trabalho)
+        atual=estado_git(trabalho)
+        pr=k.chamar(f'repos/{cfg["kanban"]["repo"]}/pulls/{contrato["pr"]}')
+        if (pr.get('head',{}).get('sha')!=contrato['head'] or atual['sha']!=contrato['head']
+            or atual['branch']!=pacote['contexto_execucao']['branch']
+            or pr.get('head',{}).get('ref')!=atual['branch'] or pr.get('state')!='open'
+            or pr.get('draft') or pr.get('merged')
+            or any(x.get('name') in cfg['merge']['rotulos_manuais'] for x in pr.get('labels',[]))):
+            raise ValueError('PR/checkout mudou antes da correção')
+        return _despachar(projeto,int(reserva['cartao']),reserva['equipe'],
+            reserva['pacote']['contexto_execucao']['escopo'],trabalho,None,rodar,revisar,None,
+            preparado,correcao_delegada={'reserva':reserva,'contrato':contrato})
+
+
+def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar, funcionario, preparado, retomada=None, ao_execucao=None, correcao=None, saldo_retomada=None, correcao_delegada=None):
     cfg, provider, exe, k, pacote = preparado
     if retomada and pacote.get('meta') and not correcao and saldo_retomada is None:
         raise ValueError('Retomada com meta exige saldo confirmado; não renovar orçamento')
@@ -391,7 +416,11 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
     conferir_worktree(trabalho,pacote['skills_resolvidas'])
     controle = Controle(banco or pasta_dados(projeto) / "tarefas.db")
     chave = cfg["kanban"]["repo"]
-    if retomada is None:
+    if correcao_delegada:
+        conferir_cartao(k,numero,projeto,cfg,equipe,pacote,correcao_delegada['contrato']['estado_kanban'])
+        pacote={**pacote,'contrato_correcao':correcao_delegada['contrato']}
+        token=controle.contratar_correcao(correcao_delegada['reserva'],pacote,correcao_delegada['contrato'])
+    elif retomada is None:
         pacote={**pacote,'contexto_execucao':{'worktree':str(Path(trabalho).resolve()),
             'branch':estado_git(trabalho)['branch'],'escopo':escopo,
             'politica_sha256':hashlib.sha256(json.dumps(cfg,sort_keys=True,ensure_ascii=False).encode()).hexdigest()}}
@@ -403,13 +432,14 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
         if carregar(projeto) != cfg:
             raise ValueError('Política mudou antes do despacho')
         inicio = conferir_cartao(k,numero,projeto,cfg,equipe,pacote,
+            correcao_delegada['contrato']['estado_kanban'] if correcao_delegada else
             cfg['kanban']['andamento'] if retomada else cfg['kanban']['backlog'])
         if correcao:controle.iniciar_correcao(retomada,correcao['tentativa'],correcao['devolutiva']['pr'],correcao['devolutiva']['sha'])
         elif retomada:controle.retomar(retomada)
         controle.registrar_dependencias(token,'antes_execucao',
             conferir_dependencias(k, numero, inicio.get('body') or '', pacote['dependencias']))
         if retomada is None:k.mover(numero, cfg["kanban"]["andamento"])
-        if retomada is None:controle.transicao(token, "executando")
+        if retomada is None and not correcao_delegada:controle.transicao(token, "executando")
         prompt = contexto(projeto, cfg, equipe=equipe) + "\n\nDespacho:\n" + json.dumps(pacote, ensure_ascii=False)
         nome = equipe
         if funcionario:
@@ -470,7 +500,16 @@ def _despachar(projeto, numero, equipe, escopo, trabalho, banco, rodar, revisar,
                 'Corrija os problemas verificáveis, rode os testes exigidos e publique atualização do PR '
                 'com pr e head_sha indicados. Não reduza aceite/gates nem crie outra entrega.\n'+
                 json.dumps(correcao['devolutiva'],ensure_ascii=False))
-        medicao=controle.iniciar_execucao(token,'correcao' if correcao else 'retomada' if retomada else 'despacho')
+        if correcao_delegada:
+            prompt+=('\nO revisor encaminhou achados ao diretor; o CEO aprovou este contrato de correção. '
+                'Trabalhe no MESMO PR e worktree. Corrija os achados verificáveis e teste. '
+                'O contrato concede orçamento adicional registrado, não renova a tentativa anterior. '
+                'Não feche o cartão-pai se a entrega for parcial, não altere aceite nem gates e não declare '
+                'medições antes de realizá-las. Preserve Parte de #n no PR parcial. '
+                'Se depender de recursos/decisões do chefe, registre a causa real para o diretor. '
+                'Use pr e head_sha do contrato no pedido de atualização pelo host.\n'+
+                json.dumps(correcao_delegada['contrato'],ensure_ascii=False))
+        medicao=controle.iniciar_execucao(token,'correcao' if correcao or correcao_delegada else 'retomada' if retomada else 'despacho')
         if pacote.get('meta'):
             from metas_cartao import Execucao,antecedentes_retomada
             import banco as banco_modulo

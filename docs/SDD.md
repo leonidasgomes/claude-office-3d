@@ -2154,3 +2154,13 @@ Retomar registra acompanhamento_retomada no banco privado após validar confirma
 metas_cartao.saldo_retomada lê todas as tentativas da reserva por SQLite somente leitura e confere os registros de meta e consumo completo. Calcula tempo individual descontando antecedentes acumulados, conserva a maior duração observada e soma tokens por tentativa. Limite esgotado ou prova incompleta é erro, não novo orçamento. preparar_retomada inclui o saldo no hash e projeta apenas os totais públicos; retomar confere novamente antes de iniciar e injeta antecedentes_retomada no monitor. IDs privados não entram no formulário. console_provider habilita observação incremental do principal também em Codex com sessão retomada; o observador existente estabelece a base anterior sem cobrar o histórico. testar_metas_cartao cobre soma, reinício, pausa, correção acumulada, limites, evidência ausente e interrupção de subprocesso retomado antes de turn.completed; testar_retomada_form cobre a apresentação do saldo.
 
 console_provider coloca add-dir antes do subcomando resume nas execuções estruturadas de Codex workspace-write. O cache Git temporário usa as mesmas validações de área autorizada, pasta nova e objetos alternativos; não libera .git nem permite outros providers, sandbox read-only ou execução local por esse mecanismo. gestao_cli fornece a fila/cache também na retomada manual autorizada de um ciclo ativo. testar_providers captura argumentos/ambiente de subprocesso retomado, confere a ordem nativa, rejeita reutilização do cache e compara os bytes de .git antes/depois. A publicação permanece validada por publicacao_host.
+
+
+O módulo `correcoes_prs.py` encaminha achados pelo diretor e CEO mediante delegação
+operacional privada por projeto (`delegacao_correcoes.json`). O contrato transacional
+em `controle_tarefas.contratar_correcao` arquiva reserva e entrega anteriores em
+`contrato_correcao`, preserva histórico e limita a uma concessão por delegação/PR.
+`gestao_cli.despachar_correcao` usa trava e execução comuns, sem retomar sessão antiga.
+O ciclo prioriza o encaminhamento na fila de PRs antes de novo trabalho. Decisão
+incerta, processo sem encerramento, agentes filhos, alteração de head/política ou
+aceite não autorizam despacho. Não há aprovação sintética nem merge manual.
