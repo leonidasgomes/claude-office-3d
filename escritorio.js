@@ -1,4 +1,4 @@
-// Claude Office 3D - escritório 3D onde os agentes do Claude Code trabalham.
+// Office Multi-provider - escritório 3D das equipes do projeto.
 // Cena leve: low-poly, sem sombras, materiais Lambert/Basic compartilhados.
 // Time, cores, apelidos e tema vêm do config.json (lido do servidor em /config por config.js).
 import * as THREE from 'three';
@@ -45,7 +45,7 @@ const CORES_EXTRA = [0xa855f7, 0x14b8a6, 0xec4899, 0x06b6d4, 0x84cc16, 0xf97316]
 const corHex = (c, padrao) => { const n = parseInt(String(c || '').replace('#', ''), 16); return Number.isFinite(n) ? n : padrao; };
 // Por agente configurado (chave = nome em minúsculas): cor, nome de exibição + função, tipo de mesa e apelidos.
 const CORES_FIXAS = { outra_sessao: 0x64748b };
-const PERFIS = { outra_sessao: ['Outra sessão', 'Fora do time (outra janela do Claude)'] };
+const PERFIS = { outra_sessao: ['Outra sessão', 'Fora do time (outra sessão observada)'] };
 const MESA_DE = {};                 // chave -> 'lider' | 'dev' | 'design' | 'pesquisa' | 'padrao'
 const ALIAS = {};                   // chave (com '_') de qualquer nome conhecido -> nome canônico
 const CARGOS = { outra_sessao: 'Visita', assistente: 'Estagiário', explorador: 'Estagiária', planejador: 'Estagiário', guia_claude: 'Consultor' };
@@ -871,7 +871,7 @@ function construirDecoracaoNeutra() {
     g.fillStyle = gr; g.fillRect(0, 0, W, H);
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = 'bold 54px "Segoe UI", sans-serif'; g.fillText(CONFIG.titulo, W / 2, H * 0.42, W - 40);
-    g.font = '28px "Segoe UI", sans-serif'; g.fillStyle = '#b8c4d2'; g.fillText('agentes do Claude Code trabalhando', W / 2, H * 0.78, W - 40);
+    g.font = '28px "Segoe UI", sans-serif'; g.fillStyle = '#b8c4d2'; g.fillText('agentes e equipes do projeto', W / 2, H * 0.78, W - 40);
   });
   const tapete = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.6), mat(0x4b5a49));
   tapete.rotation.x = -Math.PI / 2; tapete.position.set(2, 0.02, 22.6); cena.add(tapete);
