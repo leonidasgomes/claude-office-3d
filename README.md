@@ -96,6 +96,44 @@ Os outros consoles usam adapters com capacidades próprias; paridade nativa inte
 de teams, ferramentas, permissões e skills ainda precisa de validação. O escritório roda na
 sua máquina (servidor em `127.0.0.1`), com Python 3.9+ e nada além da biblioteca padrão.
 
+## Linux
+
+Com Python 3.9+ instalado, a interface e o servidor podem ser abertos sem instalar
+consoles ou iniciar agentes. Dentro da pasta do pacote:
+
+```sh
+sh abrir_escritorio.sh --sem-navegador
+```
+
+Abra `http://127.0.0.1:8765/` no navegador da mesma máquina (ou a porta definida
+no `config.json`). A cena 3D requer WebGL e, por padrão, acesso ao CDN do three.js;
+o instalador oferece a cópia local opcional dos arquivos. Sem projetos, o painel
+não representa sessões reais de agentes. Use o modo Demo apenas para demonstração.
+
+Para instalar uma equipe Linux em uma pasta separada, use caminhos POSIX:
+
+```sh
+python3 iniciar_projeto.py --projeto "$HOME/projetos/meu-app" --destino "$HOME/escritorios/meu-app" --porta 8766
+```
+
+Confira o plano e repita com `--aplicar` quando estiver correto. CLIs, autenticação
+e modelos continuam sendo configurados separadamente. Em um servidor sem desktop,
+mantenha o bind em loopback e use um túnel SSH ou encaminhamento de portas
+autorizado para acessar pelo seu navegador; abrir o servidor não publica um site.
+
+Para reiniciar, preservando uma porta explícita:
+
+```sh
+sh reiniciar_escritorio.sh --porta 8766
+```
+
+O reinício Linux não depende de `lsof`, recusa encerrar processos de outras
+instalações e só anuncia sucesso depois de conferir o HTTP e o processo dono da
+porta. Falhas ficam em `dados/reinicio.log`. Se `/proc` não permitir verificar o
+processo, encerre o Office no terminal onde foi iniciado e abra-o novamente.
+No macOS, uma porta ocupada também exige encerramento manual. Os launchers
+preferem o Python de `.venv`, aceitam caminhos com espaços e preservam os argumentos.
+
 ## Integração de hooks Claude
 
 ```bash

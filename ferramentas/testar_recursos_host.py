@@ -48,6 +48,10 @@ class Assets(unittest.TestCase):
         self.assertEqual(self.git(self.proj,'rev-parse','HEAD'),antes)
         self.assertEqual(self.git(self.work,'rev-parse','HEAD'),antes)
 
+    def test_hidrata_sem_apis_adicionadas_no_python_311_e_312(self):
+        with patch.object(Path,'is_junction',None,create=True),patch.object(hashlib,'file_digest',None,create=True):
+            self.test_hidrata_so_asset_versionado_do_cache_sem_git_ou_checkout_principal_alterados()
+
     def test_nao_hidrata_cache_corrompido_nem_repete_preparacao_incerta(self):
         antes=(self.work/'mapa.umap').read_bytes()
         self.cache.write_bytes(b'x'*len(self.conteudo))

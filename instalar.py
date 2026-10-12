@@ -67,8 +67,8 @@ EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "PostToolUseFailure", "TeammateIdle
 # PostToolUseFailure só nos comandos: é onde chega a falha (exit code diferente de 0) para o ✖ do escritório.
 MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*", "PostToolUseFailure": "Bash|PowerShell"}
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
-          "servidor.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
-          "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh", "preparar_maquina.ps1", "preparar_maquina.bat",
+          "servidor.py", "compatibilidade_python.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
+          "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh", "reiniciar_posix.py", "preparar_maquina.ps1", "preparar_maquina.bat",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "opcoes.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "arquitetura.js", "arquitetura.css", "grafo_painel.py", "dica.js", "push.py", "cota.py", "saude.py", "saude_triagem.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "binarios_em_pr.py", "sw.js",
           "icone-192.png", "icone-512.png", "icone-office.ico", "atalho_desktop.py", "xp.py", "xp_projeto.py", "skills.py", "boas_praticas.py", "skills-candidatos/MODELO.md", "config.exemplo.json", "glossario_triagem.exemplo.md", "INSTALACAO.md", "README.md", ".gitignore",
           # material de apoio citado no README/INSTALACAO, quarentena de skills de terceiros e metadados da versão
@@ -542,14 +542,23 @@ if exist ".venv\\Scripts\\python.exe" set PY=.venv\\Scripts\\python.exe
 pause
 """
 ATALHO_SH = """#!/usr/bin/env sh
-# Abre o Office Multi-provider: sobe o servidor local (porta do config.json) e abre o navegador.
-#   ./abrir_escritorio.sh           -> só neste PC (127.0.0.1)
-#   ./abrir_escritorio.sh celular   -> liga o acesso pelo celular na rede local (QR code no botão Celular)
+# Abre o Office Multi-provider. Use celular para acesso pela rede local.
 cd "$(dirname "$0")" || exit 1
-echo "Iniciando o Office Multi-provider..."
-if [ "$1" = "celular" ]; then shift; set -- --rede-local "$@"; fi
-PY=python3
-[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
+else
+    echo "Python 3.9+ não encontrado. Instale Python e execute novamente." >&2
+    exit 1
+fi
+"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
+    echo "É necessário Python 3.9+; confira o Python do PATH ou .venv." >&2
+    exit 1
+}
+if [ "${1:-}" = "celular" ]; then shift; set -- --rede-local "$@"; fi
 exec "$PY" servidor.py "$@"
 """
 REINICIAR_BAT = """@echo off
@@ -573,20 +582,24 @@ echo Pronto: http://127.0.0.1:%PORTA%/  (a pagina aberta reconecta sozinha)
 if defined EXTRA echo Acesso pelo celular LIGADO: use o botao Celular na pagina para ver o QR code.
 """
 REINICIAR_SH = """#!/usr/bin/env sh
-# Reinicia o Office Multi-provider: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo em segundo plano.
-#   ./reiniciar_escritorio.sh celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
+# Reinicia somente o servidor desta instalação; preserva as opções recebidas.
 cd "$(dirname "$0")" || exit 1
-EXTRA=""
-[ "$1" = "celular" ] && EXTRA="--rede-local"
-PY=python3
-[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
-PORTA=$("$PY" configuracao.py --porta 2>/dev/null || echo 8765)
-echo "Encerrando o servidor antigo do escritório (porta $PORTA)..."
-PIDS=$(lsof -ti tcp:"$PORTA" -sTCP:LISTEN 2>/dev/null)
-if [ -n "$PIDS" ]; then kill $PIDS 2>/dev/null; echo "  processo(s) $PIDS encerrado(s)"; sleep 1; fi
-echo "Subindo o escritório de novo..."
-nohup "$PY" servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
-echo "Pronto: http://127.0.0.1:$PORTA/"
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
+else
+    echo "Python 3.9+ não encontrado. Instale Python e execute novamente." >&2
+    exit 1
+fi
+"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
+    echo "É necessário Python 3.9+; confira o Python do PATH ou .venv." >&2
+    exit 1
+}
+if [ "${1:-}" = "celular" ]; then shift; set -- --rede-local "$@"; fi
+exec "$PY" reiniciar_posix.py "$@"
 """
 ATALHOS = {"abrir_escritorio.bat": ATALHO_BAT, "abrir_escritorio.sh": ATALHO_SH,
            "reiniciar_escritorio.bat": REINICIAR_BAT, "reiniciar_escritorio.sh": REINICIAR_SH}

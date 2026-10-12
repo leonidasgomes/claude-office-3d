@@ -1,4 +1,5 @@
 """Revisão preliminar de rascunho: evidência independente, nunca gate de merge."""
+from compatibilidade_python import is_junction
 import copy,json,re
 from gestao_projeto import cloud_executor,validar
 from revisao_cruzada import normalizar
@@ -100,7 +101,7 @@ def encaminhar(projeto,cfg,prs,fila,docs,dados,k,chamar=None,ao_etapa=None):
         identidade={'repo':pacote['repo'],'pr':pacote['pr'],'sha':pacote['sha'],'politica':assinatura(cfg),
                     'fontes':[{'caminho':x['caminho'],'sha256':x['sha256']} for x in docs]}
         ident=assinatura(identidade);pasta=Path(dados)/'revisoes_preliminares';pasta.mkdir(exist_ok=True)
-        if pasta.is_symlink() or pasta.is_junction() or pasta.resolve().parent!=Path(dados).resolve():raise ValueError('Pasta de revisão inválida')
+        if pasta.is_symlink() or is_junction(pasta) or pasta.resolve().parent!=Path(dados).resolve():raise ValueError('Pasta de revisão inválida')
         f=pasta/(ident+'.json')
         if f.exists():
             r=ler(f)

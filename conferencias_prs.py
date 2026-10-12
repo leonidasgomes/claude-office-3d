@@ -1,4 +1,5 @@
 """Parecer da equipe sobre PR existente, decidido pelo CEO; não aprova gates/merge."""
+from compatibilidade_python import is_junction
 import hashlib,json,re,sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -56,7 +57,7 @@ def pacote(projeto,cfg,pr,d,docs,dados,k):
             'stdout_sha256':saida.get('stdout_sha256')}
         log=f.with_suffix('')/'stdout.txt'
         if log.is_file() and saida.get('inferencia') is False:
-            if (log.is_symlink() or log.parent.is_symlink() or log.parent.is_junction()
+            if (log.is_symlink() or log.parent.is_symlink() or is_junction(log.parent)
                 or not log.resolve().is_relative_to(Path(dados).resolve()) or log.stat().st_size>131072):
                 raise ValueError('Log de gate exige seleção explícita; não truncar nem seguir links')
             bruto=log.read_bytes()
@@ -168,7 +169,7 @@ def encaminhar(projeto,cfg,prs,fila,docs,dados,k,ao_etapa=None,chamar=None):
         if not e:continue
         identidade={**e,'fontes':[{'caminho':x['caminho'],'sha256':x['sha256']} for x in docs]}
         ident=assinatura(identidade);pasta=Path(dados)/'conferencias_prs';f=pasta/(ident+'.json')
-        if pasta.is_symlink() or pasta.is_junction() or not pasta.resolve().is_relative_to(Path(dados).resolve()):
+        if pasta.is_symlink() or is_junction(pasta) or not pasta.resolve().is_relative_to(Path(dados).resolve()):
             raise ValueError('Pasta de conferências fora dos dados privados')
         anterior=None
         if f.exists():

@@ -92,7 +92,24 @@ const filtrar = "import sys,json; sys.path.insert(0,sys.argv[1]); from consumo_p
 const porProjeto = p => JSON.parse(execFileSync(process.env.OFFICE_PYTHON,["-c",filtrar,root,path.join(tmp,"consumo_providers.db"),path.join(tmp,p)],{encoding:"utf8"}));
 assert.equal(porProjeto("principal").grupos.reduce((n,g)=>n+g.total,0),72);
 assert.deepEqual(porProjeto("projeto").grupos,[],"cwd continua filtrando eventos; consumo usa projeto cadastrado");
-assert.doesNotMatch(JSON.stringify(consumo),/NÃO ARMAZENAR|p1|p3|messageID|999/);
+// Compare campos/valores exatos: um timestamp legítimo pode conter os dígitos 999.
+function conferirPrivacidade(valor) {
+  if (Array.isArray(valor)) return valor.forEach(conferirPrivacidade);
+  if (valor && typeof valor === "object") {
+    for (const [chave, item] of Object.entries(valor)) {
+      assert.ok(!["messageID", "cost"].includes(chave), `campo privado: ${chave}`);
+      conferirPrivacidade(item);
+    }
+  } else {
+    assert.ok(!["p1", "p3", 999].includes(valor), "valor privado exposto");
+    if (typeof valor === "string") assert.doesNotMatch(valor, /NÃO ARMAZENAR/);
+  }
+}
+conferirPrivacidade(consumo);
+conferirPrivacidade({ ...consumo, desde: 1791210999.1492894 });
+for (const privado of [{ cost: 999 }, { messageID: "m1" }, { id: "p1" }, { id: "p3" }, { texto: "NÃO ARMAZENAR" }]) {
+  assert.throws(() => conferirPrivacidade(privado), assert.AssertionError);
+}
 eventos=JSON.parse(execFileSync(process.env.OFFICE_PYTHON,["-c",script,process.env.OFFICE_BANCO],{encoding:"utf8"}));
 assert.equal(eventos.length,7,"consumo não é evento de trabalho nem altera tabela Claude");
 process.env.OFFICE_STREAM_OWNER = "plugin";

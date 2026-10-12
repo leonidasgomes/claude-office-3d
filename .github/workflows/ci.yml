@@ -58,6 +58,7 @@ jobs:
         run: python -W error ferramentas/testar_verificar_docs.py
       - name: Instalação silenciosa (instala, repete sem duplicar, desinstala)
         run: |
+          python -W error ferramentas/testar_lancadores_posix.py
           python ferramentas/testar_atalho_desktop.py
           python ferramentas/testar_instalacao.py
       - name: Alertas (detector, Web Push cifrado, VAPID, cota)
@@ -212,3 +213,21 @@ jobs:
         run: |
           python -W error ferramentas/testar_preparar_maquina.py
           python -W error ferramentas/testar_metas_cartao.py
+
+  compatibilidade_python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compatibilidade das operações de arquivos
+        run: |
+          python -W error ferramentas/testar_compatibilidade_python.py
+          python -W error ferramentas/testar_recursos_host.py
+          python -W error ferramentas/testar_conferencias_prs.py
+          python -W error ferramentas/testar_revisao_preliminar.py

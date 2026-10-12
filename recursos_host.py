@@ -1,4 +1,5 @@
 """Hidratação restrita de pointers LFS pelo cache local, sem checkout ou rede."""
+from compatibilidade_python import is_junction,sha256_arquivo
 import hashlib
 import json
 import os
@@ -32,7 +33,7 @@ def diretorios_travas(projeto,dados,cfg,equipe):
         or not isinstance(r['travas'],str)):
         raise ValueError('Autorização de recursos diverge do projeto/política')
     p=Path(r['travas']);raiz=RAIZ.parent.resolve()
-    if (not p.is_absolute() or not p.is_dir() or p.is_symlink() or p.is_junction()
+    if (not p.is_absolute() or not p.is_dir() or p.is_symlink() or is_junction(p)
         or p.resolve().parent!=raiz or p.name not in ('travas','locks')):
         raise ValueError('Recurso deve ser somente a pasta de travas do cache do escritório')
     if r['politica']!=politica:
@@ -99,7 +100,7 @@ def hidratar_lfs(projeto,dados):
     head=git(work,'rev-parse','HEAD').decode().strip();itens=[];total=0
     for nome in dados['arquivos']:
         alvo=work/nome
-        if (not alvo.resolve().is_relative_to(work) or any(p.is_symlink() or p.is_junction()
+        if (not alvo.resolve().is_relative_to(work) or any(p.is_symlink() or is_junction(p)
             for p in (alvo,*alvo.parents) if p!=work and p.is_relative_to(work))):
             raise ValueError('Asset fora do worktree ou por link')
         git(work,'ls-files','--error-unmatch','--',nome)
@@ -129,7 +130,7 @@ def hidratar_lfs(projeto,dados):
             try:
                 with objeto.open('rb') as origem,temporario.open('xb') as destino:
                     shutil.copyfileobj(origem,destino,1024*1024)
-                with temporario.open('rb') as f:obtido=hashlib.file_digest(f,'sha256').hexdigest()
+                with temporario.open('rb') as f:obtido=sha256_arquivo(f)
                 if obtido!=oid:raise ValueError('Cache LFS corrompido: '+nome)
                 if (carregar(projeto)!=cfg or reserva()['token']!=original['token']
                     or git(work,'rev-parse','HEAD').decode().strip()!=head or alvo.read_bytes()!=bruto):
