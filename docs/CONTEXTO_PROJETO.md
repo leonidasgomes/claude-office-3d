@@ -71,3 +71,10 @@ da extração dos trechos. Essa proteção é conservadora e pode produzir falso
 positivos; ela não identifica todo segredo possível em texto livre. Conteúdo
 é apresentado como texto, sem executar HTML, Markdown, links do documento ou
 instruções encontradas nele.
+
+
+No Linux qualificado, novos corpos externos da galeria deixam de contar no tamanho de `tarefas.db`.
+Os bytes inline antigos permanecem: esta etapa não migra nem compacta bancos,
+portanto um banco já acima de 32 MiB continua sem histórico nesta busca.
+O teto, isolamento em memória e recusa de WAL ativo não foram alterados.
+Windows/macOS conservam o registro inline; seus bytes novos ainda contam no banco.

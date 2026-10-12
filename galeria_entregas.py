@@ -1,9 +1,9 @@
 """Catálogo local de arquivos declarados, capturados do commit publicado.
 
-Snapshots limitados vivem no mesmo SQLite dos recibos. Consultar nunca abre
-paths do navegador, executa conteúdo, chama providers ou concede aceite.
+Metadados continuam no SQLite; no Linux novos corpos usam arquivos imutáveis.
+Não migra bytes antigos. Consultar nunca executa conteúdo nem concede aceite.
 """
-from contextlib import closing
+from contextlib import closing, contextmanager
 import base64
 import hashlib
 import json
@@ -12,8 +12,11 @@ from pathlib import Path, PurePosixPath
 import re
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
+
+import armazenamento_galeria as armazenamento
 
 MAX_ARQUIVOS = 20
 MAX_ARQUIVO = 1024 * 1024
@@ -173,7 +176,14 @@ def _migrar(db):
     db.execute('''CREATE TABLE IF NOT EXISTS galeria_arquivo (
         id TEXT PRIMARY KEY,manifesto TEXT NOT NULL,nome TEXT NOT NULL,tamanho INTEGER NOT NULL,
         mime TEXT NOT NULL,preview TEXT NOT NULL,sha256 TEXT NOT NULL,conteudo BLOB NOT NULL,
+        armazenamento TEXT NOT NULL DEFAULT 'inline',
         UNIQUE(manifesto,nome),FOREIGN KEY(manifesto) REFERENCES galeria_manifesto(id))''')
+    colunas = {r[1] for r in db.execute('PRAGMA table_info(galeria_arquivo)')}
+    if 'armazenamento' not in colunas:
+        # Somente discriminador: não move/esvazia bytes nem compacta o banco legado.
+        db.execute("ALTER TABLE galeria_arquivo ADD COLUMN armazenamento TEXT NOT NULL DEFAULT 'inline'")
+    if db.execute("SELECT 1 FROM galeria_arquivo WHERE armazenamento IS NULL OR armazenamento NOT IN ('inline','externo-v1') LIMIT 1").fetchone():
+        raise ValueError('Versão de armazenamento da galeria indisponível')
 
 
 def _contexto(db, repo, recibo):
@@ -189,7 +199,23 @@ def _contexto(db, repo, recibo):
     return dict(r), dict(e)
 
 
+@contextmanager
+def _escrita(projeto):
+    # Windows/macOS (e plataformas legadas) mantêm o armazenamento inline.
+    # Linux nunca cai nesse caminho após falha de segurança/disco/qualificação.
+    if not sys.platform.startswith('linux'):
+        yield None
+    else:
+        with armazenamento.mutacao(projeto) as escrita:
+            yield escrita
+
+
 def registrar_publicacao(projeto, recibo, arquivos):
+    with _escrita(projeto) as escrita:
+        return _registrar_publicacao(projeto, recibo, arquivos, escrita)
+
+
+def _registrar_publicacao(projeto, recibo, arquivos, escrita):
     """Chamado apenas após salvar o recibo de publicação; falha não repete push."""
     from funcionarios import id_projeto
     from gestao_projeto import carregar
@@ -222,7 +248,12 @@ def registrar_publicacao(projeto, recibo, arquivos):
             raise ValueError('Reserva/tentativa mudou durante captura')
         antigo = db.execute('SELECT id FROM galeria_manifesto WHERE id=?', (ident,)).fetchone()
         if antigo:
-            anteriores = [tuple(r) for r in db.execute('SELECT nome,tamanho,mime,preview,sha256,conteudo FROM galeria_arquivo WHERE manifesto=? ORDER BY nome', (ident,))]
+            # Não omite linhas corrompidas antes de comparar o manifesto completo.
+            if db.execute("SELECT 1 FROM galeria_arquivo WHERE manifesto=? AND (typeof(conteudo)!='blob' OR length(conteudo)>?) LIMIT 1",
+                          (ident, MAX_ARQUIVO)).fetchone():
+                raise ValueError('Integridade do manifesto armazenado não confirmada')
+            anteriores = [tuple(r[k] for k in ('nome','tamanho','mime','preview','sha256')) + (_corpo(projeto, r),)
+                          for r in db.execute('SELECT * FROM galeria_arquivo WHERE manifesto=? AND length(conteudo)<=? ORDER BY nome LIMIT 21', (ident, MAX_ARQUIVO))]
             if anteriores != capturados:
                 raise ValueError('Manifesto já registrado é imutável; use nova tentativa/commit')
             return {'id': ident, 'arquivos': len(capturados), 'estado': 'ja_registrado'}
@@ -231,16 +262,24 @@ def registrar_publicacao(projeto, recibo, arquivos):
             raise ValueError('Galeria atingiu 100 MiB; histórico foi preservado')
         if db.execute('SELECT COUNT(*) FROM galeria_manifesto').fetchone()[0] >= MAX_MANIFESTOS:
             raise ValueError('Galeria atingiu 500 manifestos; histórico foi preservado')
+        if escrita is not None:
+            escrita.gravar(capturados)
         db.execute('INSERT INTO galeria_manifesto VALUES (?,?,?,?,?,?,?,?,?,0)',
                    (ident, projeto_id, repo, recibo['cartao'], recibo['token'], recibo['tentativa'], int(pr[1]), recibo['sha'], time.time()))
         for nome, tamanho, mime, preview, sha256, dados in capturados:
             arquivo_id = hashlib.sha256((ident + '\0' + nome).encode()).hexdigest()
-            db.execute('INSERT INTO galeria_arquivo VALUES (?,?,?,?,?,?,?,?)',
-                       (arquivo_id, ident, nome, tamanho, mime, preview, sha256, dados))
+            db.execute('INSERT INTO galeria_arquivo (id,manifesto,nome,tamanho,mime,preview,sha256,conteudo,armazenamento) VALUES (?,?,?,?,?,?,?,?,?)',
+                       (arquivo_id, ident, nome, tamanho, mime, preview, sha256,
+                        b'' if escrita is not None else dados, 'externo-v1' if escrita is not None else 'inline'))
     return {'id': ident, 'arquivos': len(capturados), 'estado': 'registrado'}
 
 
 def registrar(projeto, dados):
+    with _escrita(projeto) as escrita:
+        return _registrar(projeto, dados, escrita)
+
+
+def _registrar(projeto, dados, escrita):
     """Reconciliação explícita sem publicação ou acesso remoto."""
     from gestao_cli import pasta_dados
     from gestao_projeto import carregar
@@ -267,10 +306,15 @@ def registrar(projeto, dados):
             encontrados.append(r)
     if len(encontrados) != 1:
         raise ValueError('Exige recibo único de publicação da tentativa/PR/SHA')
-    return registrar_publicacao(projeto, encontrados[0], dados['arquivos'])
+    return _registrar_publicacao(projeto, encontrados[0], dados['arquivos'], escrita)
 
 
 def arquivar(projeto, dados):
+    with _escrita(projeto):
+        return _arquivar(projeto, dados)
+
+
+def _arquivar(projeto, dados):
     from funcionarios import id_projeto
     if (not isinstance(dados, dict) or set(dados) != {'id', 'arquivada'} or
         not isinstance(dados['id'], str) or not re.fullmatch('[0-9a-f]{64}', dados['id']) or
@@ -332,6 +376,22 @@ def listar(projeto):
     return resultado
 
 
+def _corpo(projeto, row):
+    modo = row['armazenamento'] if 'armazenamento' in row.keys() else 'inline'
+    if (modo not in ('inline', 'externo-v1') or type(row['tamanho']) is not int or
+        not 0 <= row['tamanho'] <= MAX_ARQUIVO or not isinstance(row['conteudo'], bytes)):
+        raise ValueError('Integridade/versão do snapshot não confirmada')
+    if modo == 'externo-v1':
+        if row['conteudo'] != b'':
+            raise ValueError('Integridade do snapshot externo não confirmada')
+        dados = armazenamento.ler(projeto, row['sha256'])
+    else:
+        dados = row['conteudo']
+    if len(dados) != row['tamanho'] or hashlib.sha256(dados).hexdigest() != row['sha256'] or _formato(row['nome'], dados) != (row['mime'], row['preview']):
+        raise ValueError('Integridade do snapshot não confirmada')
+    return dados
+
+
 def arquivo(projeto, ident):
     from funcionarios import id_projeto
     from gestao_projeto import carregar
@@ -342,9 +402,7 @@ def arquivo(projeto, ident):
                          (ident, id_projeto(projeto), carregar(projeto)['kanban']['repo'], MAX_ARQUIVO)).fetchone()
     if not row:
         raise ValueError('Arquivo não pertence ao projeto')
-    dados = row['conteudo']
-    if len(dados) != row['tamanho'] or hashlib.sha256(dados).hexdigest() != row['sha256'] or _formato(row['nome'], dados) != (row['mime'], row['preview']):
-        raise ValueError('Integridade do snapshot não confirmada')
+    dados = _corpo(projeto, row)
     return {'ok': True, **{k: row[k] for k in ('nome', 'mime', 'sha256', 'tamanho', 'preview')},
             'conteudo': dados.decode('utf-8') if row['preview'] == 'texto' else base64.b64encode(dados).decode('ascii')}
 
