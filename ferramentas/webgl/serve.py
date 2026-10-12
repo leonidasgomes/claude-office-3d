@@ -55,6 +55,9 @@ with tempfile.TemporaryDirectory(prefix="office-webgl-") as directory:
     server, extras = servidor.abrir_servidores([], 8765, False, False, False)
     assert server is not None and not extras
     assert server.server_address[0] == "127.0.0.1"
+    # Register the real read-only alerts endpoint, without starting a worker.
+    alerts = servidor.criar_alertas(servidor.Handler.rede)
+    assert alerts.opcoes["ativo"] is False
     print("Synthetic Office ready on loopback; background integrations disabled", flush=True)
     try:
         server.serve_forever()

@@ -11,7 +11,7 @@ const output = fileURLToPath(new URL('./results/', import.meta.url));
 const base = 'http://127.0.0.1:8765';
 const result = { status: 'failed', stage: 'setup', commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   platform: process.platform, node: process.version, sandboxRequested: true,
-  screenshots: {}, errors: [], consoleErrors: [], contextLosses: 0, blockedRequests: [], requestsFailed: [] };
+  screenshots: {}, httpErrors: [], errors: [], consoleErrors: [], contextLosses: 0, blockedRequests: [], requestsFailed: [] };
 let browser, server, serverLog = "", serverReady = false;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function stats(bytes) {
@@ -87,6 +87,10 @@ try {
     socket.close();
   });
   const page = await context.newPage();
+  page.on('response', response => {
+    if (response.status() >= 400) result.httpErrors.push({ method: response.request().method(),
+      path: new URL(response.url()).pathname, status: response.status() });
+  });
   page.on('pageerror', e => result.errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') result.consoleErrors.push(m.text()); });
   page.on('requestfailed', r => result.requestsFailed.push({ url: new URL(r.url()).pathname, error: r.failure()?.errorText }));
@@ -165,6 +169,7 @@ try {
   assert(result.sceneContext && !result.sceneContext.lost && result.sceneContext.losses === 0 && result.sceneContext.error === 0);
   assert(result.sceneContext.drawCalls > 0 && result.sceneContext.triangles > 100, 'No substantial real 3D drawing observed');
   result.contextLosses = result.sceneContext.losses;
+  assert.deepEqual(result.httpErrors, []);
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.consoleErrors, []);
   assert.deepEqual(result.blockedRequests, []);
