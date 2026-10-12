@@ -3,7 +3,7 @@
 ## Qual versão baixar?
 
 - **Codex e OpenCode, gestão de equipes e funcionários:** use a
-  [prévia atual 2.0.0-dev.5](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.5).
+  [prévia atual 2.0.0-dev.6](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.6).
   O pacote inclui Gestão, metas, checkpoints e recuperação assistida com saldo
   preservado, além do zoom e atalho do instalador Windows. A instalação não
   inicia tarefas nem retoma reservas bloqueadas automaticamente.
