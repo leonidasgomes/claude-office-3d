@@ -1,0 +1,40 @@
+name: Linux WebGL validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/webgl-linux.yml'
+      - 'ferramentas/webgl/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webgl-linux-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install pinned test tools (no cache)
+        working-directory: ferramentas/webgl
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install matching full Chromium
+        working-directory: ferramentas/webgl
+        run: npx --no-install playwright install --with-deps --no-shell chromium
+      - name: Render and interact with synthetic Office
+        working-directory: ferramentas/webgl
+        run: timeout 180s npm test
