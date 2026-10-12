@@ -77,7 +77,7 @@ PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "es
           "modelos/praticas/python-venv.md", "modelos/praticas/scripts-do-projeto.md", "modelos/time/lider.md", "modelos/time/dev.md", "modelos/time/designer.md",
           "modelos/time/pesquisa.md", "modelos/time/revisor.md", "modelos/time/agente.md",
           "emit_evento.py", "eventos_sse.py", "eventos_ao_vivo.mjs", "observabilidade_equipes.py", "ponte_eventos.py", "importar_opencode.py", "opencode/office.js", "opencode/LEIAME.md",
-          "providers_console.py", "console_provider.py", "codex_observador.py", "skills_compartilhados.py",
+          "providers_console.py", "console_provider.py", "opencode_v2.py", "codex_observador.py", "skills_compartilhados.py",
           "console.exemplo.json", "docs/PROVIDERS.md", "docs/VERSOES.md", "docs/CLAUDE-COMPATIBILIDADE.md",
           "gestao_projeto.py", "gestao_cli.py", "controle_tarefas.py", "claude_sessao.py", "kanban_gestao.py", "kanban_painel.py", "prs_gestao.py", "kanban_projetos.mjs", "dependencias_tarefas.py",
           "gestao_painel.py", "gestao_painel.js", "gestao_painel.css", "atividade_execucao.py", "modelos_opencode.py", "funcionarios.py", "funcionarios_form.js", "cadastro_gestao.py", "cadastros_form.mjs", "politica_painel.py", "fontes_documentais.py", "executores_form.mjs", "merge_form.mjs", "revisao_form.mjs", "prs_evidencias.py", "prs_pendencias.py", "prs_evidencias.mjs", "conclusao_tarefas.py", "memoria_entregas.py",
