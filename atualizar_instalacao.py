@@ -179,7 +179,12 @@ def preparar(destino, origem=None, anterior=None, config=None):
     novo = pacote(origem, completo=True)
     antes = inventario(destino)
     existente = any(n != '.' for n in antes)
+    metadados_windows = None
     if existente:
+        if os.name == 'nt':
+            # Diagnóstico somente leitura. Inspeção parcial não autoriza atualização.
+            from atualizar_windows import inspecionar
+            metadados_windows = inspecionar(destino)
         parado(destino)
         if json_ler(destino / 'EDICAO.json') != EDICAO:
             raise ValueError('Destino de outra edição')
@@ -222,16 +227,19 @@ def preparar(destino, origem=None, anterior=None, config=None):
             raise ValueError('Instalação nova exige configuração explícita')
         import configuracao
         config = configuracao.normalizar(config)
-    return {'origem': str(origem), 'destino': str(destino),
+    plano = {'origem': str(origem), 'destino': str(destino),
             'anterior': str(caminho(anterior)) if anterior else None,
             'config': config, 'novo': novo, 'antigo': antigo, 'antes': antes,
             'existente': existente}
+    if metadados_windows is not None:
+        plano['metadados_windows'] = metadados_windows
+    return plano
 
 
 
 def validar_metadados(raiz):
     if os.name == 'nt':
-        raise ValueError('Atualização/reversão de instalação existente no Windows ainda requer cópia com ACL nativa; nenhuma troca realizada')
+        raise ValueError('Atualização/reversão Windows bloqueada: a inspeção de owner/group/DACL não comprova preservação de SACL e demais metadados; nenhuma cópia ou troca realizada')
     if not sys.platform.startswith('linux') or not hasattr(os, 'listxattr'):
         raise ValueError('Esta plataforma não oferece a inspeção de ACL qualificada; atualização existente recusada')
     if any('acl' in n.lower() for n in os.listxattr(raiz.parent, follow_symlinks=False)):
@@ -394,9 +402,15 @@ def main(argv=None):
                 'destino': plano['destino'], 'versao': plano['novo']['versao'],
                 'existente': plano['existente'], 'arquivos_pacote': len(plano['novo']['arquivos']),
                 'preserva': 'configuração, dados, projetos, skills, hooks e porta'}
+            if not a.aplicar and os.name == 'nt' and plano['existente']:
+                resultado['aplicacao_suportada'] = False
+                resultado['limite_windows'] = 'Diagnóstico parcial somente leitura; atualização e reversão continuam bloqueadas por preservação de segurança não qualificada'
         print(json.dumps(resultado, ensure_ascii=False, indent=2))
         if not a.aplicar:
-            print('Prévia sem alterações. Revise e repita com --aplicar.')
+            if os.name == 'nt' and (a.reverter or resultado.get('existente')):
+                print('Prévia sem alterações. Aplicação/reversão indisponível no Windows; não prossiga com --aplicar.')
+            else:
+                print('Prévia sem alterações. Revise e repita com --aplicar.')
         return 0
     except (OSError, ValueError, SyntaxError, KeyError, TypeError) as exc:
         print('Operação não concluída: ' + str(exc), file=sys.stderr)

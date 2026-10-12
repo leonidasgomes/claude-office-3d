@@ -100,6 +100,55 @@ a prévia e a instalação nova em pasta vazia continuam disponíveis; a atualiz
 existente aguarda implementação e qualificação de uma cópia nativa com ACLs.
 Não confunda testes sintéticos Linux com validação em Windows real.
 
+### Diagnóstico Windows desta etapa (não habilita a troca)
+
+A prévia de uma instalação existente agora inspeciona nativamente um volume
+local fixo NTFS, sem modificar permissões. Recusa caminhos UNC/dispositivo,
+nomes reservados ou ambíguos, colisões de maiúsculas/minúsculas, reparse points,
+hardlinks, streams alternativos (ADS, inclusive em pastas), atributos estendidos
+NTFS e atributos especiais como criptografia, compressão, sparse e offline.
+Falhas de leitura também recusam a operação. Um ZIP extraído pelo navegador pode
+carregar `Zone.Identifier`; a ferramenta não o remove nem oferece contorno.
+
+A inspeção lê proprietário, grupo e DACL, mas **não comprova a ausência de SACL**
+(auditoria, integridade e políticas adicionais). O resultado da prévia informa
+`aplicacao_suportada: false`; mesmo uma prévia sem conflitos não libera `--aplicar`.
+Nenhum privilégio é habilitado, nenhuma ACL é alterada e nenhum SID é impresso
+pela prévia. A instalação nova em pasta vazia mantém seu fluxo anterior.
+
+O CI Windows exercita essa recusa e os diagnósticos com dados sintéticos. Ele não
+qualifica atualização de instalação existente, preservação integral de segurança
+ou reversão no Windows. Não use mocks da plataforma para contornar o bloqueio.
+
+#### O que falta para liberar a atualização Windows
+
+- Uma estratégia que mantenha a segurança dos dados desde a criação da cópia,
+  não apenas uma comparação posterior. Um arquivo privado não pode passar por
+  uma pasta de preparação mais permissiva, mesmo que a operação seja recusada.
+- Preservação e validação demonstráveis de proprietário, grupo, DACL, SACL,
+  atributos e streams, ou recusa comprovada dos casos não suportados. Comparar
+  somente conteúdo/modos ou somente DACL não é suficiente.
+- Testes nativos da atualização completa, falhas em cada renomeação, falha da
+  restauração automática, recuperação interrompida e alterações de dados e
+  metadados depois da atualização. O backup precisa permanecer verificável.
+- Um contrato explícito de parada de todos os escritores. O lock entre
+  atualizadores e a porta configurada não impedem processos externos nem
+  detectam toda execução com porta alternativa no Windows.
+
+Renomeações no mesmo volume preservam os objetos originais, mas sozinhas não
+criam uma segunda cópia independente dos dados. Uma futura separação entre código
+versionado e dados persistentes pode evitar recopiá-los; isso exige outro contrato
+de backup/reversão e compatibilidade com instalações existentes, ainda não implementado.
+
+Referências oficiais para essa fronteira:
+[CopyFile2](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfile2)
+não copia atributos de segurança;
+[BackupRead](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-backupread)
+não lê SACL sem `ACCESS_SYSTEM_SECURITY`;
+[acesso à SACL](https://learn.microsoft.com/en-us/windows/win32/secauthz/sacl-access-right)
+exige privilégio específico. Esses fatos não significam que toda solução futura
+é impossível; impedem tratar o copiador atual como uma solução completa.
+
 O assistente legado `instalar.py` conserva seu comportamento de configuração e
 cópia. Ele não oferece a transação de atualização descrita aqui. Não o use para
 substituir o código de uma instalação com dados que pretende preservar.
