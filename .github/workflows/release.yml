@@ -5,46 +5,48 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
+
+# Não interromper um upload em andamento nem competir pela mesma tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  qualificar:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publicar:
+    needs: qualificar
+    if: ${{ needs.qualificar.result == 'success' && needs.qualificar.outputs.tested_sha == github.sha }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      CI_RESULTADO: ${{ needs.qualificar.result }}
+      CI_SHA: ${{ needs.qualificar.outputs.tested_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Build (verificação + zip) e notas da versão
+      - name: Conferir identidade da tag e commit qualificado
+        run: python ferramentas/qualificar_release.py identidade
+      - name: Build, conteúdo exato, checksum e API do ZIP extraído
         run: |
           python ferramentas/build.py
-          python ferramentas/notas_versao.py "${GITHUB_REF_NAME}" > NOTAS.md
-      - name: Publicar release
+          python ferramentas/qualificar_release.py pacote
+          python ferramentas/notas_versao.py "$GITHUB_REF_NAME" > NOTAS.md
+      - name: Publicar sem substituir assets nem alterar Latest
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          flags=(--verify-tag)
-          titulo="Office Multi-provider ${GITHUB_REF_NAME}"
-          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
-            flags+=(--prerelease --latest=false)
-            titulo+=" — prévia pública (Codex e OpenCode)"
-          fi
-          # A publicação pela interface cria a tag e a pré-release antes deste job.
-          # Só completa uma pré-release vazia, da tag exata; nunca substitui assets.
-          if gh release view "${GITHUB_REF_NAME}" --json tagName,isDraft,isPrerelease,assets > release-existente.json 2>/dev/null; then
-            jq -e --arg tag "$GITHUB_REF_NAME" \
-              '.tagName == $tag and .isDraft == false and .isPrerelease == true and (.assets | length) == 0' \
-              release-existente.json > /dev/null
-            [[ "$GITHUB_REF_NAME" == *-* ]]
-            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}" --jq '.object.sha')"
-            [[ "$tag_sha" == "$GITHUB_SHA" ]]
-            gh release upload "$GITHUB_REF_NAME" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256
-            gh release edit "$GITHUB_REF_NAME" --title "$titulo" --notes-file NOTAS.md --prerelease --latest=false
-          else
-            gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256 \
-              --title "$titulo" --notes-file NOTAS.md "${flags[@]}"
-          fi
+        run: python ferramentas/qualificar_release.py publicar

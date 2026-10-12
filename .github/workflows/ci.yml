@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    outputs:
+      tested_sha:
+        description: Commit aprovado por todos os jobs obrigatórios
+        value: ${{ jobs.qualificado.outputs.sha }}
 
 permissions:
   contents: read
@@ -13,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -183,6 +191,8 @@ jobs:
           node ferramentas/testar_coordenacao_form.mjs
           node --experimental-vm-modules ferramentas/testar_placar_projetos.mjs
           node --experimental-vm-modules ferramentas/testar_prs_sugestoes_projetos.mjs
+      - name: Qualificação da publicação (falhas simuladas, sem publicar)
+        run: python -W error ferramentas/testar_qualificacao_release.py
       - name: Distribuição isolada (manifesto, ZIP e API extraída)
         run: python -W error ferramentas/testar_build.py
       - name: Importação do .claude para o OpenCode (plano, conversão, idempotência)
@@ -217,13 +227,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Preparação da máquina com instaladores simulados
         run: |
           python -W error ferramentas/testar_preparar_maquina.py
-          python -W error ferramentas/testar_metas_cartao.py
+      - name: Metas do cartão no Windows
+        run: python -W error ferramentas/testar_metas_cartao.py
 
   compatibilidade_python:
     runs-on: ubuntu-latest
@@ -233,6 +247,9 @@ jobs:
         python: ['3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -242,3 +259,27 @@ jobs:
           python -W error ferramentas/testar_recursos_host.py
           python -W error ferramentas/testar_conferencias_prs.py
           python -W error ferramentas/testar_revisao_preliminar.py
+
+  qualificado:
+    needs: [verificar, preparar-windows, compatibilidade_python]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      sha: ${{ steps.aprovar.outputs.sha }}
+    steps:
+      - name: Exigir sucesso de cada job obrigatório
+        id: aprovar
+        env:
+          RESULTADOS: ${{ toJSON(needs) }}
+          SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os
+          resultados = json.loads(os.environ['RESULTADOS'])
+          esperados = {'verificar', 'preparar-windows', 'compatibilidade_python'}
+          if set(resultados) != esperados or any(v.get('result') != 'success' for v in resultados.values()):
+              raise SystemExit('Qualificação bloqueada: todos os jobs precisam terminar com sucesso')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write('sha=' + os.environ['SHA'] + '\n')
+          PY

@@ -100,3 +100,33 @@ sem migração automática dos projetos existentes.
 ### Confirmação de conclusão na nova linha
 
 Claude estruturado agora exige init e result principal success/is_error false da mesma sessão antes de devolver sucesso. Processo zero sem result, resultado de filho ou sessão diferente bloqueia a entrega. Trabalho principal que segue um resultado exige novo resultado final. Isso alinha a confirmação aos outros providers; não comprova que todos os filhos terminaram, nem aprova revisão/merge. TUI, hooks/team e edição legada permanecem preservados.
+
+## Qualificação da publicação
+
+A publicação de uma nova tag `v2.x.y-<prévia>` chama o mesmo workflow de CI
+usado pelos PRs, no commit exato da tag. Os testes principais, a preparação
+Windows e toda a matriz Python precisam terminar com sucesso. Resultado
+ausente, falho, cancelado ou ignorado bloqueia a publicação; um CI antigo de
+outra branch não serve como aprovação. Os testes de WebGL e isolamento Linux
+continuam experimentais e separados, sem promessa de validação da máquina real.
+
+Antes de publicar, o job confere `VERSION`, `EDICAO.json`, commit qualificado,
+conteúdo integral do manifesto no ZIP e SHA-256, e inicia a API a partir do ZIP
+extraído em diretório temporário. Só a linha 2.x com sufixo de prévia é aceita.
+A tag remota precisa ser uma **tag leve**, apontando diretamente ao mesmo commit;
+tags anotadas são recusadas explicitamente. A tag é conferida novamente antes
+da escrita. Não mova tags durante uma publicação; a verificação não substitui
+as permissões e proteções do repositório.
+
+A release nova fica como **Pre-release**, com `latest=false`. Uma release já
+existente só pode ser completada se for a pré-release pública da mesma tag e
+estiver sem assets. Assets existentes nunca são substituídos. Falhas de rede,
+permissão ou rate limit não são interpretadas como release inexistente. Se um
+upload terminar parcialmente, o próximo disparo bloqueia; revise os assets
+manualmente em vez de sobrescrevê-los. A linha estável 1.19.1 permanece separada.
+
+Apenas o job de publicação tem permissão `contents: write`; o CI usa leitura.
+Não há cache, upload de artifacts de CI, segredo novo ou executor pago adicional.
+A qualificação local usa `python -W error ferramentas/testar_qualificacao_release.py`
+e `python -W error ferramentas/testar_build.py`, sem publicar tags ou releases.
+A criação de uma tag real continua sendo uma decisão explícita de lançamento.
