@@ -1,14 +1,14 @@
 """Processos Python e SQLite reais; nenhum modelo, console nativo ou conta."""
 from contextlib import closing
 from pathlib import Path
-import json,sqlite3,subprocess,sys,tempfile,time,unittest
-from unittest.mock import patch
+import json,os,signal,sqlite3,subprocess,sys,tempfile,time,unittest
+from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 from atividade_execucao import Acompanhamento
 from controle_tarefas import Controle
 from gestao_painel import saude_tarefas
 from providers_console import PROVIDERS
-from console_provider import executar
+from console_provider import executar,encerrar_processo
 import alertas
 
 
@@ -174,6 +174,83 @@ class Atividade(unittest.TestCase):
         finally:
             for p in recebidos:
                 if p.poll() is None:p.kill();p.wait()
+
+    @unittest.skipUnless(sys.platform.startswith('linux'),'Inventário /proc do Linux')
+    def test_falha_e_interrupcao_encerram_grupo_proprio_sem_atingir_outro(self):
+        def ativo(pid):
+            try:return Path('/proc',str(pid),'stat').read_text().split(') ')[1].split()[0] not in ('Z','X')
+            except FileNotFoundError:return False
+        externo=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],start_new_session=True)
+        try:
+            for erro,lider_encerrado in ((ValueError('persistencia falhou'),False),(KeyboardInterrupt(),False),(ValueError('persistencia falhou'),True),(KeyboardInterrupt(),True)):
+                with self.subTest(erro=type(erro).__name__,lider_encerrado=lider_encerrado):
+                    pronto=self.raiz/'filho.pid';pronto.unlink(missing_ok=True);recebidos=[]
+                    filho='import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print("pronto",flush=True);time.sleep(60)'
+                    codigo=('import subprocess,sys,time,pathlib;'
+                        'p=subprocess.Popen([sys.executable,"-c",'+repr(filho)+'],stdout=subprocess.PIPE,text=True);'
+                        'p.stdout.readline();pathlib.Path(sys.argv[1]).write_text(str(p.pid));time.sleep(60)')
+                    def falhar(p):
+                        recebidos.append(p)
+                        for _ in range(200):
+                            if pronto.exists() and pronto.read_text().isdigit():break
+                            time.sleep(.01)
+                        self.assertTrue(pronto.exists() and pronto.read_text().isdigit(),'Filho não iniciou')
+                        if lider_encerrado:
+                            p.terminate();p.wait(timeout=5)
+                        raise erro
+                    try:
+                        with patch.object(type(PROVIDERS['claude']),'comando',return_value=[sys.executable,'-c',codigo,str(pronto)]),patch('console_provider.contexto',return_value='Regras'):
+                            if isinstance(erro,KeyboardInterrupt):
+                                self.assertEqual(executar(PROVIDERS['claude'],'ignorado',self.raiz,'Dev',prompt='teste',banco=self.raiz/'eventos.db',ao_processo=falhar,limites_meta=object()),130)
+                            else:
+                                with self.assertRaisesRegex(ValueError,'persistencia falhou'):
+                                    executar(PROVIDERS['claude'],'ignorado',self.raiz,'Dev',prompt='teste',banco=self.raiz/'eventos.db',ao_processo=falhar,limites_meta=object())
+                        pid=int(pronto.read_text())
+                        for _ in range(200):
+                            if not ativo(pid):break
+                            time.sleep(.01)
+                        self.assertFalse(ativo(pid),'Filho sobreviveu ao encerramento')
+                        self.assertIsNotNone(recebidos[0].returncode)
+                        self.assertIsNone(externo.poll(),'Processo alheio foi atingido')
+                    finally:
+                        for p in recebidos:
+                            try:os.killpg(p.pid,signal.SIGKILL)
+                            except ProcessLookupError:pass
+                            p.wait(timeout=5)
+        finally:
+            externo.kill();externo.wait(timeout=5)
+
+    @unittest.skipUnless(os.name=='posix','Grupos POSIX')
+    def test_grupo_herdado_nunca_recebe_sinal_coletivo(self):
+        p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
+        try:
+            with patch('console_provider.os.killpg') as grupo:
+                with self.assertRaisesRegex(OSError,'Grupo do console diverge'):
+                    encerrar_processo(p,grupo_isolado=True)
+                grupo.assert_not_called()
+                encerrar_processo(p)
+                grupo.assert_not_called()
+            self.assertIsNotNone(p.returncode)
+        finally:
+            if p.poll() is None:p.kill();p.wait()
+
+    @unittest.skipUnless(os.name=='posix','Grupos POSIX')
+    def test_pid_reutilizado_e_grupo_ausente(self):
+        p=Mock(pid=12345,returncode=0)
+        with patch('console_provider.os.getpgid',return_value=p.pid),patch('console_provider.os.killpg') as grupo:
+            with self.assertRaisesRegex(OSError,'Grupo do console diverge'):
+                encerrar_processo(p,grupo_isolado=True)
+            grupo.assert_not_called()
+        with patch('console_provider.os.getpgid',side_effect=ProcessLookupError),patch('console_provider.os.killpg',side_effect=ProcessLookupError) as grupo:
+            encerrar_processo(p,grupo_isolado=True)
+            grupo.assert_called_once_with(p.pid,signal.SIGTERM)
+            p.wait.assert_called_once_with(timeout=5)
+        p.poll.assert_not_called()
+        p.reset_mock()
+        with patch('console_provider.os.getpgid',side_effect=ProcessLookupError),patch('console_provider.os.killpg',side_effect=[None,ProcessLookupError]) as grupo:
+            encerrar_processo(p,grupo_isolado=True)
+            self.assertEqual([c.args for c in grupo.call_args_list],[(p.pid,signal.SIGTERM),(p.pid,0)])
+            p.wait.assert_called_once_with(timeout=5)
 
 
 if __name__=='__main__':unittest.main()

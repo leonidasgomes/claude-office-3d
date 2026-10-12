@@ -4,10 +4,12 @@ import errno
 import json
 import os
 import re
+import signal
 import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from dataclasses import asdict
 from contextlib import ExitStack
@@ -27,9 +29,49 @@ def pipe_entrada(operacao,*args):
         if exc.errno not in (errno.EPIPE,errno.EINVAL):raise
 
 
-def encerrar_processo(processo):
-    """Encerra e recolhe apenas o processo iniciado por este launcher."""
-    if processo is None or processo.poll() is not None:
+def encerrar_processo(processo, *, grupo_isolado=False):
+    """Recolhe o processo; em POSIX, encerra também o grupo criado pelo launcher."""
+    if processo is None:
+        return
+    if grupo_isolado and os.name == 'posix':
+        # A flag vem do mesmo start_new_session usado no Popen, não do provider.
+        # Nunca sinalizar o grupo herdado pelo terminal/controlador.
+        try:
+            grupo = os.getpgid(processo.pid)
+        except ProcessLookupError:
+            grupo = None  # O líder terminou; seus filhos podem conservar o PGID.
+        if grupo is not None:
+            if processo.returncode is not None or grupo != processo.pid:
+                raise OSError('Grupo do console diverge da sessão criada pelo launcher')
+        try:
+            os.killpg(processo.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            processo.wait(timeout=5)
+            return
+        # Não recolher o líder entre sinais: enquanto não for recolhido, seu PID
+        # não pode ser reutilizado. Callbacks/monitores ainda podem recolhê-lo.
+        limite = time.monotonic() + 5
+        while time.monotonic() < limite:
+            try:
+                os.killpg(processo.pid, 0)
+            except ProcessLookupError:
+                processo.wait(timeout=5)
+                return
+            time.sleep(min(.05, max(0, limite - time.monotonic())))
+        # O pai pode terminar primeiro e deixar filhos que ignoram SIGTERM.
+        try:
+            grupo = os.getpgid(processo.pid)
+        except ProcessLookupError:
+            grupo = None
+        if grupo is not None and (processo.returncode is not None or grupo != processo.pid):
+            raise OSError('Grupo do console diverge da sessão criada pelo launcher')
+        try:
+            os.killpg(processo.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        processo.wait(timeout=5)
+        return
+    if processo.poll() is not None:
         return
     processo.terminate()
     try:
@@ -173,11 +215,12 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                                 criar_consumo=lambda nome, ident, novo: ColetorRollout(
                                     coletor.registro.arquivo, projeto_medicao, nome, ident, novo,
                                     rotulo=provider.nome+'_local' if politica_local else provider.nome,tentativa=tentativa_consumo))
+    grupo_proprio = bool(politica_local or limites_meta)
     try:
         processo = subprocess.Popen(args, cwd=str(projeto), env=env,
                                     stdout=subprocess.PIPE if stream else None,
                                     stdin=subprocess.PIPE if entrada is not None else None,
-                                    start_new_session=bool(politica_local or limites_meta),
+                                    start_new_session=grupo_proprio,
                                     text=True, encoding="utf-8", errors="replace")
         if ao_processo is not None: ao_processo(processo)
         if limites_meta is not None:protecao.enter_context(limites_meta.vigiar(processo))
@@ -239,11 +282,14 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             return 1
         return codigo
     except KeyboardInterrupt:
-        encerrar_processo(processo)
+        try:
+            encerrar_processo(processo, grupo_isolado=grupo_proprio)
+        except (OSError, subprocess.TimeoutExpired):
+            print('Não foi possível confirmar o encerramento do processo; concilie a execução antes de retomar.', file=sys.stderr)
         return 130
     except BaseException:
         try:
-            encerrar_processo(processo)
+            encerrar_processo(processo, grupo_isolado=grupo_proprio)
         except (OSError, subprocess.TimeoutExpired):
             print('Não foi possível confirmar o encerramento do processo; concilie a execução antes de retomar.', file=sys.stderr)
         raise  # Persistência/vínculo não são falhas opcionais de telemetria.

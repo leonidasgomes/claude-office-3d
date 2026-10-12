@@ -1,5 +1,18 @@
 # Documento de Projeto de Software (SDD) — Office Multi-provider
 
+Encerramento POSIX do launcher: falha ou interrupção durante execução local/com
+meta encerra o grupo isolado criado pelo próprio Popen. Confere PGID igual ao PID,
+envia TERM, aguarda cinco segundos e envia KILL aos membros restantes antes de
+recolher o processo principal; grupo
+herdado nunca recebe sinal coletivo. Execuções normais e Windows preservam o
+comportamento anterior. Testes Linux com processos Python reais cobrem falha de
+vínculo, interrupção, filho que ignora TERM e preservação de processo alheio.
+Líder já recolhido com PID existente bloqueia sinais por possível reutilização;
+líder ausente não omite seu grupo sobrevivente. Não garante ausência de corrida
+de PGID após recolhimento por callbacks/monitores, não atesta descendentes que
+criaram outra sessão nem substitui conciliação de
+tentativas incertas; nenhum console/modelo real é chamado pelos testes.
+
 Resultados por tentativa: tabela privada `execucao_resultado` no banco de tarefas,
 criada por Controle, grava equipe e tipo (despacho/retomada) junto do início da
 medição. Resultado final enumerado, imutável/idempotente, exige retorno registrado
