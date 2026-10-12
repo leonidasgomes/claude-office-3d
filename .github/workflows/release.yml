@@ -33,5 +33,18 @@ jobs:
             flags+=(--prerelease --latest=false)
             titulo+=" — prévia pública (Codex e OpenCode)"
           fi
-          gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256 \
-            --title "$titulo" --notes-file NOTAS.md "${flags[@]}"
+          # A publicação pela interface cria a tag e a pré-release antes deste job.
+          # Só completa uma pré-release vazia, da tag exata; nunca substitui assets.
+          if gh release view "${GITHUB_REF_NAME}" --json tagName,isDraft,isPrerelease,assets > release-existente.json 2>/dev/null; then
+            jq -e --arg tag "$GITHUB_REF_NAME" \
+              '.tagName == $tag and .isDraft == false and .isPrerelease == true and (.assets | length) == 0' \
+              release-existente.json > /dev/null
+            [[ "$GITHUB_REF_NAME" == *-* ]]
+            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}" --jq '.object.sha')"
+            [[ "$tag_sha" == "$GITHUB_SHA" ]]
+            gh release upload "$GITHUB_REF_NAME" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256
+            gh release edit "$GITHUB_REF_NAME" --title "$titulo" --notes-file NOTAS.md --prerelease --latest=false
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/office-multi-provider-*.zip dist/office-multi-provider-*.zip.sha256 \
+              --title "$titulo" --notes-file NOTAS.md "${flags[@]}"
+          fi

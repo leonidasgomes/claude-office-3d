@@ -2,6 +2,17 @@
 
 ## Não lançado
 
+## 2.0.0-dev.6
+
+- Busca de contexto por projeto reúne documentos canônicos configurados e referências de entregas mergeadas, com proveniência e isolamento entre projetos. É somente leitura; não envia conteúdo a modelos nem altera regras ou memória dos agentes.
+- Galeria de entregas apresenta arquivos por cartão, tentativa, PR e commit, com snapshots imutáveis, manifesto declarado, SHA-256 e prévias seguras. Arquivo entregue não significa merge ou aceite visual.
+- OpenCode V2 reconhece eventos de conclusão com validação conservadora e preserva o vínculo da tentativa em edição de arquivos e retomadas; encerramento de processo, sozinho, não comprova conclusão.
+- Inicialização e encerramento POSIX/Linux recebem correções de limpeza de processos e integração dos lançadores; ajuda de acesso pelo celular distingue o sistema usado. Gates nativos Linux permanecem experimentais e desativados por padrão, sem promessa de paridade completa com Windows.
+- CI de cena WebGL usa ambiente Linux controlado com renderização por software; não comprova GPU, driver ou aplicativo instalado na máquina do usuário.
+- Histórico da busca de contexto exige Python 3.11+ e APIs SQLite adequadas, banco de até 32 MiB e ausência de WAL/journal ativo ou formato WAL. Fora desses limites, os documentos continuam disponíveis e o histórico é indicado como indisponível.
+- Pacote e links de download atualizados para esta prévia; a edição Claude 1.19.1 continua estável e separada. Faça backup e instale 2.x em pasta própria; autenticação e disponibilidade de modelos dependem dos consoles.
+
+
 - Conferência de worktree distingue status desatualizado de assets LFS e alterações reais, exigindo conteúdo e staging iguais a HEAD antes do despacho ou da revisão.
 
 - Host hidrata assets versionados do cache LFS local com hash e reserva conferidos; acesso à pasta compartilhada de travas pode ser autorizado por projeto e equipe, sem ampliar escrita em Git ou no checkout principal.
