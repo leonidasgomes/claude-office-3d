@@ -46,3 +46,12 @@
 .galeriaEntregas .galeriaPreview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; padding: 12px; background: #0f1419; border-radius: 6px; }
 .galeriaEntregas .galeriaPreview img { display: block; max-width: 100%; max-height: 55vh; object-fit: contain; margin: 12px 0; }
 .galeriaEntregas button[hidden] { display: none; }
+.contextoProjeto .gestaoCabecalho { display: flex; align-items: center; justify-content: space-between; }
+.contextoProjeto form { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+.contextoProjeto label { display: grid; gap: 6px; flex: 1; min-width: 180px; }
+.contextoProjeto input { min-width: 0; padding: 10px; border-radius: 6px; }
+.contextoProjeto .gestaoCadastro { overflow-wrap: anywhere; }
+.contextoProjeto pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #0f1419; border-radius: 6px; }
+.contextoProjeto a { color: #93c5fd; text-decoration: underline; }
+.contextoProjeto a:visited { color: #c4b5fd; }
+.contextoProjeto a:focus-visible { outline: 2px solid #fbbf24; outline-offset: 3px; }

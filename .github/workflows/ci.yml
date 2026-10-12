@@ -45,6 +45,10 @@ jobs:
           python -W error ferramentas/testar_retorno_console.py
           python -W error ferramentas/testar_opencode_v2.py
           python -W error ferramentas/testar_pipe_console.py
+      - name: Contexto pesquisável e isolamento de fontes
+        run: |
+          python -W error ferramentas/testar_contexto_projeto.py
+          node ferramentas/testar_contexto_projeto.mjs
       - name: Galeria de entregas e snapshots por commit
         run: |
           python -W error ferramentas/testar_galeria_entregas.py
