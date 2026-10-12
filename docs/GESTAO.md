@@ -2212,6 +2212,10 @@ checkout principal. Não chama modelo para executar o script, reinicia o autor
 ou concede tokens. Falha publicada permanece reprovada; execução incerta não
 é repetida automaticamente. Outros consoles/plataformas conservam o fluxo
 existente até haver adapter validado. Todos os gates e o merge seguem exigidos.
+No Linux, a falta de adapter validado aparece como pendência explícita, sem
+consulta ao CEO, execução ou publicação. A suíte experimental em
+`ferramentas/gate_linux` verifica isolamento em fixture sem conta; não habilita
+o executor de produção e não substitui a validação da configuração efetiva.
 
 O argumento `--base` conserva a referência configurada, cujo nome o script
 compara com o destino do PR. Seu SHA local deve corresponder à referência remota

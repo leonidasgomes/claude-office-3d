@@ -109,7 +109,10 @@ def preparar(projeto,cfg,pr,dados,k,*,sincronizar=False):
     protegidos=subprocess.run(['git','-C',str(trabalho),'diff','--name-only',base,sha,'--','.claude/','.agents/'],capture_output=True,text=True,check=True,timeout=30).stdout
     if protegidos.strip():raise ValueError('PR altera regras/skills; gate exige revisão protegida')
     equipes=[r for r in revisores(cfg,pacote['executor']) if r['executor']['console']=='codex']
-    if not equipes or sys.platform!='win32':return None  # Adapter nativo verificado nesta plataforma.
+    if not equipes:return None
+    if sys.platform=='linux':
+        raise ContextoIncompativel('Gate Linux indisponível: isolamento nativo e configuração efetiva ainda não validados; não executar nem publicar')
+    if sys.platform!='win32':return None  # Adapter nativo verificado nesta plataforma.
     return {'cartao':int(row['cartao']),'token':row['token'],'equipe':row['equipe'],'pr':n,'sha':sha,'base':base,'base_pr':base_pr,'base_ref':base_ref,
             'worktree':str(trabalho),'branch':ctx['branch'],'politica':assinatura(cfg),'regra':regra,
             **({'conciliacao_orcamento':conciliacao} if conciliacao else {}),
