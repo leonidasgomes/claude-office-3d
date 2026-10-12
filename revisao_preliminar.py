@@ -83,6 +83,24 @@ def consultar(projeto,executor,prompt,normalizador,papel,nome=None):
     return chamar(executor,prompt,normalizador=normalizador,ao_evento=c.consumir)
 
 
+def bloquear_publicacao_legada(pasta,identidade,k):
+    """A mudança de contrato não autoriza repetir publicação antiga ou incerta."""
+    from correcoes_prs import assinatura,ler
+    from controlador_local import atomico
+    legado={c:v for c,v in identidade.items() if c!='contrato'}
+    f=pasta/(assinatura(legado)+'.json')
+    if not f.exists():return False
+    r=ler(f)
+    if r.get('identidade')!=legado:raise ValueError('Identidade diverge do recibo')
+    estado=r.get('estado')
+    if estado=='publicando':
+        comentarios=k._paginas(f'repos/{legado["repo"]}/issues/{legado["pr"]}/comments')
+        encontrados=[x for x in comentarios if x.get('body')==r.get('corpo') and x.get('user',{}).get('login')==r.get('publicador')]
+        if len(encontrados)==1 and type(encontrados[0].get('id')) is int and encontrados[0]['id']>0:
+            r.update(estado='publicado',comentario=encontrados[0]['id']);atomico(f,r)
+    return estado in ('publicando','publicado')
+
+
 def encaminhar(projeto,cfg,prs,fila,docs,dados,k,chamar=None,ao_etapa=None):
     from pathlib import Path
     from correcoes_prs import assinatura,ler
@@ -105,6 +123,7 @@ def encaminhar(projeto,cfg,prs,fila,docs,dados,k,chamar=None,ao_etapa=None):
         ident=assinatura(identidade);pasta=Path(dados)/'revisoes_preliminares';pasta.mkdir(exist_ok=True)
         if pasta.is_symlink() or pasta.is_junction() or pasta.resolve().parent!=Path(dados).resolve():raise ValueError('Pasta de revisão inválida')
         f=pasta/(ident+'.json')
+        if bloquear_publicacao_legada(pasta,identidade,k):continue
         if f.exists():
             r=ler(f)
             if r.get('identidade')!=identidade:raise ValueError('Identidade diverge do recibo')

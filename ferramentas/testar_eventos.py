@@ -168,13 +168,24 @@ def extras():
             checar("HTTP replay: só ate (sem de) → 400", st == 400, (st, d))
             st, d = get("/eventos?de=")
             checar("HTTP replay: de vazio → 400 (parse_qs descarta vazio e cai no modo antigo)", st == 400, (st, str(d)[:120]))
+
+            # O legado limita linhas antes de pular JSON quebrado. Use uma base própria: o gravador pode
+            # terminar sem acrescentar eventos, deixando as linhas inválidas entre as três mais recentes.
+            banco.ARQ = Path(tmp) / "legado" / "escritorio.db"
+            banco.EVENTOS_JSONL = Path(tmp) / "legado" / "eventos.jsonl"
+            antigos = [{"ts": f"2026-10-07T18:00:0{k}", "agente": "Legado", "tipo": "trabalho", "resumo": f"legado{k}"}
+                       for k in range(5)]
+            for evento in antigos:
+                banco.gravar_evento(evento)
             st, d = get("/eventos?desde=0&ultimos=3")
-            checar("HTTP antigo: ultimos=3 → {total, eventos} sem id", st == 200 and set(d) == {"total", "eventos"}
-                   and len(d["eventos"]) == 3 and "id" not in d["eventos"][0], (st, str(d)[:200]))
+            checar("HTTP antigo: ultimos=3 → {total, eventos} sem id",
+                   st == 200 and d == {"total": len(antigos), "eventos": antigos[-3:]}, (st, str(d)[:200]))
             st, d2 = get(f"/eventos?desde={d['total'] - 2}")
-            checar("HTTP antigo: desde=total-2 → 2 eventos", st == 200 and len(d2["eventos"]) == 2 and d2["total"] == d["total"], (st, d2))
+            checar("HTTP antigo: desde=total-2 → 2 eventos",
+                   st == 200 and d2 == {"total": len(antigos), "eventos": antigos[-2:]}, (st, d2))
             st, d3 = get("/eventos?desde=x&ultimos=y")
-            checar("HTTP antigo: desde/ultimos inválidos viram 0 (como antes)", st == 200 and d3["total"] == d["total"], (st, str(d3)[:120]))
+            checar("HTTP antigo: desde/ultimos inválidos viram 0 (como antes)",
+                   st == 200 and d3 == {"total": len(antigos), "eventos": antigos}, (st, str(d3)[:120]))
         finally:
             if srv is not None:
                 srv.shutdown()
