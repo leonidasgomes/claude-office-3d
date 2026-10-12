@@ -67,6 +67,7 @@ EVENTOS_HOOK = ("PreToolUse", "PostToolUse", "PostToolUseFailure", "TeammateIdle
 # PostToolUseFailure só nos comandos: é onde chega a falha (exit code diferente de 0) para o ✖ do escritório.
 MATCHER_HOOK = {"PreToolUse": "Bash|PowerShell", "PostToolUse": "*", "PostToolUseFailure": "Bash|PowerShell"}
 PACOTE = ["index.html", "escritorio.js", "config.js", "kanban.js", "prs.js", "estilo.css", "kanban.css", "prs.css",
+          "contexto_projeto.py", "contexto_projeto.mjs", "docs/CONTEXTO_PROJETO.md",
           "servidor.py", "compatibilidade_python.py", "registrar_evento.py", "configuracao.py", "instalar.py", "instalar.bat", "instalar.sh",
           "abrir_escritorio.bat", "abrir_escritorio.sh", "reiniciar_escritorio.bat", "reiniciar_escritorio.sh", "reiniciar_posix.py", "preparar_maquina.ps1", "preparar_maquina.bat",
           "placar.js", "placar.css", "rede.py", "tls.py", "qr.js", "movel.js", "opcoes.js", "celular.js", "celular.css", "alertas.py", "alertas.js", "alertas.css", "saude_painel.js", "saude_painel.css", "arquitetura.js", "arquitetura.css", "grafo_painel.py", "dica.js", "push.py", "cota.py", "saude.py", "saude_triagem.py", "sugestoes_bot.py", "revisor_ia.py", "custo_time.py", "banco.py", "statusline_uso.py", "auditor_xp.py", "plugins_projeto.py", "vigia_lider.py", "binarios_em_pr.py", "sw.js",
