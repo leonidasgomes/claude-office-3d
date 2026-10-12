@@ -5,7 +5,6 @@
 import { LOCAL } from './movel.js';
 import { qrCanvas } from './qr.js';
 
-const COMO_LIGAR = 'abrir_escritorio.bat celular';   // (Linux/macOS: ./abrir_escritorio.sh celular) sobe com --rede-local
 const NOME_REGRA = 'Claude Office 3D (celular)';   // nome da regra de firewall sugerida
 const $ = (id) => document.getElementById(id);
 const botao = $('btnCelular'), painel = $('celular'), corpo = $('celularCorpo');
@@ -76,7 +75,7 @@ async function copiar(texto) {
   t.remove(); return ok;
 }
 
-// "Não abriu no celular?": 4 checagens em ordem e o comando do firewall pronto (caminho do python e portas deste servidor)
+// Ajuda por sistema do servidor, sem inferir a plataforma pelo navegador.
 function secaoAjuda(s, todos) {
   const det = el('details', 'ajuda'), ip = todos[iEnd] || '';
   const portas = (s.portas && s.portas.length ? s.portas : [s.porta + 1, s.porta + 2]).join(',');
@@ -92,7 +91,7 @@ function secaoAjuda(s, todos) {
   li('Mesma sub-rede: no celular, Configurações → Wi-Fi → detalhes. O IP do celular deve começar igual ao do PC (',
     el('code', null, ip.split('.').slice(0, 3).join('.') + '.x'), '). Repetidor em modo roteador cria outra sub-rede.');
   li('Rede do Windows como Privada: no PowerShell, ', el('code', null, 'Get-NetConnectionProfile'), ' deve mostrar NetworkCategory = Private.');
-  const c3 = li('Falta regra de entrada no Firewall (a regra antiga "Python" só no perfil Público não vale na rede Privada). '
+  const c3 = li('Windows: falta regra de entrada no Firewall (a regra antiga "Python" só no perfil Público não vale na rede Privada). '
     + 'Abra o PowerShell como Administrador e rode:');
   const caixa = el('code', 'comando', cmd); caixa.id = 'celularComando';
   const b = el('button', null, 'Copiar comando');
@@ -103,6 +102,10 @@ function secaoAjuda(s, todos) {
     setTimeout(() => { b.textContent = 'Copiar comando'; }, 2500);
   });
   c3.append(caixa, b);
+  li('Linux: confira o firewall usado pela sua distribuição (por exemplo, UFW ou firewalld). '
+    + 'As portas TCP deste servidor são ', el('code', null, portas), '. Se precisar ajustar uma regra, restrinja a entrada à rede privada confiável. '
+    + 'Não desative o firewall. Os comandos PowerShell acima são apenas para Windows.');
+  li('macOS: confira nas configurações de Firewall se o Python deste escritório pode receber conexões da rede privada confiável.');
   li('Isolamento de AP/clientes ligado no repetidor/roteador (Wi-Fi não fala com cabo): desligue. Teste no celular: abra ',
     el('code', null, 'http://' + ip + ':' + (s.https ? s.porta_ca : s.porta) + '/'), '.');
   det.append(ol, el('p', 'msg', 'Ignore endereços "virtuais" (vEthernet/WSL/Hyper-V): use o IP da placa real do PC.'));
@@ -199,10 +202,12 @@ async function atualizar() {
   ultimo = s;
   if (!s.ativo) {
     const p = el('p');
-    p.append('O acesso pelo celular está desligado (padrão, por segurança). Para ligar, feche o escritório e abra com ');
-    p.append(el('code', null, COMO_LIGAR));
-    p.append(' (ou ', el('code', null, 'servidor.py --rede-local'), '). Depois volte a este botão.');
-    corpo.replaceChildren(p, aviso(true));
+    p.append('O acesso pelo celular está desligado (padrão, por segurança). Para ligar, feche o escritório e execute na pasta da instalação o comando do sistema do servidor:');
+    const comandos = el('ul'), posix = el('li'), windows = el('li');
+    posix.append('Linux/macOS (terminal): ', el('code', null, 'sh abrir_escritorio.sh celular'));
+    windows.append('Windows: ', el('code', null, 'abrir_escritorio.bat celular'));
+    comandos.append(posix, windows);
+    corpo.replaceChildren(p, comandos, el('p', null, 'Depois volte a este botão.'), aviso(true));
     return;
   }
   const todos = s.enderecos.concat(s.tailscale || []);

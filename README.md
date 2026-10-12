@@ -184,7 +184,8 @@ Os recursos globais e a integração específica Claude abaixo seguem o guia de 
   cada skill. Veja a seção "XP, níveis e skills" do [guia de compatibilidade](docs/CLAUDE-COMPATIBILIDADE.md).
 - **Sala da diretoria** (opcional): marque um agente com `"sala": "diretoria"` no config e ele ganha uma sala fechada com
   a mesa dele; em `modelos/` há um prompt genérico de Diretor e um exemplo de briefing semanal (`briefing_diretor.py`).
-- **Acesso pelo celular** (opcional, desligado por padrão): `abrir_escritorio.bat celular` liga o servidor na rede local
+- **Acesso pelo celular** (opcional, desligado por padrão): na pasta da instalação, use `sh abrir_escritorio.sh celular`
+  no Linux/macOS ou `abrir_escritorio.bat celular` no Windows para ligar o servidor na rede local
   com HTTPS (CA própria que só vale para IPs privados), pareamento por QR code de uso único, uma sessão por aparelho,
   permissões "só ver" ou "ver e conferir", histórico de ações e revogação. Veja a seção 9 do [guia de compatibilidade](docs/CLAUDE-COMPATIBILIDADE.md).
 - **Alertas** (🔔): avisa quando há algo esperando por você (PR pronto para o merge, PR com conflito ou reprovado, auditoria

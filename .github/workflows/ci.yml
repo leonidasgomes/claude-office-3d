@@ -66,6 +66,8 @@ jobs:
         run: python -W error ferramentas/testar_alertas.py
       - name: Filtro de origem do acesso pelo celular (rede_tailscale)
         run: python -W error ferramentas/testar_rede.py
+      - name: Ajuda do celular por sistema (DOM simulado, sem acesso remoto)
+        run: node ferramentas/testar_celular_ajuda.mjs
       - name: Arquivos estáticos (dados/, scripts e ocultos não são servidos por nenhum contorno)
         run: python -W error ferramentas/testar_estaticos.py
       - name: Saúde do time e orçamento de atenção (duplicados, círculos, PR parado, rascunhos, repetidos, push de resumo)
