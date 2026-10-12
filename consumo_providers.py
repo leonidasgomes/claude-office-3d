@@ -300,7 +300,9 @@ class Coletor:
             chave = hashlib.sha256(json.dumps([self.projeto, 'opencode.step', sessao_part, ident],
                 ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
             self.registro.gravar(chave, self.rotulo, self.modelo, self.origem_modelo, self.agente,
-                                 self.projeto, sessao_part, 'opencode.run/step_finish.v1',
+                                 self.projeto, sessao_part, ('opencode.v2.session.export'
+                                     if evento.get('source') == 'opencode.v2.session.export'
+                                     else 'opencode.run/step_finish.v1'),
                                  tokens_opencode(part.get('tokens')))
         for unidade, modelo, origem, fonte, tokens in amostras:
             chave = hashlib.sha256(f'{self.projeto}|{self.provider}|{self.execucao}|{unidade}'.encode()).hexdigest()

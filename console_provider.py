@@ -163,6 +163,12 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         env["OFFICE_STREAM_OWNER"] = "launcher" if prompt is not None else "plugin"
         if prompt is None and not (projeto / ".opencode" / "plugins" / "office.js").is_file():
             print("Aviso: instale o plugin com importar_opencode.py --aplicar para telemetria da TUI.", file=sys.stderr)
+    opencode_v2 = False
+    if provider.nome == "opencode" and prompt is not None and not politica_local:
+        from opencode_v2 import versao
+        opencode_v2 = versao(exe, projeto, env)
+        if opencode_v2:
+            args.insert(args.index("run") + 1, "--standalone")
     stream = provider.capacidades.eventos_json and prompt is not None
     if limites_meta is not None and not stream:raise ValueError('Meta exige execução estruturada pelo controlador')
     evidencia_skills=None
@@ -215,7 +221,10 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                                 criar_consumo=lambda nome, ident, novo: ColetorRollout(
                                     coletor.registro.arquivo, projeto_medicao, nome, ident, novo,
                                     rotulo=provider.nome+'_local' if politica_local else provider.nome,tentativa=tentativa_consumo))
-    grupo_proprio = bool(politica_local or limites_meta)
+    grupo_proprio = bool(politica_local or limites_meta or opencode_v2)
+    inicio_ms = time.time_ns() // 1_000_000
+    registros_v2 = []
+    tamanho_v2 = 0
     try:
         processo = subprocess.Popen(args, cwd=str(projeto), env=env,
                                     stdout=subprocess.PIPE if stream else None,
@@ -240,6 +249,12 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                 nova_sessao=None
                 try:
                     registro = json.loads(linha)
+                    if opencode_v2 and isinstance(registro, dict):
+                        tamanho_v2 += len(linha)
+                        if tamanho_v2 <= 262144 and len(registros_v2) < 64:
+                            registros_v2.append(registro)
+                        else:
+                            registros_v2 = [{"type": "office_export_limit"}]
                     if retorno is not None:retorno.consumir(registro)
                     if evidencia_skills is not None:
                         evidencia_skills.consumir(registro)
@@ -275,6 +290,15 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             if not evidencia['valida']:
                 print('Ativação nativa das skills não comprovada neste turno; entrega bloqueada.',file=sys.stderr)
                 if codigo==0: codigo=1
+        if codigo == 0 and opencode_v2 and retorno is not None and not retorno.sucesso():
+            from opencode_v2 import confirmar
+            confirmado = confirmar(exe, projeto, env, retorno, inicio_ms, entrada, modelo, registros_v2)
+            if confirmado is not None:
+                retorno.consumir(confirmado)
+                try:
+                    coletor.consumir(confirmado)
+                except (ValueError, TypeError, AttributeError, OSError, sqlite3.Error):
+                    pass
         if codigo==0 and retorno is not None and not retorno.sucesso():
             if retorno is not None:
                 emitir(eventos.base('erro',ferramenta='Console',resumo='Fluxo principal sem conclusão bem-sucedida',ok=False))
