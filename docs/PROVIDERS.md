@@ -330,7 +330,7 @@ filho; não alterou conta, projeto de validação ou instalações anteriores.
 Não comprova paridade integral de skills/permissões/teams nem identidade da cloud.
 
 
-### OpenCode V2: confirmação textual limitada
+### OpenCode V2: confirmação do término textual ausente
 
 O launcher identifica V2 pelo `--version` oficial e usa `run --standalone`
 sem autoaprovar permissões. A sondagem de versão tem timeout de cinco segundos
@@ -339,17 +339,24 @@ No V2 2.0.27 foi observado retorno JSON com `step_start` e `text`, sem
 `step_finish`, apesar de resposta nativa concluída. Exit zero ou texto não
 bastam para considerar sucesso.
 
-Somente para uma etapa textual sem ferramentas, o launcher pode consultar
-`session export --standalone <sessao>` local. Exige sessão, diretório, mensagem,
-modelo e texto correspondentes; usuário com o prompt desta execução, criado
-após o início; assistant concluído com `finish: stop`; e registro final idle
-com resultado `succeeded`. Export falho, antigo, divergente, incompleto ou
+Para a última etapa textual, o launcher pode consultar
+`session export --standalone <sessao>` local. Exige sessão, diretório, mensagens,
+modelo e texto correspondentes; o último usuário com o prompt desta execução,
+criado após o início; assistant concluído com `finish: stop`; e registro final
+idle com resultado `succeeded`. Etapas anteriores de `read`, `write` e `edit`
+só são aceitas com `step_finish: tool-calls` real e prova nativa correspondente
+de cada ferramenta concluída: identidade, entrada, conteúdo, modelo e tempos.
+IDs terminais devem ser válidos, únicos e distintos da prova final, preservando
+a contagem por etapa sem colisões. Um turno anterior de sessão retomada não
+substitui o turno atual; ferramenta pendente, falha ou sem término bloqueia. Export falho, antigo, divergente, incompleto ou
 cancelado mantém o bloqueio. A consulta tem timeout de 15 segundos e só lê exports de até 8 MiB após
 o processo encerrar; isso não limita a escrita temporária em disco. No POSIX,
 o grupo próprio é encerrado em falha; Windows preserva a limpeza do processo
 principal, sem garantia equivalente para descendentes. A prova normalizada
 usa origem `opencode.v2.session.export`, incluindo consumo nativo disponível.
-Ferramentas e múltiplas etapas continuam exigindo seus eventos terminais;
-esta compatibilidade não atesta TUI, plugin, edição de arquivos nem paridade V2.
+A prova recupera apenas o término textual ausente. Ferramentas continuam
+exigindo seus eventos terminais; ferramentas fora de `read`/`write`/`edit`
+e formatos desconhecidos permanecem bloqueados. Isso confirma o fluxo nativo,
+não o aceite do conteúdo, publicação, TUI, plugin ou paridade integral V2.
 
 Referência oficial: https://opencode.ai/v2/docs/cli/commands/

@@ -43,6 +43,142 @@ class V2(unittest.TestCase):
             self.reg.append(event);self.assertIsNone(self.validate());self.reg.pop()
         self.reg.pop();self.assertIsNone(self.validate())
         self.reg.append({'type':'text','part':{'text':'feito'}});self.r.falhou=True;self.assertIsNone(self.validate())
+    def ferramentas(self, nome='write'):
+        self.data['messages'][1]['time'] = {'created':108, 'completed':109}
+        self.data['messages'][-1]['time']['created'] = 110
+        entrada = {'path':'note.txt', 'content':'feito'}
+        content = [{'type':'text','text':'File operation succeeded'}]
+        tool = {'type':'tool','id':'call1','name':nome,'executed':False,
+                'state':{'status':'completed','input':entrada,'content':content,'metadata':{}},
+                'time':{'created':103,'ran':104,'completed':105}}
+        mensagem = {'type':'assistant','id':'msg_tool','finish':'tool-calls',
+                    'model':{'providerID':'opencode','id':'free'},
+                    'time':{'created':102,'completed':107},'content':[tool],
+                    'cost':0,'tokens':{'input':5,'output':2}}
+        self.data['messages'].insert(1,mensagem)
+        def evento(tipo,part):
+            return {'type':tipo,'sessionID':'ses_1','part':dict(sessionID='ses_1',messageID='msg_tool',**part)}
+        self.reg[:0] = [evento('step_start',{'type':'step-start'}),
+            evento('tool_use',{'type':'tool','id':'call1','tool':nome,
+                'state':{'status':'completed','input':entrada,'output':'File operation succeeded',
+                         'metadata':{'content':content,'metadata':{},'providerCall':{'executed':False},'providerResult':{'executed':False}},
+                         'time':{'start':103,'end':105}}}),
+            evento('step_finish',{'id':'finish_tool','type':'step-finish','reason':'tool-calls','cost':0,'tokens':{'input':5,'output':2}})]
+        self.r=Retorno('opencode')
+        for ev in self.reg:self.r.consumir(ev)
+
+    def test_file_tools_require_native_terminal_before_final_text(self):
+        for nome in ('write','read','edit'):
+            with self.subTest(nome=nome):
+                self.setUp();self.ferramentas(nome);fim=self.validate()
+                self.assertIsNotNone(fim);self.r.consumir(fim);self.assertTrue(self.r.sucesso())
+
+    def test_file_tool_native_failures_and_divergences_stay_blocked(self):
+        self.ferramentas()
+        mutations=[lambda d:d['messages'][1].update(finish='stop'),
+            lambda d:d['messages'][1].update(error='failed'),
+            lambda d:d['messages'][1].update(id='other'),
+            lambda d:d['messages'][1]['model'].update(id='paid'),
+            lambda d:d['messages'][1]['time'].update(created=99),
+            lambda d:d['messages'][1]['time'].update(completed=109),
+            lambda d:d['messages'][1].update(cost=10),
+            lambda d:d['messages'][1].update(content=[]),
+            lambda d:d['messages'][1]['content'][0].update(name='shell'),
+            lambda d:d['messages'][1]['content'][0].update(id='call2'),
+            lambda d:d['messages'][1]['content'][0].update(executed=True),
+            lambda d:d['messages'][1]['content'][0]['state'].update(status='running'),
+            lambda d:d['messages'][1]['content'][0]['state'].update(status='pending'),
+            lambda d:d['messages'][1]['content'][0]['state'].update(status='error'),
+            lambda d:d['messages'][1]['content'][0]['state'].update(error={'message':'denied'}),
+            lambda d:d['messages'][1]['content'][0]['state'].update(input={'path':'other'}),
+            lambda d:d['messages'][1]['content'][0]['state'].update(content=[]),
+            lambda d:d['messages'][1]['content'][0]['time'].update(completed=106),
+            lambda d:d['messages'][1]['content'][0]['time'].pop('ran'),
+            lambda d:d['messages'].insert(-1,copy.deepcopy(d['messages'][1])),
+            lambda d:d['messages'].insert(-1,{'type':'user','text':'\nteste','time':{'created':109}}),
+            lambda d:d['messages'][-1].update(outcome='cancelled'),
+            lambda d:d['messages'][-1].update(error='failed'),
+            lambda d:d['messages'][-1]['time'].update(created=108),
+            lambda d:d['info'].update(outcome='failed')]
+        for mutate in mutations:
+            d=copy.deepcopy(self.data);mutate(d)
+            with self.subTest(data=d):self.assertIsNone(self.validate(d))
+
+    def test_file_tool_stream_failures_missing_terminals_and_stale_turns(self):
+        self.ferramentas();original=copy.deepcopy(self.reg)
+        mutations=[lambda r:r.pop(2),lambda r:r[2]['part'].update(reason='stop'),
+            lambda r:r[2]['part'].pop('id'),
+            lambda r:r[2]['part'].update(id=''),
+            lambda r:r[2]['part'].update(id='msg_1_office_verified'),
+            lambda r:r[1]['part']['state'].update(status='error'),
+            lambda r:r[1]['part']['state'].update(status='pending'),
+            lambda r:r[1]['part']['state'].update(input={'path':'different'}),
+            lambda r:r[1]['part']['state']['metadata'].update(content=[]),
+            lambda r:r[1]['part']['state']['metadata'].pop('providerResult'),
+            lambda r:r[1]['part']['state']['time'].update(start=104),
+            lambda r:r[1]['part'].update(id='other'),
+            lambda r:r[1].update(sessionID='other'),
+            lambda r:r[1]['part'].update(messageID='other'),
+            lambda r:r.insert(2,copy.deepcopy(r[1])),
+            lambda r:r.insert(1,{'type':'error'}),
+            lambda r:r.append({'type':'permission'}),
+            lambda r:r[-1]['part'].update(text='other')]
+        for mutate in mutations:
+            self.reg=copy.deepcopy(original);mutate(self.reg)
+            with self.subTest(reg=self.reg):self.assertIsNone(self.validate())
+        self.reg=original
+        for t in (111,float('nan'),float('inf'),True):
+            self.assertIsNone(validar_export(self.data,self.r,self.raiz,t,self.prompt,self.model,self.reg))
+
+    def test_generated_terminal_id_must_fit_consumption_contract(self):
+        long_id='m'*256
+        self.data['messages'][1]['id']=long_id
+        for ev in self.reg:ev['part']['messageID']=long_id
+        self.r=Retorno('opencode')
+        for ev in self.reg:self.r.consumir(ev)
+        self.assertIsNone(self.validate())
+
+    def test_duplicate_terminal_ids_across_tool_steps_fail_closed(self):
+        self.ferramentas()
+        anterior=copy.deepcopy(self.data['messages'][1]);anterior['id']='msg_earlier'
+        anterior['time']={'created':101,'completed':102}
+        anterior['content'][0]['id']='call0';anterior['content'][0]['time']={'created':101,'ran':101,'completed':102}
+        self.data['messages'].insert(1,anterior)
+        reg=copy.deepcopy(self.reg[:3])
+        for evento in reg:evento['part']['messageID']='msg_earlier'
+        reg[1]['part']['id']='call0';reg[1]['part']['state']['time']={'start':101,'end':102}
+        self.reg[:0]=reg
+        self.assertIsNone(self.validate())
+        self.reg[2]['part']['id']='finish_earlier'
+        self.assertIsNotNone(self.validate())
+
+    def test_file_tool_and_final_usage_are_distinct_and_idempotent(self):
+        import sqlite3
+        from consumo_providers import Coletor,tokens_opencode
+        self.ferramentas()
+        tokens={'input':7,'output':3,'reasoning':2,'cache':{'read':11,'write':13}}
+        self.data['messages'][1]['tokens']=tokens;self.reg[2]['part']['tokens']=tokens
+        path=self.raiz/'file-usage.db';collector=Coletor(path,'opencode',self.raiz,'Dev',self.model)
+        proof=self.validate();self.assertIsNotNone(proof)
+        for _ in range(2):
+            for event in self.reg+[proof]:collector.consumir(event)
+        expected=[tokens_opencode(m['tokens']) for m in self.data['messages'] if m['type']=='assistant']
+        with sqlite3.connect(path) as db:
+            row=db.execute('select count(*),sum(entrada),sum(cache),sum(saida),sum(total) from consumo').fetchone()
+            self.assertEqual(row,(2,*(sum(t[k] for t in expected) for k in ('entrada','cache','saida','total'))))
+            self.assertEqual(set(r[0] for r in db.execute('select fonte from consumo')),{'opencode.run/step_finish.v1','opencode.v2.session.export'})
+
+    def test_resume_matches_only_latest_user_and_whole_exact_turn(self):
+        self.ferramentas()
+        self.data['messages'][:0]=[{'type':'user','text':'\nteste','time':{'created':1}},
+                                 {'type':'assistant','id':'old'}, {'type':'idle','outcome':'succeeded'}]
+        self.assertIsNotNone(self.validate())
+        self.data['messages'][3]['text']='\nnew task'
+        self.assertIsNone(self.validate())
+        self.data['messages'][3]['text']='\nteste'
+        self.data['messages'][3]['time']['created']=99
+        self.assertIsNone(self.validate())
+
     def test_v1_completion_remains_accepted_without_export(self):
         self.r.consumir({'type':'step_finish','sessionID':'ses_1','part':{'type':'step-finish','sessionID':'ses_1','messageID':'msg_1','reason':'stop'}})
         self.assertTrue(self.r.sucesso());self.assertIsNone(self.validate())
