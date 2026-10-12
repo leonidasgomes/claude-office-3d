@@ -80,6 +80,7 @@ jobs:
           python ferramentas/testar_atalho_desktop.py
           python ferramentas/testar_instalacao.py
           python -W error ferramentas/testar_atualizacao_instalacao.py
+          python -W error ferramentas/testar_atualizacao_windows.py
           python -W error ferramentas/testar_jornada_instalada.py
       - name: Alertas (detector, Web Push cifrado, VAPID, cota)
         run: python -W error ferramentas/testar_alertas.py
@@ -241,6 +242,8 @@ jobs:
           python -W error ferramentas/testar_preparar_maquina.py
       - name: Metas do cartão no Windows
         run: python -W error ferramentas/testar_metas_cartao.py
+      - name: Atualização Windows (inspeção nativa, recusas seguras e instalação nova)
+        run: python -W error ferramentas/testar_atualizacao_windows.py
 
   compatibilidade_python:
     runs-on: ubuntu-latest
