@@ -8,7 +8,7 @@
 - Atualização conservadora de instalações existentes preserva dados/configuração e usa plano, backup, identidade e bloqueios antes da troca. Este caminho está qualificado somente em Linux com permissões comuns; ACLs e metadados especiais bloqueiam a atualização. Instalação nova permanece portátil. Faça backup e siga docs/ATUALIZACAO.md; não instale sobre o Claude legado.
 - Jornada instalada determinística exercita aplicativo, HTTP, subprocessos, SQLite e worktree reais com dados sintéticos. Provider e GitHub são fronteiras simuladas: isso não comprova a jornada integral com contas, modelos e publicação reais.
 - Novos snapshots da galeria no Linux armazenam corpos fora do SQLite, com hash, orçamento e proteção contra concorrência. Windows/macOS preservam o formato inline. Bancos antigos acima do limite não são migrados nem compactados; transportar corpos externos entre sistemas operacionais ainda não é suportado.
-- Gates nativos Linux em produção continuam experimentais e desativados por padrão. Autenticação, disponibilidade dos modelos e validação na máquina real continuam separadas.
+- Gates nativos Linux em produção permanecem indisponíveis; o fluxo bloqueia sua execução/publicação. Autenticação, disponibilidade dos modelos e validação na máquina real continuam separadas.
 - Pacote e links atualizados para esta prévia; nenhum dado, conta ou configuração pessoal acompanha o ZIP.
 
 ## 2.0.0-dev.6

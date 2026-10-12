@@ -61,7 +61,7 @@ operacionais ainda não é suportado. Veja [galeria](GALERIA_ENTREGAS.md).
 A jornada instalada usa aplicativo, HTTP, processos, SQLite e worktree reais em
 ambiente controlado, mas simula as fronteiras externas de provider e GitHub.
 Ela não comprova a operação integral com contas/modelos reais. Gates nativos
-Linux em produção continuam desativados por padrão.
+Linux em produção permanecem indisponíveis; o fluxo bloqueia sua execução/publicação.
 
 ## Claude novo
 
