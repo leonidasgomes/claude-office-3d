@@ -54,6 +54,12 @@ class Fluxo(unittest.TestCase):
         for alvo,valor in [('gestao_projeto.carregar',self.cfg),('ciclo_gdd.documentos',[])]:
             p=patch(alvo,return_value=valor);p.start();self.addCleanup(p.stop)
     def executar(self):return r.encaminhar(self.p,self.cfg,[copy.deepcopy(self.pr)],self.fila,[],self.p,self.k,chamar=self.consulta)
+    def test_contexto_explica_politica_sem_inventar_separacao(self):
+        pacote,_=r.preparar(self.p,self.cfg,self.pr,[],self.k)
+        self.assertEqual(pacote['politica_revisao'],{'ativo':True,'clouds_distintas':1,
+            'separar_autor':False,'auditor_ativo':False})
+        self.assertEqual(pacote['autoria'],'não comprovada')
+
     def test_publica_comentario_uma_vez_sem_mudar_rascunho(self):
         self.assertEqual(self.executar()['estado'],'publicado');self.assertIsNone(self.executar())
         self.assertEqual(self.calls,['ceo','revisor_preliminar']);self.assertEqual(len(self.posts),1)
@@ -74,6 +80,95 @@ class Fluxo(unittest.TestCase):
         self.executar();f=next((self.p/'revisoes_preliminares').glob('*.json'));d=json.loads(f.read_text(encoding='utf-8'))
         d['estado']='publicando';d.pop('comentario');f.write_text(json.dumps(d),encoding='utf-8')
         self.assertIsNone(self.executar());self.assertEqual(len(self.posts),1);self.assertEqual(len(self.calls),2)
+        self.assertEqual(json.loads(f.read_text(encoding='utf-8'))['estado'],'publicado')
+
+    def legado(self,estado='publicando',**mudancas):
+        from correcoes_prs import assinatura
+        identidade={'repo':'o/r','pr':7,'sha':'a'*40,'politica':assinatura(self.cfg),'fontes':[]}
+        identidade.update(mudancas)
+        ident=assinatura(identidade)
+        recibo={'identidade':identidade,'estado':estado,'corpo':'<!-- office-revisao-preliminar:'+ident+' -->\nParecer antigo',
+                'publicador':'usuario','ceo':{'acao':'aguardar','motivo':'política antiga'}}
+        if estado=='publicado':recibo['comentario']=19
+        pasta=self.p/'revisoes_preliminares';pasta.mkdir(exist_ok=True)
+        f=pasta/(ident+'.json');f.write_text(json.dumps(recibo),encoding='utf-8')
+        return f,recibo
+
+    def test_migracao_reconcilia_publicado_sem_repetir_apos_reinicio(self):
+        f,antigo=self.legado()
+        self.posts.append({'id':19,'body':antigo['corpo'],'user':{'login':'usuario'}})
+        for _ in range(3):self.assertIsNone(self.executar())
+        salvo=json.loads(f.read_text(encoding='utf-8'))
+        self.assertEqual(salvo,{**antigo,'estado':'publicado','comentario':19})
+        self.assertEqual(self.calls,[]);self.assertEqual(len(self.posts),1)
+        self.assertEqual(list(f.parent.glob('*.json')),[f])
+        self.assertFalse(any(len(c.args)>1 and c.args[1]=='POST' for c in self.k.chamar.call_args_list))
+
+    def test_migracao_publicacao_nao_encontrada_nao_autoriza_repeticao(self):
+        f,_=self.legado();antes=f.read_bytes()
+        for _ in range(2):self.assertIsNone(self.executar())
+        self.assertEqual(f.read_bytes(),antes);self.assertEqual(self.calls,[]);self.assertEqual(self.posts,[])
+        self.assertEqual(list(f.parent.glob('*.json')),[f])
+
+    def test_migracao_falha_de_consulta_preserva_incerteza(self):
+        f,_=self.legado();antes=f.read_bytes()
+        def paginas(url):
+            if url.endswith('/comments'):raise RuntimeError('consulta indisponível')
+            return copy.deepcopy(self.arquivos)
+        self.k._paginas.side_effect=paginas
+        with self.assertRaisesRegex(RuntimeError,'consulta indisponível'):self.executar()
+        self.assertEqual(f.read_bytes(),antes);self.assertEqual(self.calls,[]);self.assertEqual(self.posts,[])
+        self.assertEqual(list(f.parent.glob('*.json')),[f])
+
+    def test_migracao_comentarios_ambiguos_ou_invalidos_nao_confirmam(self):
+        f,antigo=self.legado();antes=f.read_bytes()
+        comentario={'id':19,'body':antigo['corpo'],'user':{'login':'usuario'}}
+        casos=[[comentario,{**comentario,'id':20}], [{**comentario,'id':True}],
+               [{**comentario,'id':0}], [{**comentario,'body':'outro corpo'}],
+               [{**comentario,'user':{'login':'outro'}}]]
+        for comentarios in casos:
+            with self.subTest(comentarios=comentarios):
+                self.posts[:]=comentarios
+                self.assertIsNone(self.executar())
+                self.assertEqual(f.read_bytes(),antes);self.assertEqual(self.calls,[])
+                self.assertEqual(self.posts,comentarios);self.assertEqual(list(f.parent.glob('*.json')),[f])
+
+    def test_migracao_publicado_antigo_nao_repete(self):
+        f,_=self.legado('publicado');antes=f.read_bytes()
+        self.assertIsNone(self.executar());self.assertIsNone(self.executar())
+        self.assertEqual(f.read_bytes(),antes);self.assertEqual(self.calls,[]);self.assertEqual(self.posts,[])
+
+    def test_migracao_espera_antiga_exige_nova_decisao_sem_aprovar(self):
+        f,_=self.legado('aguardando');antes=f.read_bytes();self.ceo='aguardar'
+        self.assertIsNone(self.executar());self.assertIsNone(self.executar())
+        self.assertEqual(self.calls,['ceo']);self.assertEqual(self.posts,[]);self.assertEqual(f.read_bytes(),antes)
+        novos=[x for x in f.parent.glob('*.json') if x!=f];self.assertEqual(len(novos),1)
+        novo=json.loads(novos[0].read_text(encoding='utf-8'))
+        self.assertEqual(novo['identidade']['contrato'],2);self.assertEqual(novo['estado'],'aguardando')
+
+    def test_migracao_espera_antiga_permite_nova_revisao_apenas_uma_vez(self):
+        f,_=self.legado('aguardando');antes=f.read_bytes()
+        self.assertEqual(self.executar()['estado'],'publicado');self.assertIsNone(self.executar())
+        self.assertEqual(self.calls,['ceo','revisor_preliminar']);self.assertEqual(len(self.posts),1)
+        self.assertEqual(f.read_bytes(),antes)
+
+    def test_migracao_nao_confunde_repo_pr_sha_politica_ou_fontes(self):
+        for mudanca in ({'repo':'outra/repo'},{'pr':8},{'sha':'b'*40},{'politica':'c'*64},
+                         {'fontes':[{'caminho':'GDD.md','sha256':'d'*64}]}):self.legado(**mudanca)
+        self.assertEqual(self.executar()['estado'],'publicado');self.assertIsNone(self.executar())
+        self.assertEqual(self.calls,['ceo','revisor_preliminar']);self.assertEqual(len(self.posts),1)
+
+    def test_migracao_identidade_adulterada_bloqueia(self):
+        f,antigo=self.legado();antigo['identidade']['pr']=8
+        f.write_text(json.dumps(antigo),encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'Identidade'):self.executar()
+        self.assertEqual(self.calls,[]);self.assertEqual(self.posts,[])
+
+    def test_migracao_reconcilia_legado_mesmo_com_recibo_v2_existente(self):
+        self.ceo='aguardar';self.executar();self.calls.clear()
+        f,antigo=self.legado()
+        self.posts.append({'id':19,'body':antigo['corpo'],'user':{'login':'usuario'}})
+        self.assertIsNone(self.executar());self.assertEqual(self.calls,[]);self.assertEqual(len(self.posts),1)
         self.assertEqual(json.loads(f.read_text(encoding='utf-8'))['estado'],'publicado')
 
 if __name__=='__main__':unittest.main()
