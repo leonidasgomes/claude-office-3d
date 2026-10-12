@@ -45,6 +45,10 @@ jobs:
           python -W error ferramentas/testar_retorno_console.py
           python -W error ferramentas/testar_opencode_v2.py
           python -W error ferramentas/testar_pipe_console.py
+      - name: Galeria de entregas e snapshots por commit
+        run: |
+          python -W error ferramentas/testar_galeria_entregas.py
+          node ferramentas/testar_galeria_entregas.mjs
       - name: Cadastros por projeto e proteção de histórico
         run: |
           python -W error ferramentas/testar_cadastro_gestao.py

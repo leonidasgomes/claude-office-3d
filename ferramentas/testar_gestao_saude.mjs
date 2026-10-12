@@ -55,6 +55,7 @@ vm.runInContext(fs.readFileSync(new URL('../merge_form.mjs',import.meta.url),'ut
 vm.runInContext(fs.readFileSync(new URL('../indicadores_providers.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fs.readFileSync(new URL('../agentes_nativos_form.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fs.readFileSync(new URL('../metas_form.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
+vm.runInContext(fs.readFileSync(new URL('../galeria_entregas.mjs',import.meta.url),'utf8').replace(/^export /gm,''),contexto);
 vm.runInContext(fonte,contexto);
 await vm.runInContext('painel.open=true; carregar()',contexto);
 const texto=e=>[e.textContent,...e.children.map(texto)].join('\n');
