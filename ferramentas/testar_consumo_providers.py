@@ -359,7 +359,7 @@ class Consumo(unittest.TestCase):
             processo=SimpleNamespace(stdout=io.StringIO(json.dumps(inicio)+'\n'+json.dumps(ev)+'\n'),stdin=io.StringIO(),wait=lambda:0)
             provider=SimpleNamespace(nome='opencode',capacidades=SimpleNamespace(eventos_json=True),
                                      comando=lambda *args:['opencode','run','Tarefa'])
-            with patch('console_provider.subprocess.Popen',return_value=processo), \
+            with patch('opencode_v2.versao',return_value=False), patch('console_provider.subprocess.Popen',return_value=processo), \
                  patch('emit_evento.gravar') as feed, patch('sys.stdout',new_callable=io.StringIO) as saida:
                 self.assertEqual(console_provider.executar(provider,'opencode',pasta,'Dev','Tarefa',
                     modelo='openai/modelo',banco=pasta/'feed.db'),0)

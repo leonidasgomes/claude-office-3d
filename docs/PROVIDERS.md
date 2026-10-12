@@ -328,3 +328,28 @@ inalterada. Kanban foi simulado; sem PR, a reserva ficou bloqueada, sem revisão
 ou merge. A prova usou permissões restritas e configuração somente do processo
 filho; não alterou conta, projeto de validação ou instalações anteriores.
 Não comprova paridade integral de skills/permissões/teams nem identidade da cloud.
+
+
+### OpenCode V2: confirmação textual limitada
+
+O launcher identifica V2 pelo `--version` oficial e usa `run --standalone`
+sem autoaprovar permissões. A sondagem de versão tem timeout de cinco segundos
+e grupo próprio no POSIX, recolhido também em interrupção. V1 mantém seu comando e contrato anteriores.
+No V2 2.0.27 foi observado retorno JSON com `step_start` e `text`, sem
+`step_finish`, apesar de resposta nativa concluída. Exit zero ou texto não
+bastam para considerar sucesso.
+
+Somente para uma etapa textual sem ferramentas, o launcher pode consultar
+`session export --standalone <sessao>` local. Exige sessão, diretório, mensagem,
+modelo e texto correspondentes; usuário com o prompt desta execução, criado
+após o início; assistant concluído com `finish: stop`; e registro final idle
+com resultado `succeeded`. Export falho, antigo, divergente, incompleto ou
+cancelado mantém o bloqueio. A consulta tem timeout de 15 segundos e só lê exports de até 8 MiB após
+o processo encerrar; isso não limita a escrita temporária em disco. No POSIX,
+o grupo próprio é encerrado em falha; Windows preserva a limpeza do processo
+principal, sem garantia equivalente para descendentes. A prova normalizada
+usa origem `opencode.v2.session.export`, incluindo consumo nativo disponível.
+Ferramentas e múltiplas etapas continuam exigindo seus eventos terminais;
+esta compatibilidade não atesta TUI, plugin, edição de arquivos nem paridade V2.
+
+Referência oficial: https://opencode.ai/v2/docs/cli/commands/

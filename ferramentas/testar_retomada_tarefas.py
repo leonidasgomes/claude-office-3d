@@ -60,7 +60,7 @@ class Retomada(unittest.TestCase):
         def iniciar(*a,**kw):
             self.cwds.append(Path(kw['cwd']).resolve())
             return nativo(*a,**kw)
-        with patch.object(console_provider.subprocess,'Popen',side_effect=iniciar):
+        with patch('opencode_v2.versao',return_value=False), patch.object(console_provider.subprocess,'Popen',side_effect=iniciar):
             return console_provider.executar(*args,**kwargs,banco=self.f.work/'feed.db')
 
     def previa(self):return gc.preparar_retomada(self.projeto,42,self.trabalho,kanban=self.f.k)[0]
