@@ -315,7 +315,7 @@ def _buscar(projetos, ident, consulta):
     if (not cfg['ativo'] or (repo and (not REPO.fullmatch(repo) or repo.split('/')[-1] in ('.', '..')))):
         raise ValueError('Projeto indisponível')
     saida = {'ok': True, 'projeto_id': ident, 'resultados': [], 'fontes': [], 'limitado': False,
-             'limite': 'Busca literal nas três fontes configuradas e em até 100 conclusões recentes. Histórico exige Python 3.11+ e snapshot SQLite de até 32 MiB sem WAL ativo; arquivos da galeria contam nesse tamanho. Referências históricas não substituem regras atuais.'}
+             'limite': 'Busca literal nas três fontes configuradas e em até 100 conclusões recentes. Histórico exige Python 3.11+ e snapshot SQLite de até 32 MiB sem WAL ativo; bytes legados inline da galeria contam nesse tamanho; novos corpos externos não. Referências históricas não substituem regras atuais.'}
     fontes = []
     for papel in ('regras', 'produto', 'arquitetura'):
         try:

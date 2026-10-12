@@ -60,6 +60,7 @@ jobs:
       - name: Galeria de entregas e snapshots por commit
         run: |
           python -W error ferramentas/testar_galeria_entregas.py
+          python -W error ferramentas/testar_armazenamento_galeria.py
           node ferramentas/testar_galeria_entregas.mjs
       - name: Cadastros por projeto e proteção de histórico
         run: |

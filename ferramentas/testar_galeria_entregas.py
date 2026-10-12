@@ -46,6 +46,8 @@ class Galeria(unittest.TestCase):
                        'branch': 'work/teste', 'token': self.token, 'tentativa': self.tentativa,
                        'sha': self.sha, 'pr': 'https://github.com/teste/projeto/pull/8'}
         self.patches = ExitStack(); self.addCleanup(self.patches.close)
+        self.patches.enter_context(patch.object(g.armazenamento, 'APP', self.raiz))
+        self.patches.enter_context(patch.object(g.armazenamento, 'APP_ID', g.armazenamento._id(self.raiz.lstat())))
         self.patches.enter_context(patch('gestao_cli.pasta_dados', return_value=self.dados))
         self.patches.enter_context(patch('gestao_projeto.carregar', return_value=self.cfg))
 

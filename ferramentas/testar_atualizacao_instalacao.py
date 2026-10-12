@@ -39,7 +39,7 @@ class Atualizacao(unittest.TestCase):
 
     def test_upgrade_preserva_tudo_e_reverte(self):
         self.instalar()
-        for nome in ('dados/banco.db','dados/entregas/arte.png','.office/projeto.json','skills/minha.md','.claude/settings.json','NOTAS.md','privado.txt'):
+        for nome in ('dados/banco.db','dados/entregas/arte.png','dados/gestao/projeto/galeria-blobs-v1/'+'a'*64,'dados/gestao/projeto/.galeria-orcamento.lock','.office/projeto.json','skills/minha.md','.claude/settings.json','NOTAS.md','privado.txt'):
             p=self.app/nome;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'privado\x00teste')
         cfg=self.app/'config.json';c=a.json_ler(cfg);c['personalizado']={'qualquer':True};cfg.write_text(json.dumps(c))
         (self.app/'.venv/bin').mkdir(parents=True);(self.app/'.venv/bin/python').symlink_to(sys.executable)
@@ -52,6 +52,16 @@ class Atualizacao(unittest.TestCase):
         self.assertEqual(Path(r['recibo']).stat().st_mode & 0o777,0o600)
         a.reverter(r['recibo']);result=a.reverter(r['recibo'],True)
         self.assertEqual(a.inventario(self.app),antes);self.assertTrue(Path(result['preservado']).is_dir())
+
+    def test_reversao_recusa_alteracao_de_blob_externo(self):
+        self.instalar()
+        p=self.app/'dados/gestao/projeto/galeria-blobs-v1'/('b'*64)
+        p.parent.mkdir(parents=True);p.parent.chmod(0o700);p.write_bytes(b'snapshot');p.chmod(0o600)
+        r=a.aplicar(self.upgrade())
+        self.assertEqual((Path(r['backup'])/p.relative_to(self.app)).read_bytes(),b'snapshot')
+        p.write_bytes(b'novo trabalho')
+        with self.assertRaises(ValueError):a.reverter(r['recibo'],True)
+        self.assertEqual(p.read_bytes(),b'novo trabalho')
 
     def test_dev5_sem_manifesto_baseline_e_atalhos(self):
         self.instalar();(self.app/a.MANIFESTO).unlink()
