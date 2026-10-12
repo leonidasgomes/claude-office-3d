@@ -39,7 +39,7 @@ class _API:
             (self.k, 'CloseHandle', [w.HANDLE], w.BOOL),
             (self.k, 'GetFileInformationByHandleEx', [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD], w.BOOL),
             (self.k, 'LocalFree', [w.LPVOID], w.LPVOID),
-            (self.a, 'GetFileSecurityW', [w.LPCWSTR, w.DWORD, w.LPVOID, w.DWORD, ctypes.POINTER(w.DWORD)], w.BOOL),
+            (self.a, 'GetSecurityInfo', [w.HANDLE, ctypes.c_int, w.DWORD, w.LPVOID, w.LPVOID, w.LPVOID, w.LPVOID, ctypes.POINTER(w.LPVOID)], w.DWORD),
             (self.a, 'ConvertSecurityDescriptorToStringSecurityDescriptorW', [w.LPVOID, w.DWORD, w.DWORD, ctypes.POINTER(w.LPWSTR), ctypes.POINTER(w.DWORD)], w.BOOL),
             (self.n, 'NtQueryInformationFile', [w.HANDLE, w.LPVOID, w.LPVOID, w.ULONG, ctypes.c_int], w.LONG),
         ]
@@ -60,20 +60,22 @@ class _API:
         if formato.value != 'NTFS':
             raise ValueError('Volume não NTFS; inspeção recusada')
 
-    def seguranca(self, p):
+    def seguranca(self, handle):
         # Somente owner/group/DACL. Não pedir SACL nem habilitar privilégios.
-        tamanho = w.DWORD()
-        ok = self.a.GetFileSecurityW(str(p), 7, None, 0, ctypes.byref(tamanho))
-        if ok or ctypes.get_last_error() != 122 or not 0 < tamanho.value <= 1024 * 1024:
-            raise OSError('Não foi possível dimensionar o descritor de segurança')
-        sd = ctypes.create_string_buffer(tamanho.value)
-        self.conferir(self.a.GetFileSecurityW(str(p), 7, sd, len(sd), ctypes.byref(tamanho)))
+        # GetFileSecurity legado pode omitir INHERITED_ACE. Lê pelo handle com
+        # GetSecurityInfo e mantém os flags, sem normalizá-los para passar o teste.
+        sd = w.LPVOID()
+        erro = self.a.GetSecurityInfo(handle, 1, 7, None, None, None, None, ctypes.byref(sd))
+        if erro:
+            raise ctypes.WinError(erro)
         texto = w.LPWSTR()
-        self.conferir(self.a.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd, 1, 7, ctypes.byref(texto), None))
         try:
+            self.conferir(self.a.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd, 1, 7, ctypes.byref(texto), None))
             return texto.value
         finally:
-            self.k.LocalFree(ctypes.cast(texto, w.LPVOID))
+            if texto:
+                self.k.LocalFree(ctypes.cast(texto, w.LPVOID))
+            self.k.LocalFree(sd)
 
     def arquivo(self, p):
         st = p.lstat()
@@ -117,7 +119,7 @@ class _API:
                 raise OSError('Inspeção de atributos estendidos NTFS falhou')
             if ea.value:
                 raise ValueError('Atributos estendidos NTFS não suportados: ' + str(p))
-            return {'atributos': atributos, 'owner_group_dacl': self.seguranca(p)}
+            return {'atributos': atributos, 'owner_group_dacl': self.seguranca(h)}
         finally:
             self.k.CloseHandle(h)
 
