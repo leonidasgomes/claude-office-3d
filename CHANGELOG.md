@@ -2,6 +2,17 @@
 
 ## Não lançado
 
+## 2.0.0-dev.8
+
+- A tentativa dev.7 foi bloqueada pela qualificação antes de publicar o ZIP: o teste de atualização usava a própria versão como destino futuro. Fixtures agora usam versões sintéticas independentes da versão publicada, preservando as verificações de segurança e idempotência; nenhum gate foi dispensado. A tag dev.7 permanece no histórico sem pacote instalável.
+
+- Publicação agora exige o CI completo no commit exato da tag e confere versão, edição, manifesto integral, SHA-256 e inicialização HTTP do ZIP extraído antes do upload. Assets existentes não são substituídos; esta edição permanece Pre-release, sem mudar o Latest estável 1.19.1.
+- Atualização conservadora de instalações existentes preserva dados/configuração e usa plano, backup, identidade e bloqueios antes da troca. Este caminho está qualificado somente em Linux com permissões comuns; ACLs e metadados especiais bloqueiam a atualização. Instalação nova permanece portátil. Faça backup e siga docs/ATUALIZACAO.md; não instale sobre o Claude legado.
+- Jornada instalada determinística exercita aplicativo, HTTP, subprocessos, SQLite e worktree reais com dados sintéticos. Provider e GitHub são fronteiras simuladas: isso não comprova a jornada integral com contas, modelos e publicação reais.
+- Novos snapshots da galeria no Linux armazenam corpos fora do SQLite, com hash, orçamento e proteção contra concorrência. Windows/macOS preservam o formato inline. Bancos antigos acima do limite não são migrados nem compactados; transportar corpos externos entre sistemas operacionais ainda não é suportado.
+- Gates nativos Linux em produção permanecem indisponíveis; o fluxo bloqueia sua execução/publicação. Autenticação, disponibilidade dos modelos e validação na máquina real continuam separadas.
+- Pacote e links atualizados para esta prévia; nenhum dado, conta ou configuração pessoal acompanha o ZIP.
+
 ## 2.0.0-dev.6
 
 - Busca de contexto por projeto reúne documentos canônicos configurados e referências de entregas mergeadas, com proveniência e isolamento entre projetos. É somente leitura; não envia conteúdo a modelos nem altera regras ou memória dos agentes.
