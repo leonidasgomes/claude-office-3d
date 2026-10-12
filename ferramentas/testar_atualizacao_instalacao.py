@@ -21,12 +21,16 @@ class Atualizacao(unittest.TestCase):
         self.raiz=Path(self.temp.name);self.origem=self.raiz/'pacote novo';self.origem.mkdir()
         for nome in instalar.PACOTE:
             p=self.origem/nome;p.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(RAIZ/nome,p)
+        # Versões sintéticas isolam o cenário da versão publicada do checkout.
+        (self.origem/'VERSION').write_text('2.0.0-teste.1\n')
         self.app=self.raiz/'app com espaços';self.cfg={'porta':64531,'projetos':[],'titulo':'teste'}
 
     def instalar(self):return a.aplicar(a.preparar(self.app,self.origem,config=self.cfg))
     def upgrade(self):
-        (self.origem/'VERSION').write_text('2.0.0-dev.7\n')
-        return a.preparar(self.app,self.origem)
+        (self.origem/'VERSION').write_text('2.0.0-teste.2\n')
+        plano=a.preparar(self.app,self.origem)
+        self.assertNotEqual(plano['antigo'],plano['novo'])
+        return plano
 
     def test_previa_limpa_instala_repete(self):
         plano=a.preparar(self.app,self.origem,config=self.cfg)
