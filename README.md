@@ -12,6 +12,9 @@ No escritório, abra **⚙️ → Gestão das equipes** para configurar e acompa
 os projetos. As áreas CEO e diretor, Equipes, Funcionários e Trabalho e indicadores
 separam os controles. Equipes e funcionários podem ser cadastrados, editados e
 excluídos com proteção de vínculos pendentes e preservação do histórico.
+A **Galeria de entregas**, em Trabalho e indicadores, abre versões declaradas por
+cartão/tentativa/PR/commit, com SHA-256 e prévias seguras. Veja como
+[registrar e conferir entregas](docs/GALERIA_ENTREGAS.md).
 A roda do mouse aproxima a região sob o ponteiro.
 Personagens cadastrados permanecem na cena mesmo sem console aberto. A lista
 distingue cadastro, histórico e atividade recente observada, com a fonte do evento;

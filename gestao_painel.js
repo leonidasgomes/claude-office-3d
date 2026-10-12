@@ -13,6 +13,8 @@ import { formularioMetas, renderizarMetas } from './metas_form.mjs';
 import { linhasConsumo, linhasVisaoGeral } from './indicadores_providers.mjs';
 import { renderizarCoordenacoes } from './coordenacoes_painel.mjs';
 import { formularioCoordenacao, renderizarPedidos, botaoExecutarCoordenacao, botaoConciliarPedido } from './coordenacao_form.mjs';
+import { criarGaleriaEntregas } from './galeria_entregas.mjs';
+const galeriaEntregas = criarGaleriaEntregas();
 const botao = document.getElementById('btnGestao');
 const painel = document.createElement('dialog');
 painel.className = 'gestaoPainel';
@@ -40,13 +42,15 @@ function linha(tag, texto, pai = corpo) {
 }
 const executor = (e) => `${e.console} · ${e.modelo || 'padrão do console'} · ${e.execucao || 'cloud'}${e.sandbox ? ' · sandbox '+e.sandbox : ''}`;
 async function carregar() {
-  if (!painel.open || document.hidden || carregando) return;
+  if (!painel.open || document.hidden || carregando || galeriaEntregas.aberta) return;
   if (corpo.querySelector('details[open]')) return; // preserva preenchimento durante atualização automática
   carregando = true;
   try {
     const r = await fetch('/api/gestao', { cache: 'no-store' });
     if (!r.ok) throw new Error(`Servidor respondeu ${r.status}`);
-    const dados = await r.json(); corpo.replaceChildren();
+    const dados = await r.json();
+    if (galeriaEntregas.aberta || !painel.open) return;
+    corpo.replaceChildren();
     if(dados.ponte_eventos) {
       const ponte=document.createElement('details');corpo.append(ponte);linha('summary','Diagnóstico de outras instalações',ponte);
       linha('h4','Acompanhamento de outras instalações',ponte);
@@ -84,6 +88,8 @@ async function carregar() {
       }
       const lideranca=areas.lideranca||secao,equipes=areas.equipes||secao,funcionarios=areas.funcionarios||secao;
       const trabalho=areas.trabalho||secao;
+      const botaoEntregas=linha('button','Galeria de entregas',trabalho);botaoEntregas.type='button';
+      botaoEntregas.addEventListener('click',()=>galeriaEntregas.abrir(p.id,p.nome,botaoEntregas));
       if(p.ciclo_config?.ativo) {
         const ciclo=p.ciclo||{};
         linha('h4','Trabalho automático pelo GDD',trabalho);
@@ -284,7 +290,7 @@ async function carregar() {
       const alvo=corpo.querySelector(`section[data-projeto="${projetoAlerta}"]`);
       if (alvo) { alvo.tabIndex=-1; alvo.scrollIntoView({block:'start'}); alvo.focus(); projetoAlerta=''; }
     }
-  } catch (e) { corpo.replaceChildren(); linha('p', `Gestão indisponível: ${e.message}`); }
+  } catch (e) { if (!galeriaEntregas.aberta) { corpo.replaceChildren(); linha('p', `Gestão indisponível: ${e.message}`); } }
   finally { carregando = false; }
 }
 function abrirGestao() {
@@ -304,5 +310,5 @@ atualizar.addEventListener('click', async () => {
   corpo.querySelectorAll('details').forEach(d => { d.open=false; });
   await carregar();
 });
-painel.addEventListener('close', () => { clearInterval(timer); timer = null; document.getElementById(document.documentElement.classList.contains('compacto') ? 'btnMenu' : 'btnOpcoes')?.focus(); });
+painel.addEventListener('close', () => { galeriaEntregas.fechar(); clearInterval(timer); timer = null; document.getElementById(document.documentElement.classList.contains('compacto') ? 'btnMenu' : 'btnOpcoes')?.focus(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });

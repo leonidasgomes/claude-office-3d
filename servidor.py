@@ -1246,6 +1246,9 @@ class Handler(rede.HandlerSeguro):
         return acao_xp(rota, dados, ident) if rota in ACOES_XP else None
 
     def api_get(self, rota, qs, ident):
+        if rota in ("/api/gestao/entregas", "/api/gestao/entregas/arquivo"):
+            import galeria_entregas
+            return galeria_entregas.api(cfg()['projetos'],parse_qs(urlparse(self.path).query,keep_blank_values=True),ident,conteudo=rota.endswith('/arquivo'))
         if rota == '/api/gestao/ciclo':
             import ciclo_painel
             if set(qs)!={'projeto'} or len(qs['projeto'])!=1:

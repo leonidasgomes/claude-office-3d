@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sqlite3
 from controlador_local import RAIZ, atomico
 
 
@@ -23,9 +24,13 @@ def publicar(projeto,dados):
     from controle_tarefas import Controle
     from gestao_projeto import carregar
     campos={'cartao','worktree','titulo','corpo'}
-    atualizar=isinstance(dados,dict) and set(dados)==campos|{'pr','head_sha'}
-    if not isinstance(dados,dict) or (set(dados)!=campos and not atualizar):
+    opcionais={'arquivos_entrega'} if isinstance(dados,dict) and 'arquivos_entrega' in dados else set()
+    atualizar=isinstance(dados,dict) and set(dados)==campos|opcionais|{'pr','head_sha'}
+    if not isinstance(dados,dict) or (set(dados)!=campos|opcionais and not atualizar):
         raise ValueError('Publicação exige cartão, worktree, título e corpo')
+    if opcionais:
+        from galeria_entregas import caminhos
+        caminhos(dados['arquivos_entrega'])  # antes de qualquer commit/push/PR
     pedido_original=dados
     dados={**dados,'corpo':corpo_texto(dados['corpo'])}
     n=dados['cartao']
@@ -147,9 +152,20 @@ def publicar(projeto,dados):
             raise ValueError('Descrição sem confirmação remota; concilie antes de repetir')
         registro.update(estado='publicado',sha=sha)
         atomico(recibo,registro)
-        return registro
+        return catalogar(projeto,registro,dados)
     corpo=recibo.with_suffix('.md');corpo.write_text(dados['corpo'],encoding='utf-8')
     url=rodar(['gh','pr','create','--repo',cfg['kanban']['repo'],'--base',
         cfg['ciclo']['base'].removeprefix('origin/'),'--head',branch,'--title',dados['titulo'],'--body-file',str(corpo)])
     registro.update(estado='publicado',sha=sha,pr=url);atomico(recibo,registro)
-    return registro
+    return catalogar(projeto,registro,dados)
+
+
+def catalogar(projeto,registro,dados):
+    """Falha de captura não desfaz publicação nem manda repetir push/PR."""
+    if 'arquivos_entrega' not in dados:return registro
+    from galeria_entregas import registrar_publicacao
+    try:
+        galeria=registrar_publicacao(projeto,registro,dados['arquivos_entrega'])
+    except (ValueError,OSError,UnicodeError,KeyError,TypeError,sqlite3.Error,subprocess.SubprocessError):
+        galeria={'estado':'nao_registrada','erro':'Publicação concluída; captura não confirmada. Use registrar-entregas com a mesma tentativa/PR/SHA, sem repetir publicar.'}
+    return {**registro,'galeria':galeria}
