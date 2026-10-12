@@ -330,6 +330,38 @@ class BackupNativo(unittest.TestCase):
             sddl='O:SYG:BAD:P(A;;FA;;;' + sid + ')S:P(AU;SAFA;FR;;;WD)(ML;;NW;;;ME)')
         return espaco.caminho(name)
 
+    def test_000_diagnosticar_mascaras_de_seguranca_sem_reduzir_exigencia(self):
+        # Diagnóstico somente leitura do mesmo objeto/handle sintético. Não aceita
+        # máscaras reduzidas como substituição do descritor completo obrigatório.
+        masks = (0x7, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x1FF, 0x10000, 0x1007F, 0x101FF)
+        with self.laboratorio() as (priv, e):
+            path = self.fixture(e)
+            enabled = self.oracle.privilegios()
+            print('DIAG_PRIVILEGIOS ' + ' '.join(
+                name + '=' + str(bool(enabled.get(name, 0) & 2))
+                for name in b.PRIVILEGIOS), flush=True)
+            results = {}
+            with priv.api.handle(path) as handle:
+                for mask in masks:
+                    by_handle, by_name = w.LPVOID(), w.LPVOID()
+                    try:
+                        handle_error = priv.api.a.GetSecurityInfo(
+                            handle, 1, mask, None, None, None, None,
+                            ctypes.byref(by_handle))
+                        name_error = self.oracle.a.GetNamedSecurityInfoW(
+                            str(path), 1, mask, None, None, None, None,
+                            ctypes.byref(by_name))
+                        results[mask] = (handle_error, name_error)
+                        print('DIAG_SD mask=0x%05X handle_error=%d name_error=%d'
+                              % (mask, handle_error, name_error), flush=True)
+                    finally:
+                        if by_handle:
+                            priv.api.k.LocalFree(by_handle)
+                        if by_name:
+                            self.oracle.k.LocalFree(by_name)
+            self.assertEqual(results[0x10000], (0, 0),
+                             'A consulta original completa continua obrigatória')
+
     def test_privilegios_temporarios_restaurados_em_sucesso_e_erro(self):
         before = self.oracle.privilegios()
         for fail in (False, True):
