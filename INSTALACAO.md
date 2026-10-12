@@ -141,3 +141,18 @@ e informa como usar `abrir_escritorio.bat`. No modo silencioso, inclua
 `"atalho_desktop": false` no bloco `instalacao` para desativar a criação.
 Linux e macOS continuam usando `abrir_escritorio.sh`.
 
+
+## Atualizar uma instalação 2.x existente
+
+Nesta primeira etapa, a troca de instalações existentes é habilitada somente em
+Linux com permissões compatíveis. Windows/macOS mantêm prévia e instalação nova;
+atualização existente aguarda cópia e inspeção de ACLs nativas qualificadas.
+
+Não extraia o ZIP novo sobre a pasta instalada. Repetir `iniciar_projeto.py`
+cadastra/prepara projetos, mas não atualiza o código. Extraia a release nova em
+outra pasta e execute ali `python atualizar_instalacao.py --destino "PASTA"`
+para conferir a prévia; acrescente `--aplicar` somente depois de parar o app.
+Instalações anteriores sem manifesto exigem também `--pacote-anterior` com
+o ZIP da versão instalada extraído de fonte oficial. O processo guarda backup
+integral e preserva configuração, porta, dados e arquivos pessoais. Veja
+[atualização, reversão e recuperação de interrupções](docs/ATUALIZACAO.md).
