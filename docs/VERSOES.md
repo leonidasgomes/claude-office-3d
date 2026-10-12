@@ -3,7 +3,7 @@
 ## Qual versão baixar?
 
 - **Codex e OpenCode, gestão de equipes e funcionários:** use a
-  [prévia atual 2.0.0-dev.6](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.6).
+  [prévia atual 2.0.0-dev.7](https://github.com/leonidasgomes/claude-office-3d/releases/tag/v2.0.0-dev.7).
   O pacote inclui Gestão, metas, checkpoints e recuperação assistida com saldo
   preservado, além do zoom e atalho do instalador Windows. A instalação não
   inicia tarefas nem retoma reservas bloqueadas automaticamente.
@@ -44,6 +44,24 @@ separa as edições; não é uma assinatura de integridade ou backup. O build no
 Para começar um projeto em instalação nova, use `iniciar_projeto.py` conforme
 README. Ele prepara tanto a pasta do escritório quanto a política do projeto,
 com prévia por padrão, preservando arquivos existentes de instruções e contas.
+
+## Limites desta prévia
+
+A dev.7 inclui a qualificação da release no commit exato, atualização conservadora
+e a jornada instalada determinística. Atualizar uma instalação existente está
+qualificado somente em Linux com permissões comuns; ACLs e metadados especiais
+bloqueiam a troca. Instalação nova permanece portátil. Veja
+[atualização e recuperação](ATUALIZACAO.md) antes de aplicar e preserve um backup.
+
+No Linux, novos corpos de snapshots da galeria ficam fora do SQLite; Windows e
+macOS mantêm o armazenamento inline anterior. Bancos antigos acima do limite
+não são migrados nem compactados. Transportar snapshots externos entre sistemas
+operacionais ainda não é suportado. Veja [galeria](GALERIA_ENTREGAS.md).
+
+A jornada instalada usa aplicativo, HTTP, processos, SQLite e worktree reais em
+ambiente controlado, mas simula as fronteiras externas de provider e GitHub.
+Ela não comprova a operação integral com contas/modelos reais. Gates nativos
+Linux em produção continuam desativados por padrão.
 
 ## Claude novo
 
