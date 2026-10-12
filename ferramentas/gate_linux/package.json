@@ -1,0 +1,1 @@
+{"name":"office-linux-gate-validation","private":true,"version":"1.0.0","description":"Synthetic native isolation tests; no model or account","devDependencies":{"@openai/codex":"0.159.2"}}

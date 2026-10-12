@@ -125,7 +125,18 @@ class Gates(unittest.TestCase):
     def test_manual_rascunho_e_plataforma_sem_adapter(self):
         for changes in ({'draft':True},{'labels':[{'name':'merge-manual'}]},{'state':'closed'}):
             original=copy.deepcopy(self.pr);self.pr.update(changes);self.assertIsNone(self.preparar());self.pr=original
-        with patch('gates_projeto.sys.platform','linux'):self.assertIsNone(self.preparar())
+        with patch('gates_projeto.sys.platform','linux'):
+            with self.assertRaisesRegex(g.ContextoIncompativel,'Gate Linux indisponível'):self.preparar()
+    def test_linux_indisponivel_visivel_sem_ceo_worker_ou_recibo(self):
+        before=self.ctrl.banco.read_bytes();pendencias=[];chefe=Mock();worker=Mock()
+        with patch('gates_projeto.sys.platform','linux'):
+            self.assertEqual(g.candidatos(self.repo,self.cfg,[self.pr],self.dados,self.k,pendencias=pendencias),[])
+            self.assertIsNone(self.encaminhar(chefe,worker))
+        self.assertIn('Gate Linux indisponível',pendencias[0]['motivo'])
+        chefe.assert_not_called();worker.assert_not_called()
+        self.assertEqual(self.ctrl.banco.read_bytes(),before)
+        self.assertFalse((self.dados/'gates_projeto').exists())
+
     def test_filhos_incerto_e_script_alterado_nao_executam(self):
         with closing(sqlite3.connect(self.ctrl.banco)) as db,db:db.execute('UPDATE atividade_eventos SET eventos_filhos=1')
         with self.assertRaisesRegex(ValueError,'filhos'):self.preparar()
