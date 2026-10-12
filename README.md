@@ -218,3 +218,18 @@ A configuração de gestão pertence a cada projeto. Consulte [gestão e fontes 
 Na nova edição, copie `precos_tokens.exemplo.json` para `dados/precos_tokens.json` e preencha `tarifas` depois de conferir os preços do fornecedor. O exemplo é vazio para evitar tarifas inventadas ou vencidas. Cada tarifa exige `provider` (`codex` ou `gemini`), `modelo` exato, `desde`/`ate` no formato `AAAA-MM-DD`, `fonte` HTTPS e `entrada_usd_milhao`, `cache_usd_milhao`, `saida_usd_milhao` como textos decimais. `ate` é exclusivo; não sobreponha intervalos do mesmo modelo.
 
 O painel mostra o equivalente teórico de API e a cobertura por modelo/agente. Isso compara tokens observados com uma tarifa configurada; não representa quanto uma assinatura cobrou. Modelos sem identidade informada ou contadores completos ficam sem cálculo. Cotas semanais continuam separadas por fornecedor. OpenCode, Claude e modelos locais ainda não recebem este cálculo comum. Consulte [preços da OpenAI](https://developers.openai.com/api/docs/pricing) e [Zen do OpenCode](https://opencode.ai/docs/zen/) para a tabela do serviço utilizado; o console e o fornecedor do modelo são identidades diferentes.
+
+## Atualizar uma instalação 2.x existente
+
+Nesta primeira etapa, a troca de instalações existentes é habilitada somente em
+Linux com permissões compatíveis. Windows/macOS mantêm prévia e instalação nova;
+atualização existente aguarda cópia e inspeção de ACLs nativas qualificadas.
+
+Não extraia o ZIP novo sobre a pasta instalada. Repetir `iniciar_projeto.py`
+cadastra/prepara projetos, mas não atualiza o código. Extraia a release nova em
+outra pasta e execute ali `python atualizar_instalacao.py --destino "PASTA"`
+para conferir a prévia; acrescente `--aplicar` somente depois de parar o app.
+Instalações anteriores sem manifesto exigem também `--pacote-anterior` com
+o ZIP da versão instalada extraído de fonte oficial. O processo guarda backup
+integral e preserva configuração, porta, dados e arquivos pessoais. Veja
+[atualização, reversão e recuperação de interrupções](docs/ATUALIZACAO.md).

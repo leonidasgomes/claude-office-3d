@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from types import SimpleNamespace
 import sys
 
 import configuracao
@@ -14,7 +13,8 @@ import instalar
 
 
 def preparar(projeto, destino, politica, porta=8765, cadastrar_projeto=False):
-    raiz, app = Path(projeto).resolve(), Path(destino).resolve()
+    from atualizar_instalacao import caminho
+    raiz, app = Path(projeto).resolve(), caminho(destino)
     if app.is_relative_to(raiz) or raiz.is_relative_to(app):
         raise ValueError('Separe a pasta do escritório da pasta do projeto')
     if type(porta) is not int or not 1024 <= porta <= 65535:
@@ -94,9 +94,9 @@ def aplicar(plano):
     if atual != plano:
         raise ValueError('Instalação/projeto mudou desde a prévia; refaça o plano')
     if not plano['existente']:
-        instalar.aplicar({'destino':plano['destino'], 'config':plano['config'], 'hook':'nenhum',
-                         'statusline':False, 'venv':False, 'revisao':False,
-                         'three_offline':False, 'praticas':{}}, SimpleNamespace(settings_usuario=None))
+        import atualizar_instalacao
+        atualizar_instalacao.aplicar(atualizar_instalacao.preparar(
+            plano['destino'], config=plano['config']))
     escritos = configurar_gestao.aplicar(plano['projeto'], plano['politica_plano'])
     if plano['cadastro_novo']:gravar_cadastro(plano)
     return {'destino':plano['destino'], 'arquivos_projeto':escritos,
@@ -121,7 +121,7 @@ def main(argv=None):
         diagnostico=verificar(plano['politica_plano']['politica'],args.porta)
         previa = {'projeto':plano['projeto'], 'destino':plano['destino'],
                   'porta':configuracao.normalizar(plano['config'])['porta'],
-                  'existente':plano['existente'], 'cadastro_novo':plano['cadastro_novo'], 'politica':plano['politica_plano']['politica'],
+                  'existente':plano['existente'], 'atualiza_codigo':False, 'cadastro_novo':plano['cadastro_novo'], 'politica':plano['politica_plano']['politica'],
                   'arquivos_novos_projeto':list(plano['politica_plano']['arquivos'])}
         print(json.dumps({'consoles':configurar_gestao.detectar(), 'requisitos':diagnostico, 'plano':previa},ensure_ascii=False,indent=2))
         if args.exigir_requisitos and not diagnostico['requisitos_locais_disponiveis']:
