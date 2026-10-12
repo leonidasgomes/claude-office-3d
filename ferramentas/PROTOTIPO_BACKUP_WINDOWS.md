@@ -69,3 +69,15 @@ Referências oficiais:
 [BackupWrite](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-backupwrite),
 [SECURITY_INFORMATION](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-information),
 [AdjustTokenPrivileges](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-adjusttokenprivileges).
+
+## Observação nativa dos seletores
+
+No Windows Server 2025 do CI, a consulta `BACKUP_SECURITY_INFORMATION` isolada
+(`0x10000`) retornou acesso negado nas duas APIs, apesar dos três privilégios
+habilitados. No mesmo objeto e handle, cada componente e as uniões explícitas
+passaram. O laboratório exige `BACKUP_SECURITY_INFORMATION | 0x1ff` (`0x101ff`),
+mantendo BACKUP, owner, group, DACL, SACL, label, atributos, escopo, trust label e
+access filter. Não há fallback para máscara reduzida. A suíte compara também o
+descritor binário da união explícita, sem remover ACEs ou normalizar controle.
+Essa observação não dispensa a igualdade de metadados da cópia nem prova todos
+os tipos de política de uma instalação real.

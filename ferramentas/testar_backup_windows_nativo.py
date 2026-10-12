@@ -21,6 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import backup_windows_nativo as b
 
 
+# Valores Win32 independentes dos símbolos do helper; BACKUP mantém seu valor nativo.
+BACKUP_SECURITY_INFORMATION = 0x10000
+TODOS_COMPONENTES_SEGURANCA = 0x1FF
+SEGURANCA_COMPLETA_ORACULO = BACKUP_SECURITY_INFORMATION | TODOS_COMPONENTES_SEGURANCA
+
+
 class LUID(ctypes.Structure):
     _fields_ = [('LowPart', w.DWORD), ('HighPart', w.LONG)]
 
@@ -132,10 +138,12 @@ class Oraculo:
             finally:
                 self.k.LocalFree(ctypes.cast(text, w.LPVOID))
 
-    def seguranca(self, path):
+    def seguranca(self, path, flags=SEGURANCA_COMPLETA_ORACULO):
         owner, group, dacl, sacl, sd = (w.LPVOID() for _ in range(5))
-        # BACKUP_SECURITY_INFORMATION: inclui auditoria, integridade e demais ACEs.
-        flags = 0x10000
+        # Mantém BACKUP_SECURITY_INFORMATION e solicita explicitamente todos os
+        # componentes documentados (owner/group/DACL/SACL, label, atributos,
+        # scope, trust label e access filter). Não há fallback para máscara menor.
+        # O parâmetro só permite ao diagnóstico comparar a consulta explícita.
         error = self.a.GetNamedSecurityInfoW(str(path), 1, flags,
             ctypes.byref(owner), ctypes.byref(group), ctypes.byref(dacl),
             ctypes.byref(sacl), ctypes.byref(sd))
@@ -156,7 +164,8 @@ class Oraculo:
                 return ctypes.string_at(ptr, size) if ptr else None
             return {'owner': sid_bytes(owner), 'group': sid_bytes(group),
                     'dacl': acl_bytes(dacl), 'sacl': acl_bytes(sacl),
-                    'control': control.value, 'sddl': text.value}
+                    'control': control.value, 'revision': revision.value,
+                    'sddl': text.value}
         finally:
             if text:
                 self.k.LocalFree(ctypes.cast(text, w.LPVOID))
@@ -359,8 +368,22 @@ class BackupNativo(unittest.TestCase):
                             priv.api.k.LocalFree(by_handle)
                         if by_name:
                             self.oracle.k.LocalFree(by_name)
-            self.assertEqual(results[0x10000], (0, 0),
-                             'A consulta original completa continua obrigatória')
+            # BACKUP isolado é observacional: o contrato exige BACKUP mais
+            # todos os componentes explícitos, nunca aceita uma consulta parcial.
+            self.assertEqual(results[SEGURANCA_COMPLETA_ORACULO], (0, 0),
+                             'A consulta completa combinada é obrigatória')
+            self.assertEqual(results[TODOS_COMPONENTES_SEGURANCA], (0, 0),
+                             'O controle independente deve ler todos os componentes')
+            combined = self.oracle.seguranca(path)
+            explicit = self.oracle.seguranca(path, flags=TODOS_COMPONENTES_SEGURANCA)
+            # Compara SID/ACL binários, controle, revisão e SDDL do mesmo objeto.
+            self.assertEqual(combined, explicit)
+            for component in ('owner', 'group', 'dacl', 'sacl'):
+                self.assertIsNotNone(combined[component], component)
+            self.assertIn('O:SYG:BA', combined['sddl'])
+            self.assertIn('(AU;', combined['sddl'])
+            self.assertIn('(ML;', combined['sddl'])
+            self.assertEqual(combined['control'] & 0x3000, 0x3000)
 
     def test_privilegios_temporarios_restaurados_em_sucesso_e_erro(self):
         before = self.oracle.privilegios()
@@ -571,7 +594,7 @@ class BackupNativo(unittest.TestCase):
                     e.copiar('origem', 'backup')
             self.assertEqual(error.exception.winerror, 5)
             self.assertTrue(denied.call_args_list)
-            self.assertTrue(all(call.args[2] == 0x10000 for call in denied.call_args_list))
+            self.assertTrue(all(call.args[2] == SEGURANCA_COMPLETA_ORACULO for call in denied.call_args_list))
             self.assertFalse(e.caminho('backup').exists())
             self.assertEqual(self.oracle.arvore(source), before)
 

@@ -15,6 +15,9 @@ import tempfile
 
 PRIVILEGIOS = ('SeBackupPrivilege', 'SeRestorePrivilege', 'SeSecurityPrivilege')
 BACKUP_SECURITY_INFORMATION = 0x10000
+# Explicita todos os componentes: o seletor BACKUP isolado falha em APIs Win32
+# no runner qualificado. Mantém BACKUP e nunca recorre a uma máscara reduzida.
+FULL_BACKUP_SECURITY_INFORMATION = BACKUP_SECURITY_INFORMATION | 0x1FF
 
 
 def exigir_ci():
@@ -119,7 +122,7 @@ class API:
 
     def seguranca(self, h):
         sd=w.LPVOID();texto=w.LPWSTR();control=w.WORD();revision=w.DWORD()
-        erro=self.a.GetSecurityInfo(h,1,BACKUP_SECURITY_INFORMATION,None,None,None,None,ctypes.byref(sd))
+        erro=self.a.GetSecurityInfo(h,1,FULL_BACKUP_SECURITY_INFORMATION,None,None,None,None,ctypes.byref(sd))
         if erro: raise ctypes.WinError(erro)
         try:
             self.ok(self.a.GetSecurityDescriptorControl(sd,ctypes.byref(control),ctypes.byref(revision)))
