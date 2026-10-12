@@ -1,15 +1,19 @@
 #!/usr/bin/env sh
-# Reinicia o Claude Office 3D: encerra o servidor da porta configurada (se estiver rodando) e sobe de novo em segundo plano.
-#   ./reiniciar_escritorio.sh celular   -> sobe com o acesso pelo celular na rede local (--rede-local)
+# Reinicia somente o servidor desta instalação; preserva as opções recebidas.
 cd "$(dirname "$0")" || exit 1
-EXTRA=""
-[ "$1" = "celular" ] && EXTRA="--rede-local"
-PY=python3
-[ -x .venv/bin/python ] && PY=.venv/bin/python   # Python do .venv do escritório, se existir
-PORTA=$("$PY" configuracao.py --porta 2>/dev/null || echo 8765)
-echo "Encerrando o servidor antigo do escritório (porta $PORTA)..."
-PIDS=$(lsof -ti tcp:"$PORTA" -sTCP:LISTEN 2>/dev/null)
-if [ -n "$PIDS" ]; then kill $PIDS 2>/dev/null; echo "  processo(s) $PIDS encerrado(s)"; sleep 1; fi
-echo "Subindo o escritório de novo..."
-nohup "$PY" servidor.py --sem-navegador $EXTRA >/dev/null 2>&1 &
-echo "Pronto: http://127.0.0.1:$PORTA/"
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
+else
+    echo "Python 3.9+ não encontrado. Instale Python e execute novamente." >&2
+    exit 1
+fi
+"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
+    echo "É necessário Python 3.9+; confira o Python do PATH ou .venv." >&2
+    exit 1
+}
+if [ "${1:-}" = "celular" ]; then shift; set -- --rede-local "$@"; fi
+exec "$PY" reiniciar_posix.py "$@"
