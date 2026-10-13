@@ -297,10 +297,10 @@ def main():
             return 0
         if not args.database:
             raise ValueError('receiver requires --database')
-        raw = sys.stdin.read(262145)
+        raw = sys.stdin.buffer.read(262145)
         if len(raw) > 262144:
             raise ValueError('payload exceeds 256 KiB')
-        payload = json.loads(raw)
+        payload = json.loads(raw.decode('utf-8'))
         ingest(args.database, b, payload, args.source)
     except (ValueError, OSError, sqlite3.Error) as exc:
         print('Office hook rejected: ' + str(exc), file=sys.stderr)

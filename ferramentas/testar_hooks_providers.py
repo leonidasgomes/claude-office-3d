@@ -14,6 +14,20 @@ from funcionarios import id_projeto
 
 
 class Hooks(unittest.TestCase):
+    def test_stdin_utf8_independente_da_locale_windows(self):
+        import subprocess
+        import os
+        arquivo=self.root/'binding.json'
+        arquivo.write_text(json.dumps(self.b),encoding='utf-8')
+        command=[sys.executable,str(Path(__file__).resolve().parent.parent/'hooks_providers.py'),
+                 '--binding',str(arquivo),'--database',str(self.db)]
+        payload=self.payload(exit_code=0)
+        payload['tool_name']='Leitura ação'
+        result=subprocess.run(command,input=json.dumps(payload,ensure_ascii=False).encode('utf-8'),
+                              capture_output=True,env={**os.environ,'PYTHONIOENCODING':'cp1252'},timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(self.events()[0]['ferramenta'],'Leitura ação')
+
     def test_comando_cotado_para_shell_verificado(self):
         import shlex
         with tempfile.TemporaryDirectory(prefix='hook command ') as tmp:
