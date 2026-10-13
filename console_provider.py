@@ -224,7 +224,10 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             ev['fonte'] = provider.nome+'_local'
         try:
             normalizado=emit_evento.normalizar(ev)
-            if nativo and ao_evento is not None:ao_evento(normalizado)
+            # O vínculo é metadado derivado de init, não uma ferramenta nem um
+            # evento adicional de trabalho nativo para o diário da tentativa.
+            if nativo and ao_evento is not None and not ev.get('vinculo_sessao'):
+                ao_evento(normalizado)
             if hook_scope is not None and normalizado.get('sessao'):
                 from hooks_providers import prefer_hooks, ingest_normalized
                 phase = ('start' if normalizado.get('ferramenta') == 'Console' and normalizado.get('inicio') else

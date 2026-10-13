@@ -239,7 +239,7 @@ class Eventos:
         saida = self._converter(registro)
         if nova and self.inicio_vinculado:
             saida.insert(0, self.base(ferramenta='Console', resumo='sessão identificada', inicio=True,
-                                      operacao_id='sessao', operacao_estado='executando'))
+                                      vinculo_sessao=True))
         return saida
 
     def _converter(self, registro):
