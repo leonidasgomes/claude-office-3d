@@ -1,6 +1,7 @@
 """Subprocesso real com envelopes sintéticos; nenhum CLI cloud ou hook global."""
 from contextlib import closing
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -37,7 +38,7 @@ class LauncherHooks(unittest.TestCase):
                     text+='ingest('+repr(str(db))+',b,'+repr(payload)+')\n'
             text+='for r in '+repr(records)+': print(json.dumps(r),flush=True)\n'
             script.write_text(text,encoding='utf-8')
-            with patch.object(type(PROVIDERS['codex']),'comando',return_value=[sys.executable,str(script),'-']):
+            with patch.dict(os.environ,{'CODEX_HOME':str(root/'codex-home')}), patch.object(type(PROVIDERS['codex']),'comando',return_value=[sys.executable,str(script),'-']):
                 code=executar(PROVIDERS['codex'],sys.executable,root,'Dev',prompt='artificial',banco=db,
                               hook_binding=b,hook_capability=cap)
             with closing(sqlite3.connect(db)) as c:

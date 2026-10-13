@@ -211,7 +211,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
     hook_expected = {}
     hook_after = 0
     if hook_scope is not None:
-        hook_db = Path(banco or banco_modulo.ARQ)
+        hook_db = Path(banco or banco_modulo.ARQ).resolve()
         if hook_db.exists():
             with closing(sqlite3.connect(hook_db.as_uri()+'?mode=ro',uri=True)) as conn:
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE name='evento'").fetchone():
