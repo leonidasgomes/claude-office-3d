@@ -242,6 +242,17 @@ jobs:
           python -W error ferramentas/testar_preparar_maquina.py
       - name: Metas do cartão no Windows
         run: python -W error ferramentas/testar_metas_cartao.py
+      - name: Backup Windows nativo (protótipo isolado, somente fixtures descartáveis)
+        # Experimento autorizado somente nesta PR do próprio repositório.
+        # Não expande a autorização para main, outras PRs ou forks.
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.head_ref == 'dot/windows-native-backup-prototype' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          OFFICE_NATIVE_BACKUP_PROTOTYPE: '1'
+        # Não substitui sinais do runner: self-hosted continua recusado pelo script.
+        run: python -W error ferramentas/testar_backup_windows_nativo.py
       - name: Atualização Windows (inspeção nativa, recusas seguras e instalação nova)
         run: python -W error ferramentas/testar_atualizacao_windows.py
 
