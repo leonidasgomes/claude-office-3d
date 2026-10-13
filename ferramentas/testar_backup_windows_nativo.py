@@ -155,7 +155,9 @@ class Oraculo:
             self.conferir(self.a.GetSecurityDescriptorControl(
                 sd, ctypes.byref(control), ctypes.byref(revision)))
             self.conferir(self.a.ConvertSecurityDescriptorToStringSecurityDescriptorW(
-                sd, 1, 0x0F, ctypes.byref(text), None))
+                # LABEL e os outros componentes precisam estar na projeção SDDL,
+                # além da consulta binária completa feita acima.
+                sd, 1, TODOS_COMPONENTES_SEGURANCA, ctypes.byref(text), None))
             def sid_bytes(ptr):
                 return ctypes.string_at(ptr, self.a.GetLengthSid(ptr)) if ptr else None
             def acl_bytes(ptr):
@@ -170,6 +172,25 @@ class Oraculo:
             if text:
                 self.k.LocalFree(ctypes.cast(text, w.LPVOID))
             self.k.LocalFree(sd)
+
+    @staticmethod
+    def tipos_ace(acl):
+        """Lê ACE_HEADER no ACL binário, independente da projeção textual SDDL."""
+        if acl is None or len(acl) < 8:
+            raise ValueError('ACL ausente ou truncada')
+        _, _, size, count, _ = struct.unpack_from('<BBHHH', acl)
+        if size != len(acl):
+            raise ValueError('Tamanho de ACL inconsistente')
+        offset, result = 8, []
+        for _ in range(count):
+            if offset + 4 > size:
+                raise ValueError('ACE_HEADER truncado')
+            ace_type, _, ace_size = struct.unpack_from('<BBH', acl, offset)
+            if ace_size < 4 or offset + ace_size > size:
+                raise ValueError('Tamanho de ACE inválido')
+            result.append(ace_type)
+            offset += ace_size
+        return result
 
     @contextmanager
     def handle(self, path, access=0x88, share=7):
@@ -275,8 +296,12 @@ class TrocaSintetica:
             raise FalhaSintetica(interrupt)
         source, target = self.e.caminho(src), self.e.caminho(dst)
         if locked is not None and locked[0] == name:
-            # A chamada real encontra um handle sem FILE_SHARE_DELETE.
-            with locked[1].handle(source, access=0, share=3):
+            # Abre o próprio diretório renomeado com GENERIC_READ. Acesso zero
+            # não constitui o bloqueio de compartilhamento que queremos testar.
+            # FILE_SHARE_READ|FILE_SHARE_WRITE, sem FILE_SHARE_DELETE.
+            if not source.is_dir():
+                raise AssertionError('O bloqueio deve atingir o diretório renomeado')
+            with locked[1].handle(source, access=0x80000000, share=3):
                 os.rename(source, target)
         else:
             os.rename(source, target)
@@ -384,6 +409,8 @@ class BackupNativo(unittest.TestCase):
             self.assertIn('(AU;', combined['sddl'])
             self.assertIn('(ML;', combined['sddl'])
             self.assertEqual(combined['control'] & 0x3000, 0x3000)
+            for ace_type in (2, 17):  # SYSTEM_AUDIT_ACE e SYSTEM_MANDATORY_LABEL_ACE
+                self.assertIn(ace_type, self.oracle.tipos_ace(combined['sacl']))
 
     def test_privilegios_temporarios_restaurados_em_sucesso_e_erro(self):
         before = self.oracle.privilegios()
@@ -467,10 +494,16 @@ class BackupNativo(unittest.TestCase):
             self.assertFalse(before['dados/arte ç.bin']['seguranca']['control'] & 0x1000)
             self.assertIn('(AU;', before['.']['seguranca']['sddl'])
             self.assertIn('(ML;', before['.']['seguranca']['sddl'])
+            for ace_type in (2, 17):
+                self.assertIn(ace_type, self.oracle.tipos_ace(before['.']['seguranca']['sacl']))
             self.assertIn('ID', before['dados/arte ç.bin']['seguranca']['sddl'])
             e.copiar('origem', 'backup')
             backup = e.caminho('backup')
-            self.assertEqual(self.oracle.arvore(backup), before)
+            copied = self.oracle.arvore(backup)
+            self.assertEqual(copied, before)
+            self.assertIn('O:SYG:BA', copied['.']['seguranca']['sddl'])
+            for ace_type in (2, 17):
+                self.assertIn(ace_type, self.oracle.tipos_ace(copied['.']['seguranca']['sacl']))
             self.assertEqual(self.oracle.arvore(source), before)
             for rel in ('versao.txt', 'dados/arte ç.bin', 'privado.txt'):
                 self.assertNotEqual((source / rel).stat().st_ino, (backup / rel).stat().st_ino)

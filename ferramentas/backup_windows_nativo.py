@@ -126,7 +126,7 @@ class API:
         if erro: raise ctypes.WinError(erro)
         try:
             self.ok(self.a.GetSecurityDescriptorControl(sd,ctypes.byref(control),ctypes.byref(revision)))
-            self.ok(self.a.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd,1,15,ctypes.byref(texto),None))
+            self.ok(self.a.ConvertSecurityDescriptorToStringSecurityDescriptorW(sd,1,0x1FF,ctypes.byref(texto),None))
             return {'sddl':texto.value,'control':control.value,'revision':revision.value}
         finally:
             if texto:self.k.LocalFree(ctypes.cast(texto,w.LPVOID))
