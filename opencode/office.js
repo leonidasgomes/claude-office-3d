@@ -19,6 +19,7 @@ const EMIT = process.env.OFFICE_EMIT || "";
 const AGENTE = process.env.OFFICE_AGENTE || "OpenCode";
 const FONTE = process.env.OFFICE_FONTE || "opencode";
 const BANCO = process.env.OFFICE_BANCO || "";
+const HOOK_BINDING = process.env.OFFICE_HOOK_BINDING || "";
 const CONSUMO_PROJETO = process.env.OFFICE_CONSUMO_PROJETO || "";
 const PROJETOS = (process.env.OFFICE_PROJETOS || "")
   .split(",")
@@ -37,14 +38,22 @@ function emitir(ev) {
   // Ordem de início/fim preservada sem aguardar Python no hook do agente.
   fila = fila.then(() => new Promise((resolve) => {
     try {
-      const args = BANCO ? [EMIT, "--banco", BANCO] : [EMIT];
+      const args = HOOK_BINDING ? [EMIT, "--binding", HOOK_BINDING, "--database", BANCO, "--source", "plugin"] :
+        BANCO ? [EMIT, "--banco", BANCO] : [EMIT];
       const filho = spawn(PYTHON, args, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
       filho.on("error", resolve);
       filho.on("close", resolve);
       filho.stdin.on("error", () => {});
-      filho.stdin.end(JSON.stringify(ev));
+      const payload = HOOK_BINDING ? {
+        session_id: ev.sessao, cwd: ev.cwd, hook_event_name: ev.hook_event_name,
+        tool_use_id: ev.operacao_id, tool_name: ev.ferramenta,
+        ...(Number.isInteger(ev.codigo) ? { exit_code: ev.codigo } : {}),
+        ...(ev.ok === false ? { error: ev.erro || "plugin reported failure", tool_response: { is_error: true } } : {})
+      } : ev;
+      filho.stdin.end(JSON.stringify(payload));
     } catch { resolve(); }
   })).catch(() => {});
+  return fila;
 }
 
 let filaConsumo = Promise.resolve();
@@ -111,6 +120,7 @@ function detalheDe(tool, args) {
 export const Office = async ({ directory }) => {
   const pendentes = new Map();
   const finalizados = new Set();
+  const falhas = new Set();
   const sessoes = new Map();
   const modelos = new Map();
   const chaveDe = (input) => `${input.sessionID || ""}:${input.callID || ""}`;
@@ -126,6 +136,7 @@ export const Office = async ({ directory }) => {
     const id = input.sessionID || "";
     const sessao = sessoes.get(id);
     return { agente: sessao?.mesa || AGENTE, fonte: FONTE, sessao: id, para: [],
+      ...(HOOK_BINDING ? { cwd: directory } : {}),
       ...(sessao?.parentID ? { sessao_pai: sessao.parentID,
         agente_pai: sessoes.get(sessao.parentID)?.mesa || AGENTE, funcao: sessao.agent } : {}) };
   };
@@ -135,13 +146,15 @@ export const Office = async ({ directory }) => {
       if (!noProjeto(directory)) return;
       const args = output.args || input.args || {};
       pendentes.set(chaveDe(input), args);
-      if (input.tool !== "bash") return;
-      emitir({ ...base(input), tipo: "trabalho", ferramenta: ferramentaDe(input.tool, args), inicio: true, espera_s: 120, resumo: resumoDe(input.tool, args), detalhe: detalheDe(input.tool, args) });
+      if (input.tool !== "bash" && !HOOK_BINDING) return;
+      await emitir({ ...base(input), tipo: "trabalho", ferramenta: ferramentaDe(input.tool, args), inicio: true, espera_s: 120, resumo: resumoDe(input.tool, args), detalhe: detalheDe(input.tool, args),
+        ...(HOOK_BINDING ? { operacao_id: input.callID, hook_event_name: "PreToolUse" } : {}) });
     },
     // No after os argumentos ficam em input; output contém title/output/metadata.
     "tool.execute.after": async (input, output) => {
       if (!noProjeto(directory)) return;
       const chave = chaveDe(input);
+      if (falhas.has(chave)) return;
       const args = input.args || pendentes.get(chave) || {};
       pendentes.delete(chave);
       finalizados.add(chave);
@@ -150,6 +163,10 @@ export const Office = async ({ directory }) => {
       const metadata = output.metadata || {};
       const codigo = metadata.exit ?? metadata.exitCode ?? metadata.exit_code;
       if (Number.isInteger(codigo)) { ev.codigo = codigo; ev.ok = codigo === 0; }
+      if (ev.ok === false) {
+        falhas.add(chave);
+        if (falhas.size > 2048) falhas.delete(falhas.values().next().value);
+      }
       if (input.tool === "task") {
         if (metadata.sessionId) registrar({ id: metadata.sessionId,
           parentID: metadata.parentSessionId || input.sessionID, agent: args.subagent_type });
@@ -158,13 +175,20 @@ export const Office = async ({ directory }) => {
         if (metadata.sessionId) ev.sessao_filho = metadata.sessionId;
         ev.funcao = args.description || args.subagent_type || "";
       }
-      emitir(ev);
+      await emitir({ ...ev, ...(HOOK_BINDING ? { operacao_id: input.callID, hook_event_name: "PostToolUse" } : {}) });
     },
     event: async ({ event }) => {
       if (!noProjeto(directory)) return;
       const props = event.properties || {};
       if (event.type === "session.created" || event.type === "session.updated") {
         registrar(props.info);
+        if (HOOK_BINDING && event.type === "session.created" && props.info?.id) {
+          await emitir({ ...base({sessionID: props.info.id}), tipo: "trabalho", ferramenta: "Console", inicio: true,
+            resumo: "sessão identificada", hook_event_name: "SessionStart" });
+        }
+      } else if (HOOK_BINDING && event.type === "session.deleted" && props.info?.id) {
+        await emitir({ ...base({sessionID: props.info.id}), tipo: "ocioso", ferramenta: "Console",
+          resumo: "sessão encerrada", hook_event_name: "SessionEnd" });
       } else if (event.type === "message.updated") {
         const info = props.info;
         if (info?.role === "assistant" && typeof info.id === "string") {
@@ -174,9 +198,11 @@ export const Office = async ({ directory }) => {
           if (modelos.size > 4096) modelos.delete(modelos.keys().next().value);
         }
       } else if (event.type === "session.idle") {
-        emitir({ ...base(props), tipo: "ocioso", ferramenta: "", resumo: "aguardando" });
+        await emitir({ ...base(props), tipo: "ocioso", ferramenta: "", resumo: "aguardando",
+          ...(HOOK_BINDING ? { hook_event_name: "Stop" } : {}) });
       } else if (event.type === "session.error") {
-        emitir({ ...base(props), tipo: "trabalho", ferramenta: "Console", ok: false,
+        await emitir({ ...base(props), tipo: "trabalho", ferramenta: "Console", ok: false,
+          ...(HOOK_BINDING ? { hook_event_name: "failure" } : {}),
           resumo: "erro do console", erro: curto(props.error?.data?.message || props.error?.message || "erro", 120) });
       } else if (event.type === "message.part.updated") {
         const part = props.part || {};
@@ -194,12 +220,17 @@ export const Office = async ({ directory }) => {
         }
         if (part.type !== "tool" || part.state?.status !== "error") return;
         const chave = chaveDe(part);
-        if (finalizados.has(chave)) return;
+        // after pode não trazer outcome. Um erro posterior promove a conclusão;
+        // somente uma falha já registrada pode suprimir a mesma falha repetida.
+        if (falhas.has(chave)) return;
+        falhas.add(chave);
+        if (falhas.size > 2048) falhas.delete(falhas.values().next().value);
         finalizados.add(chave);
         if (finalizados.size > 2048) finalizados.delete(finalizados.values().next().value);
         const args = part.state.input || pendentes.get(chave) || {};
         pendentes.delete(chave);
-        emitir({ ...base(part), tipo: "trabalho", ferramenta: ferramentaDe(part.tool, args),
+        await emitir({ ...base(part), tipo: "trabalho", ferramenta: ferramentaDe(part.tool, args),
+          ...(HOOK_BINDING ? { operacao_id: part.callID, hook_event_name: "PostToolUseFailure" } : {}),
           resumo: resumoDe(part.tool, args), detalhe: detalheDe(part.tool, args), ok: false,
           erro: curto(part.state.error || "erro", 120) });
       }

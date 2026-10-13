@@ -211,8 +211,9 @@ def sessao_nativa(provider, registro):
 
 class Eventos:
     """Traduz envelopes documentados dos CLIs. Tipos desconhecidos são ignorados."""
-    def __init__(self, provider, mesa, claude=None):
+    def __init__(self, provider, mesa, claude=None, inicio_vinculado=False):
         self.provider, self.mesa, self.claude = provider, mesa, claude
+        self.inicio_vinculado = inicio_vinculado
         self.sessao = ""
         self.vistos = set()
         self.ferramentas = {}
@@ -224,6 +225,24 @@ class Eventos:
     def converter(self, registro):
         if not isinstance(registro, dict):
             return []
+        # Um adapter acompanha um fluxo principal; outro init nunca troca sua
+        # identidade. Filhos têm adapters próprios ou ancestralidade explícita.
+        if self.provider == 'claude' and registro.get('parent_tool_use_id'):
+            return []
+        ident = sessao_nativa(self.provider, registro)
+        declarado = registro.get('session_id') if self.provider == 'claude' else registro.get('sessionID') if self.provider == 'opencode' else ident
+        if self.sessao and declarado and declarado != self.sessao:
+            return []
+        nova = bool(isinstance(ident, str) and ident and not self.sessao)
+        if nova:
+            self.sessao = ident
+        saida = self._converter(registro)
+        if nova and self.inicio_vinculado:
+            saida.insert(0, self.base(ferramenta='Console', resumo='sessão identificada', inicio=True,
+                                      vinculo_sessao=True))
+        return saida
+
+    def _converter(self, registro):
         if self.provider == "claude":
             if self.claude is not None:
                 ev = self.claude(registro)
@@ -256,7 +275,12 @@ class Eventos:
                 return [self.base(ferramenta="Console", resumo="erro do console",
                                   erro=str(registro.get("message") or registro.get("error") or "erro"))]
             return []
-        if tipo in ("turn.completed", "turn.failed") or (tipo == "step_finish" and (registro.get("part") or {}).get("reason") == "stop"):
+        if tipo == 'turn.failed':
+            erro = registro.get('error') or {}
+            erro = erro.get('message') if isinstance(erro, dict) else str(erro)
+            return [self.base(ferramenta='Console', resumo='turno falhou', ok=False, erro=erro or 'turno falhou'),
+                    self.base('ocioso', resumo='turno encerrado com erro')]
+        if tipo == "turn.completed" or (tipo == "step_finish" and (registro.get("part") or {}).get("reason") == "stop"):
             return [self.base("ocioso", resumo="aguardando")]
         if tipo in ("error", "session.error"):
             return [self.base(ferramenta="Console", resumo="erro do console", ok=False,
@@ -295,6 +319,8 @@ class Eventos:
                     ev.update(ok=codigo == 0, codigo=codigo)
                 elif item.get("status") in ("failed", "completed"):
                     ev["ok"] = item["status"] == "completed"
+                if ev.get('ok') is False:
+                    ev['erro'] = str(item.get('error') or item.get('aggregated_output') or 'ferramenta falhou')[:400]
             if ferramenta == "Agent":
                 # IDs de threads não são nomes de mesas. O observador liga filhos
                 # pela sessão nativa; wait/close não devem criar figuras de subagentes.
@@ -319,6 +345,9 @@ class Eventos:
         ev = self.base(ferramenta="Skill" if tool == "skill" else tool,
                        resumo=estado.get("title") or tool, detalhe=detalhe)
         status = estado.get("status")
+        if part.get('callID') or part.get('id'):
+            ev.update(operacao_id=str(part.get('callID') or part['id']),
+                      operacao_estado='executando' if status in ('pending','running') else 'concluido')
         if status in ("pending", "running"):
             ev.update(inicio=True, espera_s=120)
         elif status in ("completed", "error"):
@@ -369,6 +398,7 @@ class Eventos:
                         continue
                     self.ferramentas[ident] = nome
                     saida.append(self.base(ferramenta=nome, resumo=nome, inicio=True, espera_s=120,
+                                           operacao_id=ident, operacao_estado='executando',
                                            detalhe=json.dumps(bloco.get("input") or {}, ensure_ascii=False)))
                 elif tipo == "user" and bloco.get("type") == "tool_result":
                     ident = bloco.get("tool_use_id")
@@ -377,6 +407,7 @@ class Eventos:
                     self.vistos.add(("resultado", ident))
                     ok = bloco.get("is_error") is not True
                     saida.append(self.base(ferramenta=self.ferramentas[ident], resumo="resultado da ferramenta", ok=ok,
+                                           operacao_id=ident, operacao_estado='concluido',
                                            **({"erro": "ferramenta retornou erro"} if not ok else {})))
             return saida
         if tipo == "result":
