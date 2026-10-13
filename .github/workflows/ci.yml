@@ -48,6 +48,11 @@ jobs:
           node ferramentas/testar_saude_projeto.mjs
       - name: Conclusão nativa dos novos providers
         run: |
+          python -W error ferramentas/testar_sessoes_providers.py
+          python -W error ferramentas/testar_hooks_providers.py
+          python -W error ferramentas/testar_hooks_launcher.py
+          python -W error ferramentas/testar_fontes_console.py
+          node ferramentas/testar_plugin_hooks_opencode.mjs
           python -W error ferramentas/testar_observabilidade.py
           node ferramentas/testar_eventos_ao_vivo.mjs
           python -W error ferramentas/testar_retorno_console.py

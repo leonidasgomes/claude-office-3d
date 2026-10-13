@@ -66,6 +66,13 @@ aprovações e persistência de sessão permanecem sob responsabilidade do CLI. 
 Sem prompt, o launcher Claude abre a TUI nativa. Com prompt, executa um turno gerenciado com sessão e eventos padronizados; para **agent teams** continue usando o
 launcher de time existente, que contém os prompts e a configuração específica da instalação.
 
+## Hooks nativos e fontes externas
+
+Quando a versão oferece hooks nativos, o launcher pode priorizá-los por escopo com
+`--hook-binding` e `--hook-capability`. O plano não instala hooks nem concede confiança;
+IDs de hooks Codex não equivalem aos IDs do JSON. Fontes externas são arquivos exatos,
+sem descoberta de sessões. Veja [contrato, matriz e testes](HOOKS-PROVIDERS.md).
+
 ## Consultas isoladas do Codex
 
 Revisão, auditoria, triagem e consultas de CEO/diretor pelo adapter isolado exigem

@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from pathlib import Path
 
 from providers_console import Eventos, selecionar, sessao_nativa
@@ -82,9 +82,23 @@ def encerrar_processo(processo, *, grupo_isolado=False):
 
 
 def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None, agente=None, banco=None,
-             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None,skills_contexto=None,objetos_git=None):
+             adaptar_local=None, politica_local=None, ao_sessao=None, skills_nativas=None, ao_skills=None, ao_processo=None,projeto_consumo=None,ao_evento=None,tentativa_consumo=None,sandbox=None,prompt_inicial=None,diretorios_escrita=None,limites_meta=None,skills_contexto=None,objetos_git=None,hook_binding=None,hook_capability=None):
     import emit_evento
     projeto_medicao=Path(projeto if projeto_consumo is None else projeto_consumo).resolve()
+    hook_scope = None
+    if hook_binding is not None or hook_capability is not None:
+        from hooks_providers import binding
+        if hook_binding is None or not isinstance(hook_capability, dict):
+            raise ValueError('Hooks exigem vínculo e capacidade verificada explícitos')
+        hook_scope = binding(hook_binding)
+        if (Path(hook_scope['project']) != Path(projeto).resolve() or hook_scope['provider'] != provider.nome
+                or hook_scope['agent'] != mesa):
+            raise ValueError('Hooks divergem do projeto/provedor/mesa selecionados')
+        if hook_capability.get('version_verified') is not True or hook_capability.get('version') != hook_scope['version']:
+            raise ValueError('Capacidade nativa não verificada para a versão selecionada')
+        if (provider.nome == 'codex' and hook_scope.get('hooks_active') is True
+                and hook_scope.get('hooks_trusted') is not True):
+            raise ValueError('Hooks Codex exigem revisão e confiança explícitas no cliente; o Office não altera essa confiança')
     if projeto_consumo is not None and not projeto_medicao.is_dir():raise ValueError('Projeto de consumo não existe')
     if provider.nome in ("claude", "codex", "gemini", "opencode") and prompt is not None and not politica_local:
         if skills_contexto is not None:
@@ -150,6 +164,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             env['OFFICE_CLAUDE_STREAM_HOOK'] = str((RAIZ / 'registrar_evento.py').resolve())
             env['OFFICE_CLAUDE_STREAM_SESSION'] = ident
     if provider.nome == "opencode":
+        env.pop('OFFICE_HOOK_BINDING',None)
         env.update(OFFICE_EMIT=str(RAIZ / "emit_evento.py"), OFFICE_AGENTE=mesa,
                    OFFICE_PYTHON=sys.executable, OFFICE_PROJETOS=str(projeto),
                    OFFICE_CONSUMO_PROJETO=str(projeto_medicao))
@@ -161,6 +176,12 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             env["OFFICE_BANCO"] = str(banco)
         # Launcher observa o pai no JSON; plugin continua observando os filhos.
         env["OFFICE_STREAM_OWNER"] = "launcher" if prompt is not None else "plugin"
+        if hook_scope is not None and hook_scope.get('hooks_active') is True and hook_capability.get('mechanism') == 'plugin':
+            if not hook_scope.get('binding_file'):
+                raise ValueError('Plugin nativo exige binding_file explícito para o receptor')
+            env.update(OFFICE_HOOK_BINDING=str(Path(hook_scope['binding_file']).resolve()),
+                       OFFICE_EMIT=str(RAIZ/'hooks_providers.py'),OFFICE_STREAM_OWNER='plugin',
+                       OFFICE_BANCO=str(Path(banco or RAIZ/'dados/escritorio.db').resolve()))
         if prompt is None and not (projeto / ".opencode" / "plugins" / "office.js").is_file():
             print("Aviso: instale o plugin com importar_opencode.py --aplicar para telemetria da TUI.", file=sys.stderr)
     opencode_v2 = False
@@ -177,7 +198,7 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             raise ValueError('Evidência de skills nativas exige Claude cloud com stream')
         from skills_execucao import EvidenciaClaude
         evidencia_skills=EvidenciaClaude(skills_nativas,ident)
-    eventos = Eventos(provider.nome, mesa)
+    eventos = Eventos(provider.nome, mesa, inicio_vinculado=True)
     from consumo_providers import Coletor, ColetorRollout
     import banco as banco_modulo
     codex_incremental = provider.nome=='codex' and stream and limites_meta is not None
@@ -186,6 +207,15 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                      sessao_claude_nova=ident if provider.nome=='claude' and stream and not sessao and not politica_local else None,
                      sessao_claude_retomada=sessao if provider.nome=='claude' and stream and sessao and not politica_local else None,
                      tentativa=tentativa_consumo,codex_incremental=codex_incremental)
+    hook_errors = []
+    hook_expected = {}
+    hook_after = 0
+    if hook_scope is not None:
+        hook_db = Path(banco or banco_modulo.ARQ)
+        if hook_db.exists():
+            with closing(sqlite3.connect(hook_db.as_uri()+'?mode=ro',uri=True)) as conn:
+                if conn.execute("SELECT 1 FROM sqlite_master WHERE name='evento'").fetchone():
+                    hook_after = conn.execute('SELECT COALESCE(MAX(id),0) FROM evento').fetchone()[0]
 
     def emitir(ev,nativo=False):
         from funcionarios import id_projeto
@@ -195,8 +225,22 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
         try:
             normalizado=emit_evento.normalizar(ev)
             if nativo and ao_evento is not None:ao_evento(normalizado)
+            if hook_scope is not None and normalizado.get('sessao'):
+                from hooks_providers import prefer_hooks, ingest_normalized
+                phase = ('start' if normalizado.get('ferramenta') == 'Console' and normalizado.get('inicio') else
+                         'tool_start' if normalizado.get('operacao_id') and normalizado.get('inicio') else
+                         'tool_end' if normalizado.get('operacao_id') and normalizado.get('operacao_estado') == 'concluido' else
+                         'end' if normalizado.get('resumo') == 'console encerrado' else None)
+                if phase:
+                    if prefer_hooks(hook_scope,hook_capability,phase):
+                        hook_expected[phase] = hook_expected.get(phase,0)+1
+                        return  # Fonte nativa é autoridade; IDs diferentes não são correlacionados por heurística.
+                    ingest_normalized(banco or banco_modulo.ARQ,hook_scope,{**normalizado,'fase':phase})
+                    return
             emit_evento.gravar(normalizado, banco)
-        except Exception:
+        except Exception as exc:
+            if hook_scope is not None:
+                hook_errors.append(type(exc).__name__)
             pass  # falha de telemetria nunca derruba o console
 
     if provider.nome != "claude" or stream or politica_local or funcionario_cloud:
@@ -266,7 +310,8 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
                         observador.sessao = registro.get("thread_id") or sessao
                     for ev in eventos.converter(registro):
                         emitir(ev,True)
-                    nova_sessao=sessao_nativa(provider.nome,registro)
+                    candidata=sessao_nativa(provider.nome,registro)
+                    nova_sessao=candidata if candidata == eventos.sessao else None
                 except (ValueError, TypeError, AttributeError):
                     pass  # versão futura ou linha não JSON
                 # Falha do vínculo de gestão não é falha opcional de telemetria.
@@ -284,6 +329,30 @@ def executar(provider, exe, projeto, mesa, prompt=None, modelo=None, sessao=None
             if not notificada:
                 print('Sessão Claude não identificada no transcrito; retomada automática indisponível.',file=sys.stderr)
         codigo = processo.wait()
+        if hook_scope is not None:
+            from hooks_providers import prefer_hooks
+            if prefer_hooks(hook_scope,hook_capability,'end'):
+                hook_expected['end'] = 1
+        if hook_scope is not None and hook_expected:
+            observed = {}
+            try:
+                with closing(sqlite3.connect(hook_db.as_uri()+'?mode=ro',uri=True)) as conn:
+                    for row in conn.execute('SELECT dados FROM evento WHERE id>?',(hook_after,)):
+                        ev=json.loads(row[0])
+                        if (ev.get('hook_fonte') in ('hook','plugin') and ev.get('hook_origem') == hook_scope['origin']
+                                and ev.get('fonte') == provider.nome and ev.get('projeto_id') == hook_scope['project_id']
+                                and ev.get('sessao') == eventos.sessao):
+                            phase=ev.get('hook_fase')
+                            observed[phase]=observed.get(phase,0)+1
+                if any(observed.get(phase,0)<count for phase,count in hook_expected.items()):
+                    hook_errors.append('native_coverage_missing')
+            except (OSError,sqlite3.Error,ValueError):
+                hook_errors.append('native_coverage_unavailable')
+        if hook_errors:
+            emitir(eventos.base(ferramenta='Console',resumo='Telemetria nativa de hooks não comprovada',ok=False,
+                               erro=','.join(sorted(set(hook_errors)))))
+            print('Hooks opt-in não comprovaram cobertura; confira o vínculo e a instalação local.',file=sys.stderr)
+            if codigo == 0: codigo = 1
         if evidencia_skills is not None:
             evidencia=evidencia_skills.resumo()
             if ao_skills is not None: ao_skills(evidencia)
@@ -344,6 +413,8 @@ def main(argv=None):
     p.add_argument("--mesa")
     p.add_argument("--modelo")
     p.add_argument('--sandbox',choices=['read-only','workspace-write'],help='Codex: escolha explícita; omitido preserva o padrão nativo')
+    p.add_argument('--hook-binding',type=Path,help='Vínculo opt-in de hooks por origem/projeto/sessão; não instala hooks')
+    p.add_argument('--hook-capability',type=Path,help='Capacidade nativa conferida para a versão exata do vínculo')
     p.add_argument("--sessao", help="retomar ID nativo, sem migrar entre providers")
     p.add_argument("--agente", help="nome nativo Claude/OpenCode")
     p.add_argument("--funcionario", help="ID do especialista cadastrado neste projeto")
@@ -361,6 +432,10 @@ def main(argv=None):
     args = p.parse_args(argv)
     try:
         config = json.loads(args.config.read_text(encoding="utf-8-sig")) if args.config else {}
+        hook_binding = json.loads(args.hook_binding.read_text(encoding='utf-8-sig')) if args.hook_binding else None
+        if hook_binding is not None:
+            hook_binding['binding_file'] = str(args.hook_binding.resolve())
+        hook_capability = json.loads(args.hook_capability.read_text(encoding='utf-8-sig')) if args.hook_capability else None
         if not isinstance(config, dict):
             raise ValueError("config precisa ser objeto JSON")
         projeto = args.projeto or (Path(config["projeto"]) if config.get("projeto") else None)
@@ -428,6 +503,7 @@ def main(argv=None):
         return executar(provider, exe, projeto, args.mesa or (funcionarios.nome_eventos(funcionario) if args.funcionario else None) or args.equipe or args.papel or config.get("mesa") or "Dev", prompt,
                         modelo, args.sessao, args.agente, args.banco,skills_nativas=skills_nativas,
                         **({'sandbox':sandbox} if sandbox is not None else {}),
+                        **({'hook_binding':hook_binding,'hook_capability':hook_capability} if hook_binding is not None or hook_capability is not None else {}),
                         **({'prompt_inicial':args.prompt_inicial} if args.prompt_inicial is not None else {}))
     except (OSError, ValueError) as exc:
         print(f"Erro: {exc}", file=sys.stderr)

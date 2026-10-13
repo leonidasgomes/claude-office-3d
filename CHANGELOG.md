@@ -2,6 +2,9 @@
 
 ## Não lançado
 
+- Hooks nativos opt-in por versão/projeto/sessão para Claude e Codex e callbacks OpenCode, com receptor comum, preferência por fase e diagnóstico de cobertura ausente. Sem instalação global ou alteração de confiança/sandbox.
+- Sessões concorrentes não trocam a identidade do adapter; ferramentas preservam IDs e erros. Fontes externas explicitamente nomeadas têm cursor e dedup duráveis, e falhas tardias permanecem visíveis após reinício.
+
 ## 2.0.0-dev.8
 
 - A tentativa dev.7 foi bloqueada pela qualificação antes de publicar o ZIP: o teste de atualização usava a própria versão como destino futuro. Fixtures agora usam versões sintéticas independentes da versão publicada, preservando as verificações de segurança e idempotência; nenhum gate foi dispensado. A tag dev.7 permanece no histórico sem pacote instalável.
